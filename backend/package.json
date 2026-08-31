@@ -1,0 +1,29 @@
+{
+  "name": "cs2-analytics-backend",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "scripts": {
+    "dev": "node --watch src/index.js",
+    "start": "node src/index.js",
+    "db:migrate": "node db/migrate.js",
+    "db:status": "node db/migrate.js --status",
+    "db:reset": "node db/migrate.js --reset",
+    "db:seed": "node db/seed.js",
+    "db:setup": "node db/migrate.js && node db/seed.js",
+    "etl": "node src/etl/cli.js",
+    "test": "node --test \"test/*.test.js\""
+  },
+  "dependencies": {
+    "@electric-sql/pglite": "^0.5.8",
+    "cookie-parser": "^1.4.7",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.1",
+    "jsonwebtoken": "^9.0.2",
+    "pg": "^8.23.0"
+  }
+}
