@@ -18,8 +18,8 @@
 เฉพาะกรณีที่ผิดแบบมโหฬาร — ค่าที่ผิดพอประมาณจะยังตกในกรอบทั้งหมด ตัวเลขนี้จึง
 เป็นแค่ด่านแรก ไม่ใช่ข้อสรุป
 
-ค่าปรับเทียบอ่านจาก backend/data/radars.json ซึ่งเป็นแหล่งความจริงแหล่งเดียว
-ที่ backend ใช้ด้วย — เพิ่มแมพใหม่แก้ที่ไฟล์นั้นที่เดียว
+ค่าปรับเทียบอ่านจาก assets/radars.json ซึ่งเป็นแหล่งความจริงแหล่งเดียว
+ของทั้งโปรเจกต์ — เพิ่มแมพใหม่แก้ที่ไฟล์นั้นที่เดียว
 """
 from __future__ import annotations
 
@@ -41,8 +41,8 @@ for _stream in (sys.stdout, sys.stderr):
     except (AttributeError, ValueError):  # pragma: no cover
         pass
 
-RADARS_PATH = Path("backend/data/radars.json")
-PUBLIC_DIR = Path("frontend/public")
+RADARS_PATH = Path("assets/radars.json")
+ASSETS_DIR = Path("assets")
 
 # สีของ callout ที่พบบ่อย — ที่เหลือเป็นสีเทา
 # ชื่อ callout ซ้ำกันได้ข้ามแมพ (BombsiteA/B มีทุกแมพ) จึงใช้ตารางเดียวรวมทุกแมพได้
@@ -87,7 +87,7 @@ def load_deaths(match_dir: Path, map_name: str) -> list[tuple[float, float, str]
 def main() -> int:
     ap = argparse.ArgumentParser(description="ตรวจค่าปรับเทียบภาพเรดาร์ด้วยข้อมูลจริง")
     ap.add_argument("map_name")
-    ap.add_argument("-i", "--input", default="backend/data/matches")
+    ap.add_argument("-i", "--input", default="data/matches")
     ap.add_argument("-o", "--out", default=None, help="ไฟล์ภาพผลลัพธ์ (ดีฟอลต์ <map>_calibration.png)")
     ap.add_argument("--upscale", type=int, default=1, help="ขยายภาพก่อนวาด ใช้ตอนภาพต้นฉบับเล็ก")
     args = ap.parse_args()
@@ -100,8 +100,8 @@ def main() -> int:
         print(f"ยังไม่มีค่าปรับเทียบของ {args.map_name} — เพิ่มใน {RADARS_PATH} ก่อน", file=sys.stderr)
         return 1
 
-    # path ในไฟล์ config อ้างจากรากของ frontend/public (เพราะเบราว์เซอร์เห็นแบบนั้น)
-    img_path = PUBLIC_DIR / cal["image"].lstrip("/")
+    # path ในไฟล์ config เขียนแบบอ้างจากรากของโฟลเดอร์ assets/
+    img_path = ASSETS_DIR / cal["image"].lstrip("/")
     if not img_path.exists():
         print(f"ไม่พบภาพเรดาร์ {img_path}", file=sys.stderr)
         return 1

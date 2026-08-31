@@ -2,8 +2,8 @@
 """
 Parser service — แปลงไฟล์ .dem ของ CS2 เป็น normalized JSON
 
-    python parser/parse_demo.py demo.dem -o backend/data/matches/
-    python parser/parse_demo.py demos/*.dem -o backend/data/matches/ --tickrate 64
+    python parser/parse_demo.py demo.dem -o data/matches/
+    python parser/parse_demo.py demos/*.dem -o data/matches/ --tickrate 64
     python parser/parse_demo.py demo.dem --summary        # ดูสรุปเฉย ๆ ไม่เขียนไฟล์
 
 รูปแบบผลลัพธ์อยู่ใน docs/normalized-match.md — ไฟล์ที่ได้ส่งต่อเข้า ETL ได้เลย:
@@ -12,7 +12,7 @@ Parser service — แปลงไฟล์ .dem ของ CS2 เป็น norm
 
 หลักการสำคัญของไฟล์นี้: **ดึงข้อเท็จจริงดิบอย่างเดียว ไม่คำนวณสถิติ**
 (ใครฆ่าใคร ตอน tick ไหน ตรงพิกัดไหน / รอบไหนใครชนะ) ส่วน opening duel, trade,
-clutch, ADR, KPI ไปคิดที่ backend/src/etl/derive.js ที่เดียว เพื่อไม่ให้สูตรอยู่
+clutch, ADR, KPI ไปคิดที่ ตอนวิเคราะห์ที่เดียว เพื่อไม่ให้สูตรอยู่
 สองที่แล้วเพี้ยนกันเวลาแก้ข้างเดียว
 
 หมายเหตุเรื่องชื่อคอลัมน์: awpy/demoparser2 เปลี่ยนชื่อคอลัมน์อยู่เรื่อย ๆ ระหว่างเวอร์ชัน

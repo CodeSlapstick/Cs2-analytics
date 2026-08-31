@@ -55,8 +55,8 @@ for _s in (sys.stdout, sys.stderr):
 ROOT = Path(__file__).resolve().parent
 DEMO_DIR = ROOT / "demo"
 OUT_DIR = ROOT / "output"
-RADAR_IMG = ROOT / "frontend" / "public" / "maps" / "de_dust2.webp"
-RADARS_JSON = ROOT / "backend" / "data" / "radars.json"
+RADAR_IMG = ROOT / "assets" / "maps" / "de_dust2.webp"
+RADARS_JSON = ROOT / "assets" / "radars.json"
 
 # ---------------------------------------------------------------------------
 # CONFIG — น้ำหนักของสูตรให้คะแนนโซน (ปรับได้จาก CLI)
@@ -625,7 +625,7 @@ def main():
     tab, grid, xe, ye = score_zones(ev, args.grid, args.w_kill, args.w_damage, args.w_fire)
     cols = ["zone_id", "x_range", "y_range", "kill_count", "damage_sum",
             "fire_count", "score", "dominant_side"]
-    tab[cols].to_csv(OUT_DIR / "zone_scores.csv", index=False, encoding="utf-8-sig")
+    tab[cols].to_csv(OUT_DIR / "zone_scores_full.csv", index=False, encoding="utf-8-sig")
     print(f"\nSTEP 2  ตารางคะแนนโซน ({int((tab['score'] > 0).sum())} โซนที่มีเหตุการณ์ "
           f"จาก {args.grid**2} ช่อง) — 10 อันดับแรก:")
     with pd.option_context("display.width", 170, "display.max_columns", 20):
@@ -660,10 +660,11 @@ def main():
               f"(เกณฑ์ {lim:.0f}) {'[ตรงกัน]' if ok else '[ไม่ตรง]'}")
 
     # ---- STEP 4 ----
-    p1, p2 = OUT_DIR / "zone_score_heatmap.png", OUT_DIR / "dbscan_cluster_map.png"
+    # ตั้งชื่อลงท้าย _full ไม่ให้ไปเขียนทับภาพของ main.py ที่ใช้ชื่อชุดเดียวกัน
+    p1, p2 = OUT_DIR / "zone_score_heatmap_full.png", OUT_DIR / "dbscan_cluster_map_full.png"
     plot_zone_heatmap(ev, tab, grid, xe, ye, radar, extent, meta, p1)
     plot_clusters(ev, pts, cents, info, tab, radar, extent, meta, p2)
-    print(f"\nSTEP 4  บันทึกภาพแล้ว:\n   {p1}\n   {p2}\n   {OUT_DIR / 'zone_scores.csv'}")
+    print(f"\nSTEP 4  บันทึกภาพแล้ว:\n   {p1}\n   {p2}\n   {OUT_DIR / 'zone_scores_full.csv'}")
 
     # ---- STEP 5 : สรุปสำหรับพูดหน้าอาจารย์ ----
     print("\n" + "=" * 78)

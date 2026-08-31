@@ -2,7 +2,7 @@
 """
 Map analytics — แบ่งแมพเป็น "โซนการปะทะ" ด้วย unsupervised learning
 
-    python parser/map_zones.py de_dust2 -i backend/data/matches -o backend/data/zones
+    python parser/map_zones.py de_dust2 -i data/matches -o data/zones
     python parser/map_zones.py de_dust2 --summary      # ดูผลเฉย ๆ ไม่เขียนไฟล์
     python parser/map_zones.py de_dust2 --k 8          # บังคับจำนวนโซน (ปกติเลือกให้เอง)
 
@@ -12,10 +12,10 @@ Map analytics — แบ่งแมพเป็น "โซนการปะท
 พิกัดที่คนตายจริงในไฟล์ .dem แล้วให้ขอบเขตโซนวิ่งตามการเล่นจริง
 
 หลักการเดียวกับที่ใช้ทั้งโปรเจกต์: **ไฟล์นี้ออกแบบโซนอย่างเดียว ไม่คำนวณสถิติ**
-การให้คะแนนโซน (ฝั่งไหนได้เปรียบตรงไหน) ไปคิดที่ backend/src/services/mapZones.js
+การให้คะแนนโซน (ฝั่งไหนได้เปรียบตรงไหน) ไปคิดที่ main.py (STEP 2)
 ที่เดียว เหมือนที่ parse_demo.py ไม่คิด KPI แต่ปล่อยให้ derive.js คิด
 
-ผลลัพธ์คือ "โมเดล" ที่ fit แล้ว เก็บเป็น backend/data/zones/<map>.json — บอกไว้ด้วยว่า
+ผลลัพธ์คือ "โมเดล" ที่ fit แล้ว เก็บเป็น data/zones/<map>.json — บอกไว้ด้วยว่า
 fit จากกี่แมตช์ กี่จุด และได้คะแนนเท่าไร เพื่อให้ย้อนตรวจได้ว่าโซนชุดนี้มาจากข้อมูลชุดไหน
 """
 from __future__ import annotations
@@ -264,8 +264,8 @@ def build_zones(deaths: list[dict], k: int | None) -> dict:
 def main() -> int:
     ap = argparse.ArgumentParser(description="แบ่งแมพเป็นโซนการปะทะด้วย unsupervised learning")
     ap.add_argument("map_name", help="ชื่อแมพ เช่น de_dust2")
-    ap.add_argument("-i", "--input", default="backend/data/matches", help="โฟลเดอร์ normalized JSON")
-    ap.add_argument("-o", "--out", default="backend/data/zones", help="โฟลเดอร์ปลายทางของไฟล์โซน")
+    ap.add_argument("-i", "--input", default="data/matches", help="โฟลเดอร์ normalized JSON")
+    ap.add_argument("-o", "--out", default="data/zones", help="โฟลเดอร์ปลายทางของไฟล์โซน")
     ap.add_argument("--k", type=int, default=None, help="บังคับจำนวนโซน (ปกติเลือกด้วย silhouette)")
     ap.add_argument("--summary", action="store_true", help="แสดงผลอย่างเดียว ไม่เขียนไฟล์")
     args = ap.parse_args()
