@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
 import { api } from '../api.js';
 import { Loading, ErrorBox, EmptyState, SourceTag, fmtDateTime } from '../components/ui.jsx';
 
@@ -64,7 +63,7 @@ npm run etl -- data/matches`}
                 <tr>
                   <th>วันที่</th><th>แมพ</th><th className="num">สกอร์</th>
                   <th className="num">รอบ</th><th className="num">ผู้เล่น</th>
-                  <th className="num">โน้ต</th><th>ที่มา</th><th></th>
+                  <th>ที่มา</th>
                 </tr>
               </thead>
               <tbody>
@@ -75,12 +74,10 @@ npm run etl -- data/matches`}
                     <td className="num mono">{m.score_team2}–{m.score_team3}</td>
                     <td className="num">{m.rounds_played}</td>
                     <td className="num">{m.player_count}</td>
-                    <td className="num">{m.note_count || '—'}</td>
                     <td>
                       <SourceTag source={m.source} />
                       {m.demo_file && <div className="small muted mono">{m.demo_file}</div>}
                     </td>
-                    <td className="num"><Link to={`/match/${m.id}`}>เปิดดู</Link></td>
                   </tr>
                 ))}
               </tbody>

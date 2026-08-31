@@ -1,18 +1,13 @@
 /**
  * Custom KPI — 5 มิติที่ระบบนี้เลือกวัด
  *
- * ไฟล์นี้มีสองชั้นที่ต้องแยกให้ออก
- *
- *   ชั้นล่าง  computeKpi()  — แปลง "สถิติดิบจากไฟล์ .dem" เป็นคะแนน 5 มิติ
- *                             (aim, positioning, utility, clutch, opening)
- *                             สเกลประมาณ -10 ถึง +10 โดย 0 = ผู้เล่นระดับกลาง
- *   ชั้นบน   scorePlayer()  — ยุบ 5 มิติเป็นคะแนนเดียวตามน้ำหนักที่โค้ชตั้งเอง
+ *   computeKpi()  — แปลง "สถิติดิบจากไฟล์ .dem" เป็นคะแนน 5 มิติ
+ *                   (aim, positioning, utility, clutch, opening)
+ *                   สเกลประมาณ -10 ถึง +10 โดย 0 = ผู้เล่นระดับกลาง
  *
  * ทั้งหมดเป็นฟังก์ชันบริสุทธิ์ (ไม่แตะฐานข้อมูล ไม่แตะเน็ต) เพื่อให้เขียนเทสต์ได้ตรง ๆ
  */
 export const KPI_DIMENSIONS = ['aim', 'positioning', 'utility', 'clutch', 'opening'];
-
-export const DEFAULT_WEIGHTS = Object.fromEntries(KPI_DIMENSIONS.map((d) => [d, 1]));
 
 // ---------------------------------------------------------------------------
 // ค่าฐานอ้างอิง (baseline)
@@ -112,48 +107,4 @@ export function computeKpi(metrics) {
     out[dim] = usedWeight === 0 ? null : +((score / usedWeight) * 10).toFixed(2);
   }
   return out;
-}
-
-export function normalizeWeights(raw) {
-  const w = { ...DEFAULT_WEIGHTS };
-  for (const d of KPI_DIMENSIONS) {
-    const v = Number(raw?.[d]);
-    if (Number.isFinite(v)) w[d] = Math.min(5, Math.max(0, v)); // จำกัดช่วง 0–5
-  }
-  return w;
-}
-
-/** คะแนน KPI ของผู้เล่นหนึ่งคน = ค่าเฉลี่ยถ่วงน้ำหนักของ rating แต่ละมิติ */
-export function scorePlayer(rating, weights) {
-  if (!rating) return null;
-  let sum = 0;
-  let total = 0;
-  for (const d of KPI_DIMENSIONS) {
-    const v = Number(rating[d]);
-    const w = Number(weights?.[d] ?? 1);
-    if (!Number.isFinite(v) || w <= 0) continue;
-    sum += v * w;
-    total += w;
-  }
-  return total === 0 ? null : +(sum / total).toFixed(2);
-}
-
-/** หามิติที่แข็งสุด/อ่อนสุดของทีม จาก rating เฉลี่ยของสมาชิก */
-export function teamProfile(members) {
-  const usable = members.filter((m) => m.rating);
-  if (usable.length === 0) return { average: null, strongest: null, weakest: null };
-
-  const average = {};
-  for (const d of KPI_DIMENSIONS) {
-    const vals = usable.map((m) => Number(m.rating[d])).filter(Number.isFinite);
-    average[d] = vals.length ? +(vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(2) : null;
-  }
-  const entries = Object.entries(average).filter(([, v]) => v !== null);
-  if (entries.length === 0) return { average, strongest: null, weakest: null };
-  entries.sort((a, b) => b[1] - a[1]);
-  return {
-    average,
-    strongest: { dimension: entries[0][0], value: entries[0][1] },
-    weakest: { dimension: entries[entries.length - 1][0], value: entries[entries.length - 1][1] },
-  };
 }

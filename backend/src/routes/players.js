@@ -2,7 +2,6 @@ import { Router } from 'express';
 import { query, one } from '../db.js';
 import { requireAuth } from '../lib/auth.js';
 import { getPlayerProfile, getPlayerMatches } from '../services/analytics.js';
-import { KPI_DIMENSIONS } from '../lib/kpi.js';
 
 export const playersRouter = Router();
 
@@ -70,30 +69,5 @@ playersRouter.get(
       return res.status(400).json({ error: 'steam64_id ต้องเป็นตัวเลข 17 หลัก' });
     }
     res.json(await getPlayerMatches(req.params.steam64, Number(req.query.limit) || 20));
-  })
-);
-
-// เปรียบเทียบผู้เล่นสองคนแบบตัวต่อตัว (ผู้เล่นเรา vs ผู้เล่นคู่แข่ง)
-playersRouter.get(
-  '/compare',
-  requireAuth,
-  wrap(async (req, res) => {
-    const { a, b } = req.query;
-    if (!isSteam64(a) || !isSteam64(b)) {
-      return res.status(400).json({ error: 'ต้องส่ง a และ b เป็น steam64_id 17 หลัก' });
-    }
-    const [pa, pb] = await Promise.all([getPlayerProfile(a), getPlayerProfile(b)]);
-    const missing = [!pa && a, !pb && b].filter(Boolean);
-    if (missing.length) {
-      return res.status(404).json({ error: `ยังไม่มีข้อมูลของผู้เล่น: ${missing.join(', ')}` });
-    }
-
-    const diff = {};
-    for (const d of KPI_DIMENSIONS) {
-      const va = Number(pa.rating?.[d]);
-      const vb = Number(pb.rating?.[d]);
-      diff[d] = Number.isFinite(va) && Number.isFinite(vb) ? +(va - vb).toFixed(2) : null;
-    }
-    res.json({ a: pa, b: pb, diff });
   })
 );

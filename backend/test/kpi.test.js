@@ -6,14 +6,7 @@
  */
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import {
-  computeKpi,
-  metricsFromStats,
-  normalizeWeights,
-  scorePlayer,
-  teamProfile,
-  KPI_DIMENSIONS,
-} from '../src/lib/kpi.js';
+import { computeKpi, metricsFromStats, KPI_DIMENSIONS } from '../src/lib/kpi.js';
 
 /** ผู้เล่นระดับกลาง: ตัวเลขทุกตัวตรงกับค่าฐานพอดี → ทุกมิติควรได้ 0 */
 const AVERAGE_PLAYER = {
@@ -91,46 +84,5 @@ describe('computeKpi', () => {
     );
     assert.equal(noClutch.clutch, null);
     assert.ok(noClutch.aim !== null, 'มิติอื่นต้องยังคิดได้ตามปกติ');
-  });
-});
-
-describe('น้ำหนัก KPI ที่โค้ชตั้งเอง', () => {
-  test('normalizeWeights จำกัดช่วง 0–5 และเติมมิติที่ขาด', () => {
-    const w = normalizeWeights({ aim: 99, positioning: -4, utility: 2 });
-    assert.equal(w.aim, 5);
-    assert.equal(w.positioning, 0);
-    assert.equal(w.utility, 2);
-    assert.equal(w.clutch, 1, 'มิติที่ไม่ได้ส่งมาใช้ค่าเริ่มต้น 1');
-  });
-
-  test('น้ำหนัก 0 = ตัดมิตินั้นออกจากคะแนนรวมไปเลย', () => {
-    const rating = { aim: 10, positioning: 0, utility: 0, clutch: 0, opening: 0 };
-    const onlyAim = scorePlayer(rating, normalizeWeights({ aim: 1, positioning: 0, utility: 0, clutch: 0, opening: 0 }));
-    assert.equal(onlyAim, 10, 'เหลือแต่มิติ aim คะแนนต้องเท่ากับ aim');
-    assert.equal(scorePlayer(rating, normalizeWeights({})), 2, 'ให้น้ำหนักเท่ากันหมด = ค่าเฉลี่ย');
-  });
-
-  test('scorePlayer คืน null เมื่อไม่มี rating', () => {
-    assert.equal(scorePlayer(null, normalizeWeights({})), null);
-  });
-});
-
-describe('teamProfile', () => {
-  test('หามิติแข็งสุด/อ่อนสุดจากค่าเฉลี่ยของสมาชิก', () => {
-    const members = [
-      { rating: { aim: 4, positioning: -2, utility: 0, clutch: 1, opening: 2 } },
-      { rating: { aim: 6, positioning: -4, utility: 0, clutch: 1, opening: 2 } },
-      { rating: null }, // สมาชิกที่ยังไม่มีข้อมูล ต้องไม่ถูกนับ
-    ];
-    const { average, strongest, weakest } = teamProfile(members);
-    assert.equal(average.aim, 5);
-    assert.equal(strongest.dimension, 'aim');
-    assert.equal(weakest.dimension, 'positioning');
-  });
-
-  test('ทีมที่ยังไม่มีสมาชิกที่มีข้อมูล คืน null ทั้งหมด', () => {
-    const { average, strongest } = teamProfile([{ rating: null }]);
-    assert.equal(average, null);
-    assert.equal(strongest, null);
   });
 });

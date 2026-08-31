@@ -36,14 +36,8 @@ export const api = {
   players: (q = '') => request(`/api/players${qs({ q })}`),
   profile: (steam64) => request(`/api/players/${steam64}`),
   playerMatches: (steam64, limit) => request(`/api/players/${steam64}/matches${qs({ limit })}`),
-  compare: (a, b) => request(`/api/compare${qs({ a, b })}`),
 
   matches: (opts = {}) => request(`/api/matches${qs(opts)}`),
-  match: (matchId) => request(`/api/matches/${matchId}`),
-  matchKills: (matchId) => request(`/api/matches/${matchId}/kills`),
-  addNote: (matchId, body) =>
-    request(`/api/matches/${matchId}/notes`, { method: 'POST', body: JSON.stringify({ body }) }),
-  deleteNote: (id) => request(`/api/notes/${id}`, { method: 'DELETE' }),
 
   maps: () => request('/api/maps'),
   mapZones: (map, matchId) => request(`/api/maps/${map}/zones${qs({ match_id: matchId })}`),
@@ -51,18 +45,6 @@ export const api = {
 
   uploadJobs: () => request('/api/uploads'),
   uploadJob: (jobId) => request(`/api/uploads/${jobId}`),
-
-  teams: () => request('/api/teams'),
-  createTeam: (name, is_opponent = false) =>
-    request('/api/teams', { method: 'POST', body: JSON.stringify({ name, is_opponent }) }),
-  deleteTeam: (id) => request(`/api/teams/${id}`, { method: 'DELETE' }),
-  teamOverview: (id) => request(`/api/teams/${id}/overview`),
-  addMember: (id, payload) =>
-    request(`/api/teams/${id}/members`, { method: 'POST', body: JSON.stringify(payload) }),
-  removeMember: (id, memberId) =>
-    request(`/api/teams/${id}/members/${memberId}`, { method: 'DELETE' }),
-  setWeights: (id, weights) =>
-    request(`/api/teams/${id}/kpi-weights`, { method: 'PUT', body: JSON.stringify({ weights }) }),
 };
 
 

@@ -4,27 +4,21 @@
  * ชั้น mapZones.js ตอบว่า "พื้นที่ไหนใครได้เปรียบ" ซึ่งยังเป็นแค่ตัวเลข
  * ไฟล์นี้ตอบคำถามถัดไปที่โค้ชถามจริง ๆ ว่า **"แล้วต้องแก้อะไร"**
  *
- * สามคำถามที่ตอบ
+ * สองคำถามที่ตอบ
  *
  *   1. แยกฝั่ง T/CT     แผนของโค้ชคนละแผนกันสองฝั่ง ตัวเลขที่รวมสองฝั่งไว้ด้วยกัน
  *                       เอาไปวางแผนไม่ได้ ต้องแยกก่อนถึงจะใช้งานได้จริง
  *   2. พื้นที่ไหนชี้ผลรอบ  ตายเยอะไม่เท่ากับสำคัญ วัดจาก "รอบที่เปิดไฟต์แรกตรงนี้
  *                       จบลงยังไง" เทียบกับอัตราชนะปกติของทีม
- *   3. ตายแล้วไม่มีใครล้างแค้น  ตายเดี่ยวคือปัญหาการยืนตำแหน่ง ไม่ใช่ปัญหาการเล็ง
- *                       เป็นสิ่งที่แก้ได้ด้วยการซ้อม ต่างจาก "ยิงไม่แม่น"
  *
  * ทุกตัวเลขติดขนาดกลุ่มตัวอย่างไปด้วยเสมอ และข้อสรุปที่กลุ่มตัวอย่างเล็กเกินไป
  * จะไม่ถูกสร้างขึ้นมาเลย ดีกว่าปล่อยให้โค้ชอ่านตัวเลขจาก 2 รอบแล้วเปลี่ยนแผนทั้งทีม
  */
 import { query } from '../db.js';
-import { matchTrades } from '../etl/derive.js';
 import { loadZoneModel, nearestZone } from './mapZones.js';
 
 /** ต่ำกว่านี้ไม่สร้างข้อสรุป — จาก 19 รอบต่อแมตช์ 6 รอบคือราวหนึ่งในสาม */
 const MIN_ROUNDS_FOR_CLAIM = 6;
-
-/** ต่ำกว่านี้ไม่สรุปเรื่องพื้นที่ */
-const MIN_DUELS_FOR_CLAIM = 8;
 
 const pct = (a, b) => (b > 0 ? Math.round((a / b) * 100) : null);
 
@@ -143,19 +137,14 @@ export async function getMapInsights(mapName, { matchId = null, side = null } = 
     }))
     .sort((a, b) => b.rounds - a.rounds);
 
-  // ---------- 2) ตายแล้วไม่มีใครล้างแค้น ----------
-  // ใช้นิยาม trade เดียวกับ derive.js เป๊ะ ๆ (นำเข้าค่าคงที่มาใช้ ไม่ได้พิมพ์เลขซ้ำ)
-  // ถ้าสองที่นิยามไม่ตรงกัน ตัวเลขหน้านี้จะขัดกับสกอร์บอร์ดโดยไม่มีใครรู้
-  const untraded = new Map();
-  for (const z of model.zones) untraded.set(z.zone_id, { zone_id: z.zone_id, name: z.name, deaths: 0, untraded: 0 });
-
+  // ---------- 2) สถิติรายผู้เล่น ----------
   const roster = new Map();
   const playerRow = (steam64, name, team) => {
     const id = String(steam64);
     if (!roster.has(id)) {
       roster.set(id, {
         steam64_id: id, name: name || id.slice(-4), team_number: team ?? null,
-        kills: 0, deaths: 0, untraded_deaths: 0,
+        kills: 0, deaths: 0,
         kill_zones: {}, death_zones: {},
       });
     }
@@ -167,49 +156,23 @@ export async function getMapInsights(mapName, { matchId = null, side = null } = 
   };
 
   for (const list of byRound.values()) {
-    const tickrate = rounds[0]?.tickrate || 64;
-    // ศพไหนถูกล้างแค้นให้บ้าง ตัดสินด้วยฟังก์ชันกลางจาก derive.js ตัวเดียวกับที่
-    // ETL ใช้คิด traded_deaths ในสกอร์บอร์ด ตัวเลขสองหน้าจึงตรงกันเสมอ
-    const tradedBy = matchTrades(
-      list.map((k) => ({
-        victim: String(k.victim_steam64 ?? ''),
-        actor: k.actor_steam64 ? String(k.actor_steam64) : null,
-        victimTeam: k.victim_team ?? null,
-        actorTeam: k.actor_team ?? null,
-        tick: Number(k.tick) || 0,
-      })),
-      tickrate
-    );
-    const avengedDeaths = new Set(tradedBy.filter((j) => j >= 0));
-
-    list.forEach((k, i) => {
+    for (const k of list) {
       const z = nearestZone(model.zones, k.victim_x, k.victim_y);
-      if (!z) return;
+      if (!z) continue;
 
-      // สถิติรายคน — เก็บทั้งสองทีม โค้ชต้องส่องคู่แข่งด้วย ไม่ใช่แค่ทีมตัวเอง
+      // เก็บทั้งสองทีม โค้ชต้องส่องคู่แข่งด้วย ไม่ใช่แค่ทีมตัวเอง
       if (k.victim_steam64) {
         const v = playerRow(k.victim_steam64, k.victim_name, k.victim_team);
         v.deaths += 1;
         v.death_zones[z.zone_id] = (v.death_zones[z.zone_id] || 0) + 1;
-        if (!avengedDeaths.has(i)) v.untraded_deaths += 1;
       }
       if (k.actor_steam64 && k.actor_team !== k.victim_team) {
         const a = playerRow(k.actor_steam64, k.actor_name, k.actor_team);
         a.kills += 1;
         a.kill_zones[z.zone_id] = (a.kill_zones[z.zone_id] || 0) + 1;
       }
-
-      if (k.victim_team !== 2) return; // ส่วนสรุปพื้นที่สนใจเฉพาะการตายของทีมที่เริ่มฝั่ง T
-      const b = untraded.get(z.zone_id);
-      b.deaths += 1;
-      if (!avengedDeaths.has(i)) b.untraded += 1;
-    });
+    }
   }
-
-  const exposure = [...untraded.values()]
-    .filter((z) => z.deaths > 0)
-    .map((z) => ({ ...z, untraded_pct: pct(z.untraded, z.deaths), enough: z.deaths >= MIN_DUELS_FOR_CLAIM }))
-    .sort((a, b) => b.untraded - a.untraded);
 
   // ---------- 3) ได้คิลแรกแล้วชนะรอบไหม ----------
   let fbRounds = 0;
@@ -240,15 +203,14 @@ export async function getMapInsights(mapName, { matchId = null, side = null } = 
       enough: fbRounds >= MIN_ROUNDS_FOR_CLAIM,
     },
     zone_impact: zoneImpact,
-    exposure,
     players: buildPlayers(roster, model.zones),
-    findings: buildFindings({ baseline, scopedRounds, zoneImpact, exposure, fbRounds, fbWins, side }),
-    thresholds: { min_rounds: MIN_ROUNDS_FOR_CLAIM, min_duels: MIN_DUELS_FOR_CLAIM },
+    findings: buildFindings({ baseline, scopedRounds, zoneImpact, fbRounds, fbWins, side }),
+    thresholds: { min_rounds: MIN_ROUNDS_FOR_CLAIM },
   };
 }
 
 /**
- * สรุปรายผู้เล่น: ทำคิลได้มากสุดตรงไหน ตายบ่อยสุดตรงไหน และตายเดี่ยวกี่ครั้ง
+ * สรุปรายผู้เล่น: ทำคิลได้มากสุดตรงไหน และตายบ่อยสุดตรงไหน
  *
  * "ตายบ่อยสุดตรงไหน" คือสิ่งที่โค้ชเอาไปคุยกับคนคนนั้นได้ตรง ๆ ต่างจาก K/D
  * ที่บอกแค่ว่าเล่นดีหรือไม่ดี แต่ไม่บอกว่าต้องแก้ตรงไหน
@@ -270,8 +232,6 @@ function buildPlayers(roster, zones) {
       kills: p.kills,
       deaths: p.deaths,
       kd: p.deaths > 0 ? +(p.kills / p.deaths).toFixed(2) : null,
-      untraded_deaths: p.untraded_deaths,
-      untraded_pct: pct(p.untraded_deaths, p.deaths),
       top_kill_zone: top(p.kill_zones),
       top_death_zone: top(p.death_zones),
     }))
@@ -284,7 +244,7 @@ function buildPlayers(roster, zones) {
  * ตั้งใจให้ "ไม่มีข้อสรุป" เป็นผลลัพธ์ที่ยอมรับได้ ระบบที่พยายามพูดอะไรสักอย่าง
  * ทุกครั้งจะกลายเป็นระบบที่พูดมั่วเมื่อข้อมูลน้อย ซึ่งอันตรายกว่าการเงียบ
  */
-function buildFindings({ baseline, scopedRounds, zoneImpact, exposure, fbRounds, fbWins, side }) {
+function buildFindings({ baseline, scopedRounds, zoneImpact, fbRounds, fbWins, side }) {
   const out = [];
   const sideWord = side === 't' ? 'ตอนเล่นฝั่ง T' : side === 'ct' ? 'ตอนเล่นฝั่ง CT' : 'ทั้งแมตช์';
 
@@ -311,15 +271,6 @@ function buildFindings({ baseline, scopedRounds, zoneImpact, exposure, fbRounds,
       kind: 'strong',
       text: `เปิดไฟต์แรกที่ ${bestZone.name} แล้วชนะรอบ ${bestZone.win_pct}% `
         + `(${bestZone.wins}/${bestZone.rounds} รอบ) สูงกว่าปกติ ${bestZone.lift} จุด — พื้นที่นี้คุ้มที่จะทุ่มยูทิลิตี้`,
-    });
-  }
-
-  const weak = exposure.filter((z) => z.enough).sort((a, b) => b.untraded_pct - a.untraded_pct)[0];
-  if (weak && weak.untraded_pct >= 60) {
-    out.push({
-      kind: 'warn',
-      text: `ที่ ${weak.name} ตาย ${weak.deaths} ครั้ง แต่ ${weak.untraded} ครั้งไม่มีเพื่อนล้างแค้นให้ทัน `
-        + `(${weak.untraded_pct}%) — เป็นปัญหาการยืนตำแหน่งและระยะห่าง ไม่ใช่ปัญหาการเล็ง`,
     });
   }
 

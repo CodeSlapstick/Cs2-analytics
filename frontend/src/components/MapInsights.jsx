@@ -71,7 +71,7 @@ export default function MapInsights({ mapName }) {
 }
 
 function Report({ data }) {
-  const { scope, first_blood: fb, zone_impact: impact, exposure, findings, thresholds, players } = data;
+  const { scope, first_blood: fb, zone_impact: impact, findings, thresholds, players } = data;
 
   return (
     <>
@@ -170,7 +170,6 @@ function Report({ data }) {
                       <th className="num">คิล</th>
                       <th className="num">ตาย</th>
                       <th className="num">K/D</th>
-                      <th className="num">ตายเดี่ยว</th>
                       <th>ทำคิลมากสุดที่</th>
                       <th>ตายบ่อยสุดที่</th>
                     </tr>
@@ -182,9 +181,6 @@ function Report({ data }) {
                         <td className="num">{p.kills}</td>
                         <td className="num">{p.deaths}</td>
                         <td className={`num ${p.kd >= 1 ? 'pos' : 'neg'}`}>{p.kd ?? '—'}</td>
-                        <td className={`num ${p.untraded_pct >= 80 ? 'neg' : ''}`}>
-                          {p.untraded_deaths} ({p.untraded_pct}%)
-                        </td>
                         <td className="small">
                           {p.top_kill_zone ? `${p.top_kill_zone.name} (${p.top_kill_zone.count})` : '—'}
                         </td>
@@ -200,46 +196,8 @@ function Report({ data }) {
           );
         })}
         <p className="small muted" style={{ marginBottom: 0 }}>
-          "ตายเดี่ยว" = ตายแล้วไม่มีเพื่อนล้างแค้นให้ทันภายใน 5 วินาที ·
           ตัวเลขเปลี่ยนตามฝั่งที่เลือกด้านบน
         </p>
-      </div>
-
-      <h3>ตายแล้วไม่มีใครล้างแค้นให้</h3>
-      <div className="card">
-        <p className="small muted" style={{ marginTop: 0 }}>
-          ตายเดี่ยวโดยไม่มีเพื่อนล้างแค้นภายใน 5 วินาที เป็นปัญหา<b>การยืนตำแหน่งและระยะห่าง</b>
-          ซึ่งแก้ได้ด้วยการซ้อม ต่างจาก "ยิงไม่แม่น" ที่แก้ยากกว่ามาก ·
-          ใช้นิยาม trade เดียวกับสกอร์บอร์ด ตัวเลขจึงตรงกันเสมอ
-        </p>
-        <div className="tablewrap">
-          <table>
-            <thead>
-              <tr>
-                <th>พื้นที่</th>
-                <th className="num">ตายที่นี่</th>
-                <th className="num">ไม่ถูกล้างแค้น</th>
-                <th className="num">สัดส่วน</th>
-              </tr>
-            </thead>
-            <tbody>
-              {exposure.map((z) => (
-                <tr key={z.zone_id} className={z.enough ? '' : 'row-weak'}>
-                  <td>
-                    {z.name}
-                    {!z.enough && <span className="tag sample" style={{ marginLeft: 6 }}>ข้อมูลน้อย</span>}
-                  </td>
-                  <td className="num">{z.deaths}</td>
-                  <td className="num">{z.untraded}</td>
-                  <td className={`num ${z.untraded_pct >= 70 ? 'neg' : ''}`}>{z.untraded_pct}%</td>
-                </tr>
-              ))}
-              {exposure.length === 0 && (
-                <tr><td colSpan={4} className="muted">ยังไม่มีข้อมูลการตายในขอบเขตนี้</td></tr>
-              )}
-            </tbody>
-          </table>
-        </div>
       </div>
     </>
   );

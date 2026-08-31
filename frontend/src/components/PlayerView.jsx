@@ -1,4 +1,3 @@
-import { Link } from 'react-router-dom';
 import { RatingRadar, FormChart } from './charts.jsx';
 import {
   Signed, Stat, Outcome, SourceTag, DIM_LABEL, DIM_HINT,
@@ -104,7 +103,7 @@ export default function PlayerView({ profile, matches, title }) {
                 <tr>
                   <th>วันที่</th><th>แมพ</th><th>ผล</th><th className="num">สกอร์</th>
                   <th className="num">K/D/A</th><th className="num">ADR</th>
-                  <th className="num">HS%</th><th className="num">KPI</th><th></th>
+                  <th className="num">HS%</th><th className="num">KPI</th>
                 </tr>
               </thead>
               <tbody>
@@ -118,7 +117,6 @@ export default function PlayerView({ profile, matches, title }) {
                     <td className="num">{fmtNum(m.adr, 1)}</td>
                     <td className="num">{fmtPct(m.hs_pct, 0)}</td>
                     <td className="num"><Signed value={m.performance_rating} /></td>
-                    <td className="num"><Link to={`/match/${m.id}`}>รายละเอียด</Link></td>
                   </tr>
                 ))}
               </tbody>

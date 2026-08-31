@@ -163,8 +163,7 @@ export async function listMatches({ limit = 30, offset = 0, steam64Id = null } =
   const rows = await query(
     `SELECT m.id, m.external_id, m.map_name, m.finished_at, m.rounds_played,
             m.score_team2, m.score_team3, m.source, m.demo_file,
-            (SELECT COUNT(*)::int FROM match_players mp WHERE mp.match_id = m.id) AS player_count,
-            (SELECT COUNT(*)::int FROM coach_notes n WHERE n.match_id = m.id) AS note_count
+            (SELECT COUNT(*)::int FROM match_players mp WHERE mp.match_id = m.id) AS player_count
        FROM matches m
       WHERE $3::text IS NULL
          OR EXISTS (SELECT 1 FROM match_players mp WHERE mp.match_id = m.id AND mp.steam64_id = $3)
@@ -180,82 +179,4 @@ export async function listMatches({ limit = 30, offset = 0, steam64Id = null } =
       { team_number: 3, score: r.score_team3 },
     ],
   }));
-}
-
-/** รายละเอียดแมตช์ + สกอร์บอร์ดผู้เล่นทั้งสองฝั่ง */
-export async function getMatchDetails(matchId) {
-  const id = Number(matchId);
-  if (!Number.isFinite(id)) return null;
-
-  const match = await one('SELECT * FROM matches WHERE id = $1', [id]);
-  if (!match) return null;
-
-  const rows = await query(
-    `SELECT mp.*, k.aim, k.positioning, k.utility, k.clutch, k.opening
-       FROM match_players mp
-       LEFT JOIN player_match_kpi k ON k.match_id = mp.match_id AND k.steam64_id = mp.steam64_id
-      WHERE mp.match_id = $1
-      ORDER BY mp.team_number, mp.kills DESC`,
-    [id]
-  );
-
-  const scoreboard = rows.map((r) => {
-    const rating = { aim: r.aim, positioning: r.positioning, utility: r.utility, clutch: r.clutch, opening: r.opening };
-    return {
-      steam64_id: r.steam64_id,
-      name: r.name,
-      team_number: r.team_number,
-      rounds_played: r.rounds_played,
-      kills: r.kills,
-      deaths: r.deaths,
-      assists: r.assists,
-      headshot_kills: r.headshot_kills,
-      hs_pct: round2(r.kills ? r.headshot_kills / r.kills : null),
-      kd: round2(r.deaths ? r.kills / r.deaths : r.kills),
-      adr: round2(r.rounds_played ? r.damage / r.rounds_played : null),
-      utility_damage: r.utility_damage,
-      opening_kills: r.opening_kills,
-      opening_deaths: r.opening_deaths,
-      trade_kills: r.trade_kills,
-      clutches_won: r.clutches_won,
-      clutches_attempted: r.clutches_attempted,
-      rating,
-      performance_rating: flatRating(rating),
-    };
-  });
-
-  const rounds = await query(
-    `SELECT round_number, winner_team_number, winner_side, end_reason, bomb_planted
-       FROM rounds WHERE match_id = $1 ORDER BY round_number`,
-    [id]
-  );
-
-  return {
-    id: Number(match.id),
-    external_id: match.external_id,
-    map_name: match.map_name,
-    started_at: match.started_at,
-    finished_at: match.finished_at,
-    rounds_played: match.rounds_played,
-    source: match.source,
-    demo_file: match.demo_file,
-    team_scores: [
-      { team_number: 2, score: match.score_team2 },
-      { team_number: 3, score: match.score_team3 },
-    ],
-    stats: scoreboard,
-    rounds,
-  };
-}
-
-/** พิกัดคิลของแมตช์ — เตรียมไว้ให้ heatmap ใน sprint ถัดไปเรียกใช้ได้เลย */
-export async function getMatchKillPositions(matchId) {
-  return query(
-    `SELECT round_number, tick, actor_steam64, victim_steam64, weapon, headshot,
-            actor_x, actor_y, actor_z, victim_x, victim_y, victim_z
-       FROM events
-      WHERE match_id = $1 AND event_type = 'kill'
-      ORDER BY round_number, tick`,
-    [Number(matchId)]
-  );
 }

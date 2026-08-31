@@ -7,7 +7,6 @@ import { attachUser, requireAuth } from './lib/auth.js';
 import { authRouter } from './routes/auth.js';
 import { playersRouter } from './routes/players.js';
 import { matchesRouter } from './routes/matches.js';
-import { teamsRouter } from './routes/teams.js';
 import { mapsRouter } from './routes/maps.js';
 import { uploadsRouter } from './routes/uploads.js';
 
@@ -48,7 +47,6 @@ app.get('/api/overview', requireAuth, async (_req, res, next) => {
 app.use('/auth', authRouter);
 app.use('/api', playersRouter);
 app.use('/api', matchesRouter);
-app.use('/api', teamsRouter);
 app.use('/api', mapsRouter);
 app.use('/api', uploadsRouter);
 

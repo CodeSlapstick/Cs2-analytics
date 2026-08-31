@@ -6,9 +6,6 @@ import Login from './pages/Login.jsx';
 import Dashboard from './pages/Dashboard.jsx';
 import Player from './pages/Player.jsx';
 import Matches from './pages/Matches.jsx';
-import Match from './pages/Match.jsx';
-import Teams from './pages/Teams.jsx';
-import Compare from './pages/Compare.jsx';
 import MapAnalytics from './pages/MapAnalytics.jsx';
 import Upload from './pages/Upload.jsx';
 import { Loading } from './components/ui.jsx';
@@ -21,9 +18,7 @@ import { Loading } from './components/ui.jsx';
 const NAV = [
   { to: '/', label: 'แดชบอร์ด', hint: 'ภาพรวมของฉัน', end: true },
   { to: '/matches', label: 'แมตช์', hint: 'แมตช์ที่โหลดเข้าระบบ' },
-  { to: '/teams', label: 'ทีม', hint: 'ทีมเราและทีมคู่แข่ง' },
   { to: '/maps', label: 'วิเคราะห์พื้นที่', hint: 'โซนในแมพจาก ML' },
-  { to: '/compare', label: 'เทียบผู้เล่น', hint: 'ตัวต่อตัวรายมิติ' },
   { to: '/upload', label: 'อัปโหลด .dem', hint: 'เพิ่มแมตช์เข้าระบบ' },
 ];
 
@@ -111,9 +106,6 @@ export default function App() {
               <Route path="/" element={<Dashboard />} />
               <Route path="/player/:steam64" element={<Player />} />
               <Route path="/matches" element={<Matches />} />
-              <Route path="/match/:matchId" element={<Match />} />
-              <Route path="/teams" element={<Teams />} />
-              <Route path="/compare" element={<Compare />} />
               <Route path="/maps" element={<MapAnalytics />} />
               <Route path="/upload" element={<Upload />} />
               <Route path="*" element={<Navigate to="/" replace />} />
