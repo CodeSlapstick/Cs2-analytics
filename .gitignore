@@ -7,11 +7,13 @@ venv/
 # ไฟล์ demo ดิบ ใหญ่หลักร้อย MB ต่อไฟล์ — โหลดใหม่ได้จาก HLTV/ในเกม (ดู README)
 *.dem
 
-# ผลลัพธ์ที่โปรแกรมสร้างเอง รันใหม่ก็ได้ใหม่ (มีทั้ง PNG, CSV และ cache)
+# ตารางที่ parse ออกมา สร้างใหม่ได้ด้วย scripts/parse_demo.py
+*.csv
+data/parsed/
 output/
 
-# normalized JSON ที่ parse ออกมา — สร้างใหม่ได้จากไฟล์ .dem
-data/matches/
+# ของเดิมที่ย้ายมาพักไว้ก่อนลบ
+_old/
 
 # สิ่งที่ **ต้อง** เข้า git (เขียนไว้กันคนเผลอตัดทั้งโฟลเดอร์)
 #   assets/radars.json      ค่าปรับเทียบภาพเรดาร์ หาด้วยมือ สร้างใหม่ไม่ได้ง่าย ๆ
@@ -22,3 +24,6 @@ data/matches/
 .env.local
 *.log
 .DS_Store
+
+# ชุดคิลที่ parse แล้ว 1.1 MB — ต้องเข้า git ไม่งั้น grid_ml.py รันไม่ได้ตอนโคลนใหม่
+!realparser/all_kills_25demos.csv

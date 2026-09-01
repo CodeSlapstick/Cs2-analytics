@@ -2,9 +2,9 @@
 """
 Parser service — แปลงไฟล์ .dem ของ CS2 เป็น normalized JSON
 
-    python parser/parse_demo.py demo.dem -o data/matches/
-    python parser/parse_demo.py demos/*.dem -o data/matches/ --tickrate 64
-    python parser/parse_demo.py demo.dem --summary        # ดูสรุปเฉย ๆ ไม่เขียนไฟล์
+    python Exparser/parse_demo.py demo.dem -o data/matches/
+    python Exparser/parse_demo.py demos/*.dem -o data/matches/ --tickrate 64
+    python Exparser/parse_demo.py demo.dem --summary        # ดูสรุปเฉย ๆ ไม่เขียนไฟล์
 
 รูปแบบผลลัพธ์อยู่ใน docs/normalized-match.md — ไฟล์ที่ได้ส่งต่อเข้า ETL ได้เลย:
 
@@ -32,7 +32,7 @@ try:
     import polars as pl
     from awpy import Demo
 except ImportError as exc:  # pragma: no cover
-    print(f"ต้องติดตั้ง dependency ก่อน: pip install -r parser/requirements.txt ({exc})", file=sys.stderr)
+    print(f"ต้องติดตั้ง dependency ก่อน: pip install -r requirements.txt ({exc})", file=sys.stderr)
     raise SystemExit(1)
 
 # คอนโซล Windows ดีฟอลต์เป็น cp874/cp1252 ซึ่งพิมพ์ข้อความไทยและเครื่องหมาย ✓ ไม่ได้

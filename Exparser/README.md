@@ -1,4 +1,4 @@
-# parser/ — สคริปต์เสริม
+# Exparser/ — สูตรคะแนนบนกริด + DBSCAN และสคริปต์เสริม
 
 สามสคริปต์ที่ใช้ตอนอยากได้ข้อมูลละเอียดกว่าที่ `main.py` ใช้ ทั้งหมดรันแยกกันได้
 ไม่ต้องพึ่งกัน และไม่ต้องมีฐานข้อมูล
@@ -9,12 +9,12 @@
 ```
 
 > โปรเจกต์นี้เดิมมีเว็บแอป (Node + PGlite + React) ต่อท้าย pipeline นี้
-> ตอนนี้หั่นออกแล้ว เหลือเฉพาะฝั่ง Python — ตัวหลักคือ `main.py` ที่รากโปรเจกต์
+> ตอนนี้หั่นออกแล้ว เหลือเฉพาะฝั่ง Python — ตัวหลักคือ `Exparser/main.py`
 
 ## ติดตั้ง
 
 ```bash
-pip install -r parser/requirements.txt
+pip install -r Exparser/requirements.txt
 ```
 
 ---
@@ -22,9 +22,9 @@ pip install -r parser/requirements.txt
 ## `parse_demo.py` — `.dem` → normalized JSON
 
 ```bash
-python parser/parse_demo.py match.dem --summary       # ดูสรุปก่อน ไม่เขียนไฟล์
-python parser/parse_demo.py match.dem -o data/matches/
-python parser/parse_demo.py demo/*.dem -o data/matches/
+python Exparser/parse_demo.py match.dem --summary       # ดูสรุปก่อน ไม่เขียนไฟล์
+python Exparser/parse_demo.py match.dem -o data/matches/
+python Exparser/parse_demo.py demos/*.dem -o data/matches/
 ```
 
 | ตัวเลือก | ความหมาย |
@@ -64,7 +64,7 @@ CS2 สลับฝั่งตอนครึ่งหลัง (MR12) ถ้�
 ### เทสต์
 
 ```bash
-python parser/test_parse_demo.py
+python Exparser/test_parse_demo.py
 ```
 
 สร้าง polars DataFrame ที่หน้าตาเหมือนผลลัพธ์ของ awpy ขึ้นมาแทนไฟล์จริง แล้วตรวจ
@@ -76,9 +76,9 @@ python parser/test_parse_demo.py
 ## `map_zones.py` — แบ่งแมพเป็นโซนด้วย unsupervised learning
 
 ```bash
-python parser/map_zones.py de_dust2 --summary   # ดูผลก่อน ไม่เขียนไฟล์
-python parser/map_zones.py de_dust2             # เขียน data/zones/de_dust2.json
-python parser/map_zones.py de_dust2 --k 8       # บังคับจำนวนโซน
+python Exparser/map_zones.py de_dust2 --summary   # ดูผลก่อน ไม่เขียนไฟล์
+python Exparser/map_zones.py de_dust2             # เขียน data/zones/de_dust2.json
+python Exparser/map_zones.py de_dust2 --k 8       # บังคับจำนวนโซน
 ```
 
 อ่านจาก **ไฟล์ normalized JSON** ที่ `parse_demo.py` สร้างไว้ (ดีฟอลต์ `data/matches/`)
@@ -108,7 +108,7 @@ silhouette สนใจแค่รูปทรงของกลุ่ม ไ�
 ## `check_radar_calibration.py` — ตรวจค่าปรับเทียบภาพเรดาร์
 
 ```bash
-python parser/check_radar_calibration.py de_dust2
+python Exparser/check_radar_calibration.py de_dust2
 ```
 
 เอาจุดตายจริงไปวาดทับภาพเรดาร์ แล้วดูว่าจุดที่ติดป้าย callout ตกตรงพื้นที่นั้นจริงไหม

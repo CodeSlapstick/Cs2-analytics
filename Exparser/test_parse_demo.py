@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-เทสต์ของ parser — รันด้วย `python parser/test_parse_demo.py` (ไม่ต้องมี pytest)
+เทสต์ของ Exparser — รันด้วย `python Exparser/test_parse_demo.py` (ไม่ต้องมี pytest)
 
 ยังไม่มีไฟล์ .dem จริงในมือ (ข้อ 1 ของ roadmap คือไปขอไฟล์จากทีม UTCC eSports)
 เทสต์ชุดนี้จึงสร้าง "ของปลอมที่หน้าตาเหมือนผลลัพธ์ awpy" ขึ้นมาแทน คือ polars

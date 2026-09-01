@@ -1,3 +1,18 @@
-awpy
-pandas
-openpyxl
+# ทุก library ที่โค้ดในรีโปนี้ import จริง (ตรวจด้วยการไล่ import ทั้งโปรเจกต์)
+#
+# ติดตั้ง:  pip install -r requirements.txt
+# หรือใช้ Docker ก็ไม่ต้องลงเอง — ดู Dockerfile
+
+# realparser/grid_ml.py และ Exparser/main.py, main_full.py
+pandas>=2.2
+numpy>=1.26
+scikit-learn>=1.5
+matplotlib>=3.8
+pillow>=10.0
+
+# เฉพาะตอน parse ไฟล์ .dem — awpy ใช้ demoparser2 (เขียนด้วย Rust) อยู่ข้างใน
+# จึงมี wheel สำเร็จรูป ไม่ต้องมี compiler และคืนค่ามาเป็น polars
+# ถ้าจะรันแค่ grid_ml.py ตัดสามบรรทัดล่างนี้ออกได้ ภาพ Docker จะเล็กลงราวครึ่ง
+awpy>=2.0.2
+polars>=1.0
+openpyxl>=3.1  # demo_parser.py เขียนผลออกเป็น .xlsx

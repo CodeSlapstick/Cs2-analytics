@@ -42,8 +42,8 @@ CLUSTER_ON  = ["kill", "damage"]  # เอาอีเวนต์ไหนเ�
 EPS         = 150       # รัศมีที่ถือว่า "ใกล้กัน" (หน่วยพิกัดเกม) — None = ให้โปรแกรมเดาให้
 MIN_SAMPLES = 12        # ต้องมีเพื่อนบ้านในรัศมีกี่จุด ถึงนับว่าเป็นบริเวณหนาแน่น
 
-ROOT     = Path(__file__).resolve().parent
-DEMO_DIR = ROOT / "demo"
+ROOT     = Path(__file__).resolve().parent.parent   # รากโปรเจกต์ (ไฟล์นี้อยู่ใน Exparser/)
+DEMO_DIR = ROOT / "demos"
 OUT_DIR  = ROOT / "output"
 
 for _s in (sys.stdout, sys.stderr):     # ให้คอนโซล Windows พิมพ์ไทยได้

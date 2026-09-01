@@ -2,8 +2,8 @@ from pathlib import Path
 import pandas as pd
 from awpy import Demo
 
-DEMO_FILE = "faze-vs-spirit-m1-dust2.dem"
-OUTPUT_EXCEL = "cs2_parsed_data.xlsx"
+DEMO_FILE = "demos/faze-vs-spirit-m1-dust2.dem"   # ไฟล์ .dem อยู่ใน demos/
+OUTPUT_EXCEL = "output/cs2_parsed_data.xlsx"
 
 def to_pandas_df(df_obj) -> pd.DataFrame:
     """แปลง dataframe ไม่ว่าจะเป็น Polars หรือ Pandas ให้เป็น Pandas เสมอ"""

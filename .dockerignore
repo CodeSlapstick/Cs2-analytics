@@ -1,0 +1,20 @@
+# ไฟล์ demo ดิบ — ไฟล์ละหลายร้อย MB ถ้าไม่ตัด build context จะบวมจน build ช้ามาก
+demos/
+*.dem
+
+# ผลลัพธ์ที่โปรแกรมสร้าง สร้างใหม่ได้เสมอ
+output/
+*.png
+
+# ประวัติ git กับของ Python
+.git/
+.gitignore
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# ของที่ไม่เกี่ยวกับตอนรัน
+docs/
+.vscode/
+.idea/

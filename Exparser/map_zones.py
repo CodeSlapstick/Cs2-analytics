@@ -2,9 +2,9 @@
 """
 Map analytics — แบ่งแมพเป็น "โซนการปะทะ" ด้วย unsupervised learning
 
-    python parser/map_zones.py de_dust2 -i data/matches -o data/zones
-    python parser/map_zones.py de_dust2 --summary      # ดูผลเฉย ๆ ไม่เขียนไฟล์
-    python parser/map_zones.py de_dust2 --k 8          # บังคับจำนวนโซน (ปกติเลือกให้เอง)
+    python Exparser/map_zones.py de_dust2 -i data/matches -o data/zones
+    python Exparser/map_zones.py de_dust2 --summary      # ดูผลเฉย ๆ ไม่เขียนไฟล์
+    python Exparser/map_zones.py de_dust2 --k 8          # บังคับจำนวนโซน (ปกติเลือกให้เอง)
 
 ทำไมต้องใช้ ML: การแบ่งโซนแบบเดิมคือ "ตีกริดสี่เหลี่ยมทับแมพ" ซึ่งไม่รู้จักแมพ
 เส้นกริดจึงผ่ากลางจุดที่คนปะทะกันจริงบ่อย ๆ ทำให้จุดปะทะจุดเดียวถูกหั่นไปอยู่คนละช่อง
@@ -32,7 +32,7 @@ try:
     from sklearn.cluster import DBSCAN, KMeans
     from sklearn.metrics import silhouette_score
 except ImportError as exc:  # pragma: no cover
-    print(f"ต้องติดตั้ง dependency ก่อน: pip install -r parser/requirements.txt ({exc})", file=sys.stderr)
+    print(f"ต้องติดตั้ง dependency ก่อน: pip install -r requirements.txt ({exc})", file=sys.stderr)
     raise SystemExit(1)
 
 for _stream in (sys.stdout, sys.stderr):

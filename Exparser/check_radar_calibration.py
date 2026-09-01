@@ -2,8 +2,8 @@
 """
 ตรวจว่าค่าปรับเทียบภาพเรดาร์ของแมพหนึ่งถูกต้องไหม
 
-    python parser/check_radar_calibration.py de_dust2
-    python parser/check_radar_calibration.py de_dust2 -o /tmp/check.png
+    python Exparser/check_radar_calibration.py de_dust2
+    python Exparser/check_radar_calibration.py de_dust2 -o /tmp/check.png
 
 วิธีตรวจ: วาดจุดที่มีคนตายจริงทับภาพเรดาร์ โดยระบายสีตาม callout ในเกม
 (LongA, BombsiteB, Middle, …) แล้ว **เปิดภาพผลลัพธ์ดูด้วยตา** — ถ้าค่าถูก จุดที่
@@ -32,7 +32,7 @@ from pathlib import Path
 try:
     from PIL import Image, ImageDraw
 except ImportError as exc:  # pragma: no cover
-    print(f"ต้องติดตั้ง Pillow ก่อน: pip install -r parser/requirements.txt ({exc})", file=sys.stderr)
+    print(f"ต้องติดตั้ง Pillow ก่อน: pip install -r requirements.txt ({exc})", file=sys.stderr)
     raise SystemExit(1)
 
 for _stream in (sys.stdout, sys.stderr):
@@ -42,7 +42,7 @@ for _stream in (sys.stdout, sys.stderr):
         pass
 
 RADARS_PATH = Path("assets/radars.json")
-ASSETS_DIR = Path("assets")
+ASSETS_DIR = Path(__file__).resolve().parent.parent / "assets"   # อิงที่ตั้งไฟล์ ไม่ใช่ cwd
 
 # สีของ callout ที่พบบ่อย — ที่เหลือเป็นสีเทา
 # ชื่อ callout ซ้ำกันได้ข้ามแมพ (BombsiteA/B มีทุกแมพ) จึงใช้ตารางเดียวรวมทุกแมพได้
