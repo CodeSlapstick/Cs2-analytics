@@ -1,6 +1,24 @@
+import glob
+import pandas as pd
 from awpy import Demo
-dem = Demo ("spirit-vs-vitality-m3-dust2.dem")
-dem.parse()
-print (dem.kills)
-ticks_df = dem.ticks.to_pandas()
-print(ticks_df.head())
+
+# 1. ลิสต์เก็บตารางของทุกเดโม
+all_kills = []
+
+# 2. วนลูปอ่านทุกไฟล์ .dem ในโฟลเดอร์ demos
+for file in glob.glob("demos/*.dem"):
+    print(f"กำลังอ่านไฟล์: {file}")
+    
+    dem = Demo(file)
+    dem.parse()
+    
+    # แปลง kills เป็น pandas แล้วเก็บเข้าลิสต์
+    df = dem.kills.to_pandas()
+    all_kills.append(df)
+
+# 3. รวมทุกแมตช์เป็นตารางเดียว แล้วเซฟไฟล์
+final_df = pd.concat(all_kills, ignore_index=True)
+final_df.to_csv("all_kills_25demos.csv", index=False)
+
+print("\n=== รวมเสร็จแล้ว 25 แมตช์ ===")
+print(final_df.head())
