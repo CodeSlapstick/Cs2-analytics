@@ -26,7 +26,7 @@ Counter-Strike 2 จริง ด้วยวิธีที่คิดกั�
 ## เริ่มใช้
 
 ```bash
-pip install -r Exparser/requirements.txt
+pip install -r requirements.txt
 
 python realparser/grid_ml.py     # กริด + ML  ใช้ csv ที่ให้มาในรีโป รันได้ทันที
 python Exparser/main.py          # สูตรคะแนน + DBSCAN  ต้องมีไฟล์ .dem ก่อน
@@ -37,6 +37,31 @@ python Exparser/main.py          # สูตรคะแนน + DBSCAN  ต้�
 (ข้อมูลจำลองมี 4 hotspot ฝังไว้ ไว้ทดสอบว่า DBSCAN หาเจอจริงไหม)
 
 ผลลัพธ์ทุกอย่างลงโฟลเดอร์ `output/` ที่รากโปรเจกต์
+
+### รันด้วย Docker แทนก็ได้
+
+```bash
+docker build -t cs2-analytics .
+docker run --rm -v "${PWD}/output:/app/output" cs2-analytics
+```
+
+ไม่ต้องลง Python หรือ library อะไรเลย ค่าเริ่มต้นคือรัน `realparser/grid_ml.py`
+ซึ่งใช้ csv ที่ติดมากับรีโปอยู่แล้ว จึงได้ผลทันทีโดยไม่ต้องมีไฟล์ `.dem`
+
+ต้อง mount `output/` ออกมาด้วย ไม่งั้นไฟล์ผลลัพธ์หายไปพร้อม container
+ถ้าจะรันสคริปต์อื่นก็ต่อท้ายคำสั่งได้ และถ้าสคริปต์นั้นต้องอ่านไฟล์ `.dem`
+ต้อง mount `demos/` เข้าไปด้วย (ไฟล์ `.dem` ไม่ถูกใส่เข้า image โดยตั้งใจ — ดู `.dockerignore`)
+
+```bash
+docker run --rm \
+  -v "${PWD}/demos:/app/demos" \
+  -v "${PWD}/output:/app/output" \
+  cs2-analytics python Exparser/main.py
+```
+
+ภาพที่ได้ราว 1.35 GB ส่วนใหญ่เป็น `awpy` กับ `polars` ที่ใช้เฉพาะตอน parse `.dem`
+ถ้าต้องการแค่ `grid_ml.py` ตัดสองบรรทัดท้ายใน `requirements.txt` ออกแล้ว build ใหม่
+ภาพจะเล็กลงราวครึ่งหนึ่ง
 
 ## วิธีที่ 3 — กริด + ML
 
@@ -119,8 +144,8 @@ output/           ผลลัพธ์ที่โปรแกรมสร้�
 docs/             เอกสารและสไลด์นำเสนอ
 ```
 
-`main_full.py` ต้องลง Pillow เพิ่ม (`pip install pillow`) ถึงจะวาดพื้นหลังเรดาร์ได้
-ถ้าไม่มีก็ยังรันได้ แค่ไม่มีภาพแมพรองข้างหลัง
+`main_full.py` ใช้ Pillow วาดพื้นหลังเรดาร์ (อยู่ใน `requirements.txt` แล้ว)
+ถ้าไม่ได้ลงก็ยังรันได้ แค่ไม่มีภาพแมพรองข้างหลัง
 
 ## สคริปต์เสริมใน Exparser/
 
