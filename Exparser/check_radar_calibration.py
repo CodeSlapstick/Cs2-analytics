@@ -42,7 +42,7 @@ for _stream in (sys.stdout, sys.stderr):
         pass
 
 RADARS_PATH = Path("assets/radars.json")
-ASSETS_DIR = Path("assets")
+ASSETS_DIR = Path(__file__).resolve().parent.parent / "assets"   # อิงที่ตั้งไฟล์ ไม่ใช่ cwd
 
 # สีของ callout ที่พบบ่อย — ที่เหลือเป็นสีเทา
 # ชื่อ callout ซ้ำกันได้ข้ามแมพ (BombsiteA/B มีทุกแมพ) จึงใช้ตารางเดียวรวมทุกแมพได้

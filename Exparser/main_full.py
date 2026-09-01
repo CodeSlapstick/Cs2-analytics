@@ -52,8 +52,8 @@ for _s in (sys.stdout, sys.stderr):
     except (AttributeError, ValueError):
         pass
 
-ROOT = Path(__file__).resolve().parent
-DEMO_DIR = ROOT / "demo"
+ROOT = Path(__file__).resolve().parent.parent   # รากโปรเจกต์ (ไฟล์นี้อยู่ใน Exparser/)
+DEMO_DIR = ROOT / "demos"
 OUT_DIR = ROOT / "output"
 RADAR_IMG = ROOT / "assets" / "maps" / "de_dust2.webp"
 RADARS_JSON = ROOT / "assets" / "radars.json"
