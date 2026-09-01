@@ -1,0 +1,211 @@
+{
+  "schema_version": 1,
+  "map_name": "de_dust2",
+  "fitted_at": "2026-08-31T04:51:25+00:00",
+  "fit_from": {
+    "matches": 1,
+    "deaths": 128,
+    "external_ids": [
+      "de_dust2-2fa55692216e"
+    ]
+  },
+  "model": {
+    "algorithm": "KMeans",
+    "k": 4,
+    "k_chosen_by": "silhouette",
+    "silhouette": 0.4515,
+    "grid_baseline_silhouette": 0.3774,
+    "k_search": [
+      {
+        "k": 4,
+        "silhouette": 0.4515,
+        "inertia": 38402460.7,
+        "smallest_zone": 25,
+        "usable": true
+      },
+      {
+        "k": 5,
+        "silhouette": 0.4628,
+        "inertia": 29030529.5,
+        "smallest_zone": 7,
+        "usable": false
+      },
+      {
+        "k": 6,
+        "silhouette": 0.4761,
+        "inertia": 22383267.9,
+        "smallest_zone": 7,
+        "usable": false
+      },
+      {
+        "k": 7,
+        "silhouette": 0.4815,
+        "inertia": 16542123.1,
+        "smallest_zone": 7,
+        "usable": false
+      },
+      {
+        "k": 8,
+        "silhouette": 0.4903,
+        "inertia": 13754579.5,
+        "smallest_zone": 7,
+        "usable": false
+      },
+      {
+        "k": 9,
+        "silhouette": 0.5004,
+        "inertia": 11712962.5,
+        "smallest_zone": 2,
+        "usable": false
+      },
+      {
+        "k": 10,
+        "silhouette": 0.486,
+        "inertia": 9690604.7,
+        "smallest_zone": 6,
+        "usable": false
+      },
+      {
+        "k": 11,
+        "silhouette": 0.4943,
+        "inertia": 8887852.7,
+        "smallest_zone": 3,
+        "usable": false
+      },
+      {
+        "k": 12,
+        "silhouette": 0.4829,
+        "inertia": 8008309.2,
+        "smallest_zone": 2,
+        "usable": false
+      },
+      {
+        "k": 13,
+        "silhouette": 0.4802,
+        "inertia": 7163585.8,
+        "smallest_zone": 3,
+        "usable": false
+      },
+      {
+        "k": 14,
+        "silhouette": 0.4911,
+        "inertia": 6370704.7,
+        "smallest_zone": 2,
+        "usable": false
+      }
+    ],
+    "zones_dropped_too_small": 0,
+    "min_points_per_zone": 15,
+    "random_state": 42
+  },
+  "zones": [
+    {
+      "zone_id": 2,
+      "name": "ExtendedA +",
+      "centroid": [
+        144.7,
+        2254.3
+      ],
+      "deaths": 48,
+      "bbox": [
+        -762.6,
+        1638.3,
+        767.3,
+        2689.9
+      ],
+      "radius": 620.1,
+      "hotspots": [
+        {
+          "x": 429.5,
+          "y": 2372.9,
+          "deaths": 27,
+          "radius": 322.0
+        },
+        {
+          "x": -300.4,
+          "y": 2153.3,
+          "deaths": 17,
+          "radius": 300.7
+        }
+      ]
+    },
+    {
+      "zone_id": 3,
+      "name": "Middle +",
+      "centroid": [
+        -223.9,
+        1199.9
+      ],
+      "deaths": 28,
+      "bbox": [
+        -974.9,
+        234.0,
+        695.3,
+        1762.3
+      ],
+      "radius": 801.8,
+      "hotspots": [
+        {
+          "x": -352.4,
+          "y": 1408.8,
+          "deaths": 20,
+          "radius": 341.6
+        }
+      ]
+    },
+    {
+      "zone_id": 1,
+      "name": "BombsiteB",
+      "centroid": [
+        -1693.5,
+        2136.9
+      ],
+      "deaths": 27,
+      "bbox": [
+        -2075.2,
+        1238.8,
+        -1060.6,
+        3007.3
+      ],
+      "radius": 690.5,
+      "hotspots": [
+        {
+          "x": -1945.2,
+          "y": 1730.5,
+          "deaths": 9,
+          "radius": 201.6
+        },
+        {
+          "x": -1324.9,
+          "y": 2712.1,
+          "deaths": 6,
+          "radius": 78.6
+        }
+      ]
+    },
+    {
+      "zone_id": 0,
+      "name": "LongA +",
+      "centroid": [
+        1280.0,
+        2007.3
+      ],
+      "deaths": 25,
+      "bbox": [
+        807.5,
+        832.3,
+        1723.4,
+        2733.9
+      ],
+      "radius": 635.3,
+      "hotspots": [
+        {
+          "x": 1113.1,
+          "y": 2547.8,
+          "deaths": 6,
+          "radius": 129.2
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# ไฟล์ demo ดิบ ใหญ่หลักร้อย MB ต่อไฟล์ — โหลดใหม่ได้จาก HLTV/ในเกม (ดู README)
+*.dem
+
+# ตารางที่ parse ออกมา สร้างใหม่ได้ด้วย scripts/parse_demo.py
+*.csv
+data/parsed/
+output/
+
+# ของเดิมที่ย้ายมาพักไว้ก่อนลบ
+_old/
+
+# สิ่งที่ **ต้อง** เข้า git (เขียนไว้กันคนเผลอตัดทั้งโฟลเดอร์)
+#   assets/radars.json      ค่าปรับเทียบภาพเรดาร์ หาด้วยมือ สร้างใหม่ไม่ได้ง่าย ๆ
+#   assets/maps/*.webp      ภาพเรดาร์
+#   data/zones/*.json       โมเดลโซนที่ fit แล้ว — สร้างใหม่ได้ แต่เก็บไว้ให้ผลซ้ำได้
+
+.env
+.env.local
+*.log
+.DS_Store
