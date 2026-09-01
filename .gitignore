@@ -24,3 +24,6 @@ _old/
 .env.local
 *.log
 .DS_Store
+
+# ชุดคิลที่ parse แล้ว 1.1 MB — ต้องเข้า git ไม่งั้น grid_ml.py รันไม่ได้ตอนโคลนใหม่
+!realparser/all_kills_25demos.csv
