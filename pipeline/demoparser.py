@@ -3,9 +3,9 @@
 """
 อ่านไฟล์ .dem ทุกไฟล์ใน demos/ ด้วย awpy แล้วรวม kills เป็น csv ตารางเดียว
 
-    python realparser/demoparser.py            # อ่านทั้งหมดที่ยังไม่เคยอ่าน
-    python realparser/demoparser.py --limit 3  # ลองแค่ 3 ไฟล์แรก
-    python realparser/demoparser.py --force    # อ่านใหม่หมด ไม่สนแคช
+    python pipeline/demoparser.py            # อ่านทั้งหมดที่ยังไม่เคยอ่าน
+    python pipeline/demoparser.py --limit 3  # ลองแค่ 3 ไฟล์แรก
+    python pipeline/demoparser.py --force    # อ่านใหม่หมด ไม่สนแคช
 
 ทำไมไม่เรียก dem.parse() ตรง ๆ
     dem.parse() อ่าน tick ของผู้เล่นทุกคนทุกเฟรมด้วย ซึ่งเป็นงานหนักที่สุด
@@ -30,7 +30,7 @@ from awpy.parsers.rounds import create_round_df
 ROOT = Path(__file__).resolve().parent.parent
 DEMO_DIR = ROOT / "demos"
 CACHE_DIR = ROOT / "output" / "kills_cache"
-OUT_CSV = ROOT / "realparser" / "all_kills.csv"
+OUT_CSV = ROOT / "data" / "all_kills.csv"
 
 # event ที่ dem.kills ต้องใช้ — ตัดที่เหลือออกให้หมด
 EVENTS = [

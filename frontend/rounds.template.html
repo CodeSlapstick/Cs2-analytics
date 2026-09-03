@@ -6,7 +6,7 @@
 
   ขอบเขตของหน้านี้
     เป็น mockup ของขั้นตอน "อัปโหลดเดโมแล้วไล่ดูทีละรอบ"
-    การ parse .dem จริงเกิดที่ฝั่ง Python (realparser/round_review.py) ไม่ใช่ในเบราว์เซอร์
+    การ parse .dem จริงเกิดที่ฝั่ง Python (pipeline/round_review.py) ไม่ใช่ในเบราว์เซอร์
     ไฟล์ที่ผู้ใช้ลากมาวางจึงยังไม่ถูกอ่าน — หน้าจะบอกตรง ๆ แล้วแสดงแมตช์ตัวอย่างแทน
 -->
 <title>Mirage Round Review</title>
@@ -304,7 +304,7 @@ footer code { font-family: "IBM Plex Mono", monospace; font-size: .92em; backgro
 
     <p class="note">
       <b>นี่คือ mockup ของขั้นตอน</b> — การอ่านไฟล์ <code>.dem</code> จริงทำที่ฝั่ง Python
-      (<code>realparser/round_review.py</code>) ไม่ได้ทำในเบราว์เซอร์ ไฟล์ที่ลากมาวางจึงยังไม่ถูกอ่าน
+      (<code>pipeline/round_review.py</code>) ไม่ได้ทำในเบราว์เซอร์ ไฟล์ที่ลากมาวางจึงยังไม่ถูกอ่าน
       หน้านี้จะแสดงแมตช์ตัวอย่างที่ parse ไว้ล่วงหน้าแทน เพื่อให้เห็นว่าหน้าตาปลายทางเป็นยังไง
     </p>
   </section>
@@ -412,7 +412,7 @@ footer code { font-family: "IBM Plex Mono", monospace; font-size: .92em; backgro
           ฝั่ง CT/T สลับกันตอนครึ่งหลัง หน้านี้จึงยึด<b>ชื่อทีม</b>เป็นหลักแทนที่จะยึดฝั่ง
           สลับ “ทีมของเรา” ได้ตลอดโดยตัวเลขทุกช่องคำนวณใหม่ให้
         </p>
-        <p>สร้างจาก <code>realparser/round_review.py</code> → <code>frontend/build.py rounds</code></p>
+        <p>สร้างจาก <code>pipeline/round_review.py</code> → <code>frontend/build.py rounds</code></p>
       </footer>
     </div>
   </main>
@@ -499,7 +499,7 @@ function enterReview(filename) {
     const b = document.createElement("b");
     b.textContent = "ไฟล์ " + filename + " ยังไม่ได้ถูก parse จริง";
     note.append(b, document.createTextNode(
-      " — mockup นี้แสดงแมตช์ตัวอย่างที่ parse ไว้ล่วงหน้าด้วย realparser/round_review.py แทน"));
+      " — mockup นี้แสดงแมตช์ตัวอย่างที่ parse ไว้ล่วงหน้าด้วย pipeline/round_review.py แทน"));
   } else {
     note.hidden = true;
   }
@@ -738,7 +738,7 @@ function drawWp() {
     now.textContent = "—";
     g.fillStyle = css("--ink-3");
     g.font = '13px Anuphan, sans-serif';
-    g.fillText("ยังไม่มีตารางโอกาสชนะ — รัน python realparser/round_win.py", 8, 24);
+    g.fillText("ยังไม่มีตารางโอกาสชนะ — รัน python pipeline/round_win.py", 8, 24);
     return;
   }
 

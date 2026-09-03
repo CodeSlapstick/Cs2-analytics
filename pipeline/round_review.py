@@ -3,9 +3,9 @@
 """
 ดึงข้อมูลรายรอบของ "หนึ่งแมตช์" ออกมาเป็น json ให้หน้าเว็บรีวิวรอบใช้
 
-    python realparser/round_review.py                          # ใช้ไฟล์ตั้งต้น
-    python realparser/round_review.py demos/G2-vs-Aurora-Mirage.dem
-    python realparser/round_review.py --team Legacy            # เลือกว่าทีมไหนคือ "ของเรา"
+    python pipeline/round_review.py                          # ใช้ไฟล์ตั้งต้น
+    python pipeline/round_review.py demos/G2-vs-Aurora-Mirage.dem
+    python pipeline/round_review.py --team Legacy            # เลือกว่าทีมไหนคือ "ของเรา"
 
 ต่างจาก demoparser.py ตรงไหน
     demoparser.py รวมคิลของทุกแมตช์เข้าด้วยกันเพื่อเอาไปเทรนโมเดล ทิ้งบริบทของรอบไป
@@ -29,7 +29,7 @@ from awpy.parsers.rounds import create_round_df
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_DEMO = ROOT / "demos" / "Vitality-vs-Legacy-Mirage.dem"
 OUT = ROOT / "output" / "round_review.json"
-WIN_TABLE = ROOT / "output" / "round_win.json"     # สร้างด้วย realparser/round_win.py
+WIN_TABLE = ROOT / "output" / "round_win.json"     # สร้างด้วย pipeline/round_win.py
 
 EVENTS = [
     "player_death", "round_start", "round_freeze_end", "round_end",
@@ -117,7 +117,7 @@ def main() -> None:
     wt = load_win_table()
     if wt is None:
         print(f"!! ไม่พบ {WIN_TABLE.name} — จะไม่มีเส้นโอกาสชนะรอบ "
-              f"(รัน python realparser/round_win.py ก่อน)")
+              f"(รัน python pipeline/round_win.py ก่อน)")
 
     rounds_out = []
     score = {ours: 0, theirs: 0}

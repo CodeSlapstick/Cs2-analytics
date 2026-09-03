@@ -15,6 +15,5 @@ __pycache__/
 venv/
 
 # ของที่ไม่เกี่ยวกับตอนรัน
-docs/
 .vscode/
 .idea/

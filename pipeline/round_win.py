@@ -3,7 +3,7 @@
 """
 โมเดล "โอกาสชนะรอบ" — จากสถานะกลางรอบ ทายว่าฝั่ง CT จะชนะรอบนั้นไหม
 
-    python realparser/round_win.py
+    python pipeline/round_win.py
 
 ต่างจาก grid_ml.py ยังไง
     grid_ml.py ถามว่า "การดวลครั้งนี้ คนยิงเป็นฝั่งไหน" — คำถามระดับกระสุนนัดเดียว
@@ -29,7 +29,7 @@ from sklearn.metrics import brier_score_loss, roc_auc_score
 from sklearn.model_selection import GroupKFold
 
 ROOT = Path(__file__).resolve().parent.parent
-CSV = ROOT / "realparser" / "all_kills.csv"
+CSV = ROOT / "data" / "all_kills.csv"
 OUT = ROOT / "output" / "round_win.json"
 
 MAP = "de_mirage"
@@ -80,12 +80,12 @@ def features(alive_ct, alive_t, planted, t_round) -> pd.DataFrame:
 
 def main() -> None:
     if not CSV.exists():
-        sys.exit(f"ไม่พบ {CSV} — รัน python realparser/demoparser.py ก่อน")
+        sys.exit(f"ไม่พบ {CSV} — รัน python pipeline/demoparser.py ก่อน")
 
     df = pd.read_csv(CSV)
     df = df[df["map_name"] == MAP]
     if "round_winner" not in df.columns:
-        sys.exit("csv ไม่มีคอลัมน์ round_winner — รัน python realparser/demoparser.py --force ก่อน")
+        sys.exit("csv ไม่มีคอลัมน์ round_winner — รัน python pipeline/demoparser.py --force ก่อน")
 
     df = add_state(df)
     n_before = len(df)

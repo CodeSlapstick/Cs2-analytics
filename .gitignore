@@ -5,25 +5,25 @@ __pycache__/
 venv/
 
 # ไฟล์ demo ดิบ ใหญ่หลักร้อย MB ต่อไฟล์ — โหลดใหม่ได้จาก HLTV/ในเกม (ดู README)
+demos/
 *.dem
 
-# ตารางที่ parse ออกมา สร้างใหม่ได้ด้วย scripts/parse_demo.py
-*.csv
-data/parsed/
+# ผลลัพธ์ที่โปรแกรมสร้างเอง รันใหม่ก็ได้ใหม่ (json, png, html, แคชรายไฟล์)
 output/
 
-# ของเดิมที่ย้ายมาพักไว้ก่อนลบ
-_old/
+# ตารางที่ parse ออกมาเอง — สร้างใหม่ได้ด้วย python pipeline/demoparser.py
+*.csv
+
+# ...ยกเว้นชุดคิลตั้งต้น 2.6 MB (50 แมตช์ Mirage)
+# ต้องเข้า git ไม่งั้นโคลนใหม่แล้ว grid_ml.py / round_win.py รันไม่ได้เลย
+!data/all_kills.csv
 
 # สิ่งที่ **ต้อง** เข้า git (เขียนไว้กันคนเผลอตัดทั้งโฟลเดอร์)
 #   assets/radars.json      ค่าปรับเทียบภาพเรดาร์ หาด้วยมือ สร้างใหม่ไม่ได้ง่าย ๆ
-#   assets/maps/*.webp      ภาพเรดาร์
-#   data/zones/*.json       โมเดลโซนที่ fit แล้ว — สร้างใหม่ได้ แต่เก็บไว้ให้ผลซ้ำได้
+#   assets/maps/*.webp      ภาพเรดาร์ที่ grid_ml.py เอาไปวาดทับ
+#   data/all_kills.csv      ชุดคิลตั้งต้น (ดูข้างบน)
 
 .env
 .env.local
 *.log
 .DS_Store
-
-# ชุดคิลที่ parse แล้ว 2.4 MB (49 แมตช์ Mirage) — ต้องเข้า git ไม่งั้น grid_ml.py รันไม่ได้ตอนโคลนใหม่
-!realparser/all_kills.csv

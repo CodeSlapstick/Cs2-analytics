@@ -1,13 +1,15 @@
 # PostgreSQL สำหรับ CS2 Map Zone Analytics
 #
-#   docker compose up -d db          # เปิดฐานข้อมูล (ครั้งแรกจะสร้างตารางจาก db/schema.sql ให้เอง)
-#   python db/load_kills.py          # โหลดชุดคิลจาก csv เข้า db
-#   docker compose exec db psql -U cs2 -d cs2 -f /queries.sql    # ลอง query ตัวอย่าง
-#   docker compose down              # ปิด (ข้อมูลยังอยู่)
-#   docker compose down -v           # ปิดแล้วลบข้อมูลทิ้ง ใช้ตอนแก้ schema.sql
+#   docker compose up -d db     # เปิดฐานข้อมูล
+#   docker compose down         # ปิด (ข้อมูลยังอยู่ใน volume pgdata)
+#   docker compose down -v      # ปิดแล้วลบข้อมูลทิ้ง
 #
-# รหัสผ่านดีฟอลต์ตั้งไว้ง่าย ๆ เพราะพอร์ตเปิดแค่ในเครื่องตัวเอง
-# ถ้าจะเอาขึ้นเครื่องจริง ให้ก๊อป .env.example เป็น .env แล้วเปลี่ยนค่า
+# ค่าดีฟอลต์ตรงกับที่ web/app.py (branch Tan-Login) คาดไว้ คือ postgres/postgres/cs2_analytics
+# ถ้าเครื่องมี PostgreSQL ลงไว้อยู่แล้ว พอร์ต 5432 จะชนกัน ให้ตั้ง POSTGRES_PORT=5433 ใน .env
+# แล้วชี้ DATABASE_URL ไปที่พอร์ตนั้นด้วย
+#
+# ตาราง users ที่หน้าล็อกอินใช้ ยังต้องสร้างเองครั้งแรก:
+#   docker compose exec db psql -U postgres -d cs2_analytics -c "CREATE TABLE IF NOT EXISTS users (steamid VARCHAR(32) PRIMARY KEY, name VARCHAR(255), avatar TEXT, profile_url TEXT, mode VARCHAR(32), last_login TIMESTAMP DEFAULT CURRENT_TIMESTAMP);"
 
 services:
   db:
@@ -15,34 +17,24 @@ services:
     container_name: cs2-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-cs2}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-cs2}
-      POSTGRES_DB: ${POSTGRES_DB:-cs2}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-cs2_analytics}
     ports:
       - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
-      # schema.sql รันอัตโนมัติ "เฉพาะตอน volume ว่าง" เท่านั้น
-      - ./db/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
-      - ./db/queries.sql:/queries.sql:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-cs2} -d ${POSTGRES_DB:-cs2}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-cs2_analytics}"]
       interval: 5s
       timeout: 5s
       retries: 12
 
   # ตัวรันสคริปต์ Python สำหรับคนที่ไม่อยากลง Python ในเครื่อง
-  #   docker compose run --rm tools python db/load_kills.py
-  #   docker compose run --rm tools python realparser/grid_ml.py
+  #   docker compose run --rm tools python pipeline/grid_ml.py
   tools:
     build: .
     profiles: ["tools"]          # ไม่ถูกสร้างตอน `up` ปกติ ต้องเรียกด้วย `run` เท่านั้น
-    depends_on:
-      db:
-        condition: service_healthy
-    environment:
-      # ในเครือข่ายของ compose ชื่อโฮสต์ของฐานข้อมูลคือ db ไม่ใช่ localhost
-      DATABASE_URL: postgresql://${POSTGRES_USER:-cs2}:${POSTGRES_PASSWORD:-cs2}@db:5432/${POSTGRES_DB:-cs2}
     volumes:
       - ./output:/app/output
 

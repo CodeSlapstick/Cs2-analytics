@@ -3,7 +3,7 @@
 """
 Grid ML — แบ่งแมพเป็นตาราง แล้วให้โมเดลเรียนว่า "ตรงไหนฝั่งไหนได้เปรียบ"
 
-    python realparser/grid_ml.py
+    python pipeline/grid_ml.py
 
 โจทย์
     ทุกแถวใน csv คือการดวลหนึ่งครั้งที่จบด้วยมีคนตาย
@@ -49,7 +49,7 @@ MIN_KILLS = 5      # ช่องที่มีดวลน้อยกว่�
 C_PENALTY = 0.3    # ยิ่งต่ำยิ่งดึงช่องที่ข้อมูลน้อยกลับเข้าหาค่าเฉลี่ย ไม่ให้สวิงไป 0 หรือ 1
 
 ROOT = Path(__file__).resolve().parent.parent
-CSV = ROOT / "realparser" / "all_kills.csv"     # สร้างด้วย python realparser/demoparser.py
+CSV = ROOT / "data" / "all_kills.csv"     # สร้างด้วย python pipeline/demoparser.py
 OUT = ROOT / "output"
 
 for _s in (sys.stdout, sys.stderr):     # ให้คอนโซล Windows พิมพ์ไทยได้
@@ -117,7 +117,7 @@ else:
     # โมเดลเดียวกับที่ไม่ใช้ ไม่ใช่ค่าที่มั่ว
     df["t_round"] = 0.0
     df["planted"] = 0
-    print("!! csv ไม่มีคอลัมน์บริบทรอบ — รัน python realparser/demoparser.py --force ก่อน")
+    print("!! csv ไม่มีคอลัมน์บริบทรอบ — รัน python pipeline/demoparser.py --force ก่อน")
 
 
 # ===========================================================================

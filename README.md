@@ -1,25 +1,22 @@
 # CS2 Map Zone Analytics
 
 หาว่า "จุดปะทะสำคัญของแมพอยู่ตรงไหน และตรงไหนใครได้เปรียบ" จากไฟล์ demo ของ
-Counter-Strike 2 จริง ด้วยวิธีที่คิดกันคนละแบบ แล้วเอาผลมาเทียบกัน
+Counter-Strike 2 จริง แล้ววัดผลด้วยตัวเลขที่เถียงกลับไม่ได้
 (SP-404 Senior Project · UTCC STECH)
 
 ```
-ไฟล์ .dem  ──awpy──>  ตาราง events / kills  ──┬── สูตรให้คะแนนบนกริด  (คนตั้งน้ำหนักเอง)
-                                              ├── DBSCAN หา hotspot   (หาเองจากความหนาแน่น)
-                                              └── กริด + logistic     (เรียนจากเฉลยจริง)
-                                                        ↓
-                                             เทียบกันว่าชี้ไปที่เดียวกันไหม
+demos/*.dem ──awpy──> data/all_kills.csv ──┬── grid_ml.py      ช่องนี้ฝั่งไหนชนะการดวล
+                                            └── round_win.py    สถานะนี้ใครชนะรอบ
+                                                     ↓
+                                            round_review.py  เจาะรายรอบของแมตช์เดียว
+                                                     ↓
+                                            frontend/build.py ──> output/*.html
 ```
 
-**ทำไมต้องมีหลายวิธี** — สูตรให้คะแนนบนกริดอธิบายง่ายและตรวจได้ด้วยมือ แต่เส้นกริด
-เป็นเส้นตายที่เราขีดเอง อาจผ่ากลางจุดปะทะจนจุดเดียวถูกหั่นไปคนละช่อง ส่วน DBSCAN
-ไม่รู้จักกริดเลย มันจับกลุ่มจากความหนาแน่นของจุดจริง ขอบเขตโซนจึงวิ่งตามการเล่นจริง
-
-แต่ทั้งสองวิธีข้างบนมีจุดอ่อนร่วมกันคือ **ไม่มีเฉลยให้วัด** — ตั้งน้ำหนักคนละชุดก็ได้
-แผนที่คนละแบบ โดยไม่มีทางบอกว่าอันไหนถูก วิธีที่สาม (`realparser/grid_ml.py`)
-จึงเปลี่ยนไปตั้งโจทย์ที่มีคำตอบอยู่ในข้อมูลอยู่แล้ว คือ "การดวลที่ช่องนี้ฝั่งไหนชนะ"
-ทำให้วัดผลด้วย Brier / AUC เทียบ baseline ได้ตรง ๆ
+**ทำไมต้องตั้งโจทย์แบบนี้** — วิธีที่ทำกันทั่วไปคือตีกริดทับแมพแล้วให้คะแนนแต่ละช่อง
+ตามน้ำหนักที่คนตั้งเอง ปัญหาคือ **ไม่มีเฉลยให้วัด** ตั้งน้ำหนักคนละชุดก็ได้แผนที่คนละแบบ
+โดยไม่มีทางบอกว่าอันไหนถูก โปรเจกต์นี้จึงเปลี่ยนไปถามคำถามที่มีคำตอบอยู่ในข้อมูลอยู่แล้ว
+คือ "การดวลที่ช่องนี้ฝั่งไหนชนะ" ทำให้วัดด้วย Brier / AUC เทียบ baseline ได้ตรง ๆ
 
 ---
 
@@ -28,16 +25,14 @@ Counter-Strike 2 จริง ด้วยวิธีที่คิดกั�
 ```bash
 pip install -r requirements.txt
 
-python realparser/grid_ml.py     # กริด + ML  ใช้ csv ที่ให้มาในรีโป รันได้ทันที
-python realparser/round_win.py   # โมเดลโอกาสชนะรอบ  ใช้ csv เดียวกับ grid_ml
-python realparser/round_review.py # เจาะแมตช์เดียวเป็นรายรอบ  ต้องมีไฟล์ .dem ก่อน
-python frontend/build.py         # เอาผลสองบรรทัดบนทำเป็นหน้าเว็บ -> output/*.html
-python Exparser/main.py          # สูตรคะแนน + DBSCAN  ต้องมีไฟล์ .dem ก่อน
+python pipeline/grid_ml.py       # กริด + ML  ใช้ csv ที่ให้มาในรีโป รันได้ทันที
+python pipeline/round_win.py     # โมเดลโอกาสชนะรอบ  ใช้ csv เดียวกับ grid_ml
+python pipeline/round_review.py  # เจาะแมตช์เดียวเป็นรายรอบ  ต้องมีไฟล์ .dem ก่อน
+python frontend/build.py         # เอาผลข้างบนทำเป็นหน้าเว็บ -> output/*.html
 ```
 
-`grid_ml.py` รันได้เลยเพราะ `realparser/all_kills.csv` อยู่ในรีโปแล้ว
-ส่วน `Exparser/main.py` ถ้าไม่มีไฟล์ `.dem` จะสลับไปใช้ข้อมูลจำลองให้เองอัตโนมัติ
-(ข้อมูลจำลองมี 4 hotspot ฝังไว้ ไว้ทดสอบว่า DBSCAN หาเจอจริงไหม)
+รันได้ทันทีตั้งแต่โคลนเสร็จ เพราะ `data/all_kills.csv` (ชุดคิลที่ parse ไว้แล้ว)
+อยู่ในรีโปด้วย ไม่ต้องมีไฟล์ `.dem`
 
 ผลลัพธ์ทุกอย่างลงโฟลเดอร์ `output/` ที่รากโปรเจกต์ — `grid_ml_map.png` คือรูปนิ่ง
 ส่วนหน้าเว็บมีสองหน้า ดับเบิลคลิกเปิดได้เลยไม่ต้องมีเซิร์ฟเวอร์
@@ -45,7 +40,7 @@ python Exparser/main.py          # สูตรคะแนน + DBSCAN  ต้�
 | ไฟล์ | ดูอะไร |
 |---|---|
 | `output/index.html`  | แผนที่รวมทุกแมตช์ — ตรงไหนปะทะหนัก ตรงไหนใครได้เปรียบ |
-| `output/rounds.html` | รีวิวรายรอบของแมตช์เดียว — mockup ของขั้นตอนอัปโหลดเดโม |
+| `output/rounds.html` | รีวิวรายรอบของแมตช์เดียว |
 
 ### สองคำถาม คนละระดับกัน
 
@@ -71,7 +66,7 @@ docker build -t cs2-analytics .
 docker run --rm -v "${PWD}/output:/app/output" cs2-analytics
 ```
 
-ไม่ต้องลง Python หรือ library อะไรเลย ค่าเริ่มต้นคือรัน `realparser/grid_ml.py`
+ไม่ต้องลง Python หรือ library อะไรเลย ค่าเริ่มต้นคือรัน `pipeline/grid_ml.py`
 ซึ่งใช้ csv ที่ติดมากับรีโปอยู่แล้ว จึงได้ผลทันทีโดยไม่ต้องมีไฟล์ `.dem`
 
 ต้อง mount `output/` ออกมาด้วย ไม่งั้นไฟล์ผลลัพธ์หายไปพร้อม container
@@ -82,16 +77,26 @@ docker run --rm -v "${PWD}/output:/app/output" cs2-analytics
 docker run --rm \
   -v "${PWD}/demos:/app/demos" \
   -v "${PWD}/output:/app/output" \
-  cs2-analytics python Exparser/main.py
+  cs2-analytics python pipeline/round_review.py
 ```
 
 ภาพที่ได้ราว 1.35 GB ส่วนใหญ่เป็น `awpy` กับ `polars` ที่ใช้เฉพาะตอน parse `.dem`
 ถ้าต้องการแค่ `grid_ml.py` ตัดสองบรรทัดท้ายใน `requirements.txt` ออกแล้ว build ใหม่
 ภาพจะเล็กลงราวครึ่งหนึ่ง
 
-## วิธีที่ 3 — กริด + ML
+### ฐานข้อมูล (สำหรับหน้าล็อกอิน)
 
-`realparser/grid_ml.py` แบ่งแมพ (ตั้งที่ตัวแปร `MAP`) เป็นตาราง `GRID_N × GRID_N` เอาจุดที่คนตาย
+หน้าล็อกอิน Steam อยู่บน branch `Tan-Login` และเก็บผู้ใช้ลง PostgreSQL
+`docker-compose.yml` ในรีโปเปิด DB ให้ได้ในคำสั่งเดียว
+
+```bash
+cp .env.example .env       # แก้ค่าถ้าต้องการ (พอร์ตชนกันให้ตั้ง POSTGRES_PORT=5433)
+docker compose up -d db
+```
+
+## กริด + ML
+
+`pipeline/grid_ml.py` แบ่งแมพ (ตั้งที่ตัวแปร `MAP`) เป็นตาราง `GRID_N × GRID_N` เอาจุดที่คนตาย
 หย่อนลงช่อง แล้วเทรน logistic regression ทำนายว่า **การดวลในช่องนั้นฝั่งไหนเป็นคนยิงชนะ**
 (`y = 1` ถ้าคนยิงเป็น CT)
 
@@ -130,29 +135,12 @@ docker run --rm \
 | **FACEIT / Leetify** | หน้าแมตช์มีปุ่มโหลด demo |
 | **แมตช์เก่าที่หมดอายุ** | เอา sharecode ไปเปิดผ่านเว็บอย่าง csgostats.gg |
 
-## ปรับค่าเล่นกับวิธีที่ 1 และ 2
-
-แก้ได้ที่บล็อก `CONFIG` บนหัวไฟล์ [Exparser/main.py](Exparser/main.py) แล้วรันใหม่
-
-| ค่า | ความหมาย | ลองแล้วเกิดอะไร |
-|---|---|---|
-| `MAX_DEMOS` | parse กี่ไฟล์ | ไฟล์ละ 1–2 นาที ครั้งแรกเท่านั้น (มี cache) |
-| `GRID_N` | แบ่งแมพกี่ช่อง | ยิ่งละเอียดยิ่งเห็นจุดชัด แต่แต่ละช่องมีข้อมูลน้อยลงจนสุ่มขึ้น |
-| `W_KILL` `W_DAMAGE` `W_FIRE` | น้ำหนักในสูตรคะแนน | ดันน้ำหนักการยิงสูง ๆ แล้วโซนคะแนนสูงจะเลื่อนไปทางที่คนสเปรย์เยอะแทนที่จะเป็นที่คนตาย |
-| `CLUSTER_ON` | เอาอีเวนต์ไหนเข้า DBSCAN | ใส่ `weapon_fire` ด้วยแล้ว hotspot จะกลืนกันเป็นก้อนใหญ่ (การยิงเกิดได้ทั่วแมพ) |
-| `EPS` | รัศมีที่ถือว่าใกล้กัน | ใหญ่ไป = ทุกกลุ่มเชื่อมเป็นก้อนเดียว, เล็กไป = ทุกจุดกลายเป็น noise |
-| `MIN_SAMPLES` | ต้องมีเพื่อนบ้านกี่จุด | ยิ่งสูงยิ่งเข้มงวด กลุ่มเล็ก ๆ จะถูกตีเป็น noise |
-
-ตั้ง `EPS = None` ถ้าอยากให้โปรแกรมหา eps เองจากกราฟ k-distance
-ตั้ง `USE_SYNTHETIC = True` ถ้าอยากใช้ข้อมูลจำลองทั้งที่มีไฟล์ `.dem` อยู่
-
 ## โครงโปรเจกต์
 
 ```
-realparser/       วิธีที่ 3 — กริด + ML (งานปัจจุบัน)
+pipeline/         แกน ML ทั้งหมด
+  demoparser.py         demos/*.dem -> data/all_kills.csv (awpy + แคชรายไฟล์)
   grid_ml.py            กริด + logistic + GroupKFold  <- ตัวหลัก
-  all_kills.csv         ชุดคิล 7,270 แถวจาก 50 demo (อยู่ใน git ให้ผลซ้ำได้)
-  demoparser.py         ตัวสร้าง csv ข้างบนขึ้นใหม่จาก demos/*.dem ด้วย awpy
   round_win.py          โมเดลโอกาสชนะรอบ -> ตารางเปิดค่าให้หน้าเว็บใช้
   round_review.py       เจาะแมตช์เดียวเป็นรายรอบ (ใครชนะรอบไหน ชนะด้วยอะไร)
 
@@ -161,59 +149,33 @@ frontend/         หน้าเว็บ — เทมเพลตยังไ
   rounds.template.html  หน้ารีวิวรายรอบ
   build.py              ยัดข้อมูล+ภาพเรดาร์เข้าเทมเพลต -> output/*.html ไฟล์เดียวจบ
 
-Exparser/         วิธีที่ 1 และ 2 — สูตรคะแนนบนกริด + DBSCAN
-  main.py               ตัวหลัก 5 STEP อ่านไล่จากบนลงล่างได้เลย
-  main_full.py          เวอร์ชันเต็ม — ผลเหมือน main.py แต่วาดทับภาพเรดาร์จริง
-                        มี auto-tune eps และรับ argument จาก command line
-  parse_demo.py         แปลง .dem เป็น normalized JSON (ละเอียดกว่าที่ main.py ใช้)
-  map_zones.py          แบ่งโซนด้วย KMeans + silhouette
-  check_radar_calibration.py  ตรวจว่าพิกัดตกตรงที่บนภาพแมพจริง
-  demo_parser.py        แปลง .dem หนึ่งไฟล์เป็น Excel พร้อม flag first kill/death
-  test_parse_demo.py    เทสต์ของ parse_demo.py
-
+data/             all_kills.csv — ชุดคิล 7,270 แถวจาก 50 demo (อยู่ใน git ให้ผลซ้ำได้)
 assets/           ภาพเรดาร์ + ค่าปรับเทียบพิกัด (radars.json คือแหล่งความจริงแหล่งเดียว)
-data/zones/       โมเดลโซนที่ fit ไว้แล้วจาก map_zones.py
 demos/            วางไฟล์ .dem ตรงนี้ (ไม่เข้า git)
 output/           ผลลัพธ์ที่โปรแกรมสร้าง (ไม่เข้า git)
-docs/             เอกสารและสไลด์นำเสนอ
 ```
-
-`main_full.py` ใช้ Pillow วาดพื้นหลังเรดาร์ (อยู่ใน `requirements.txt` แล้ว)
-ถ้าไม่ได้ลงก็ยังรันได้ แค่ไม่มีภาพแมพรองข้างหลัง
-
-## สคริปต์เสริมใน Exparser/
-
-```bash
-python Exparser/parse_demo.py match.dem --summary    # ดูว่า parse ได้ครบไหม
-python Exparser/map_zones.py de_dust2 --summary      # แบ่งโซนด้วย KMeans + silhouette
-python Exparser/check_radar_calibration.py de_dust2  # ตรวจว่าพิกัดตกตรงที่บนภาพแมพจริง
-```
-
-`map_zones.py` กับ `check_radar_calibration.py` ต้องมี normalized JSON ใน
-`data/matches/` ก่อน ซึ่งได้จากการรัน `parse_demo.py` และทั้งคู่รับ path
-แบบอิงโฟลเดอร์ปัจจุบัน จึงควรรันจากรากโปรเจกต์
-
-รายละเอียดอยู่ที่ [Exparser/README.md](Exparser/README.md)
 
 ## สร้างชุดข้อมูลขึ้นใหม่
 
-`realparser/all_kills.csv` อยู่ใน git อยู่แล้ว จึงไม่ต้องสร้างใหม่
+`data/all_kills.csv` อยู่ใน git อยู่แล้ว จึงไม่ต้องสร้างใหม่
 แต่ถ้าอยากเพิ่ม demo หรือทำซ้ำเองทั้งหมด วางไฟล์ `.dem` ใน `demos/` แล้วรัน
 
 ```bash
-python realparser/demoparser.py          # demos/*.dem -> csv ชุดคิลรวม
+python pipeline/demoparser.py            # demos/*.dem -> data/all_kills.csv
                                          #   แคชรายไฟล์ไว้ที่ output/kills_cache/
                                          #   รันซ้ำจะอ่านเฉพาะ demo ที่เพิ่งเพิ่มเข้ามา
-python Exparser/demo_parser.py           # demo หนึ่งไฟล์ -> Excel (rounds + kills)
 ```
 
-ทั้งคู่รับ path แบบอิงโฟลเดอร์ปัจจุบัน จึงต้องรันจากรากโปรเจกต์
+สคริปต์ทุกตัวรับ path แบบอิงรากโปรเจกต์ จึงควรรันจากรากโปรเจกต์
 
 ---
 
 ## หมายเหตุเรื่องขอบเขต
 
 เดิมโปรเจกต์นี้เป็นเว็บแอปเต็มรูป (Node + PGlite + React + หน้าอัปโหลด `.dem`)
-ตอนนี้หั่นเหลือเฉพาะฝั่ง Python ที่เป็นแกน ML ตัวจริง ส่วนหน้าอัปโหลดถูกตัดออก
-เพราะไฟล์ demo หาได้จากแหล่งอื่นอยู่แล้ว (ดูตารางข้างบน) แค่วางไฟล์ในโฟลเดอร์
-`demos/` ก็พอ — บันทึกของเวอร์ชันเว็บเก็บไว้ที่ [docs/README-fullstack.md](docs/README-fullstack.md)
+พร้อม parser อีกชุดที่แปลง `.dem` เป็น normalized JSON แล้วแบ่งโซนด้วย KMeans
+ตอนนี้หั่นเหลือเฉพาะฝั่ง Python ที่เป็นแกน ML ตัวจริง — โค้ดชุดเก่าถูกลบออกแล้ว
+ย้อนดูได้ที่ commit ก่อน `ตัดโค้ดรุ่นเก่ากับสโคปที่เลิกทำออก`
+
+หน้าอัปโหลดถูกตัดออกเพราะไฟล์ demo หาได้จากแหล่งอื่นอยู่แล้ว (ดูตารางข้างบน)
+แค่วางไฟล์ในโฟลเดอร์ `demos/` ก็พอ

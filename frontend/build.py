@@ -9,8 +9,8 @@
     python frontend/build.py --body-only     # ไม่ครอบ <html><head> (เอาไปวางเป็น artifact)
 
 ต้องมีข้อมูลก่อน
-    map     <- python realparser/grid_ml.py       สร้าง output/grid_ml.json
-    rounds  <- python realparser/round_review.py  สร้าง output/round_review.json
+    map     <- python pipeline/grid_ml.py       สร้าง output/grid_ml.json
+    rounds  <- python pipeline/round_review.py  สร้าง output/round_review.json
 
 ทำไมต้องยัดรวมเป็นไฟล์เดียว
     ถ้าให้หน้าเว็บ fetch json เอง เบราว์เซอร์จะบล็อกด้วย CORS ตอนเปิดแบบ file://
