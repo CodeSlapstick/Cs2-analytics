@@ -23,6 +23,7 @@ import os
 import asyncpg                      # os = คุยกับระบบเครื่อง เอาไว้ "อ่านค่าลับ" จาก environment
 import re                      # re = ตัวจับรูปแบบข้อความ (regex) ใช้ตรวจว่าเลข Steam หน้าตาถูกไหม
 import secrets                 # secrets = เครื่องสุ่มรหัสลับแบบปลอดภัย ใช้สร้างกุญแจเซ็นคุกกี้
+import sys                     # sys = ตัวเข้าถึงระบบของ Python เอง (ที่นี่ใช้ตั้ง encoding ของคอนโซล)
 import urllib.parse            # urllib.parse = ตัวประกอบ/แกะ URL (ต่อ "?key=value" ให้ถูกไวยากรณ์)
 from pathlib import Path       # Path = ตัวจัดการ "ที่อยู่ไฟล์" ใช้แทนการต่อสตริงเครื่องหมาย / เองให้ปวดหัว
 
@@ -40,7 +41,31 @@ from itsdangerous import BadSignature, URLSafeSerializer   # itsdangerous = เ�
 ROOT = Path(__file__).resolve().parent.parent   # __file__ = ไฟล์นี้ -> .parent = โฟลเดอร์ web -> .parent อีกที = โฟลเดอร์โปรเจกต์
 WEB_DIR = ROOT / "web"                          # ที่อยู่ของโฟลเดอร์ web/ (ที่เก็บไฟล์ .html)
 STATIC_DIR = WEB_DIR / "static"                 # ที่อยู่ของโฟลเดอร์ web/static/ (ที่เก็บ .css .js)
-KILLS_CSV = ROOT / "all_kills_25demos.csv"      # ไฟล์ตารางการฆ่าที่ parse ไว้แล้ว เอามาทำสถิติ
+
+# คอนโซลของ Windows ดีฟอลต์เป็น cp1252 ซึ่งพิมพ์ภาษาไทยไม่ได้ ถ้าไม่ตั้งบรรทัดนี้
+# print() ที่มีข้อความไทยจะโยน UnicodeEncodeError ออกมากลางคัน ทำให้ทั้ง request พัง
+# (เคยทำให้ล็อกอินตอบ 500 ทั้งที่บันทึกลง database สำเร็จไปแล้ว)
+for _s in (sys.stdout, sys.stderr):
+    try:
+        _s.reconfigure(encoding="utf-8", errors="replace")
+    except (AttributeError, ValueError):
+        pass
+
+
+def log(msg: str) -> None:
+    """พิมพ์ log โดยไม่มีทางทำให้โปรแกรมพังเพราะ encoding ของคอนโซล"""
+    try:
+        print(msg, flush=True)
+    except UnicodeEncodeError:                       # เผื่อ reconfigure ข้างบนไม่สำเร็จ
+        print(msg.encode("ascii", "replace").decode("ascii"), flush=True)
+
+# ไฟล์ตารางการฆ่าที่ parse ไว้แล้ว เอามาทำสถิติ
+# ไล่หาตามลำดับ ตัวแรกที่เจอชนะ — data/all_kills.csv คือที่อยู่ปัจจุบัน (branch main)
+# ส่วนชื่อเก่าไว้กันพังตอนที่ยังไม่ได้ merge main เข้ามา
+KILLS_CSV = next(
+    (p for p in (ROOT / "data" / "all_kills.csv", ROOT / "all_kills_25demos.csv") if p.exists()),
+    ROOT / "data" / "all_kills.csv",
+)
 
 
 def load_dotenv(path: Path) -> None:
@@ -194,9 +219,9 @@ async def save_user_to_db(user: dict):
             str(user.get("mode", "dev"))
         )
         await conn.close()
-        print(f"[DB] บันทึกผู้ใช้ {user.get("steamid")} สำเร็จ!")
+        log(f"[DB] บันทึกผู้ใช้ {user.get('steamid')} สำเร็จ!")
     except Exception as e:
-        print(f"[DB Error] ไม่สามารถบันทึกลง Database: {e}")
+        log(f"[DB Error] ไม่สามารถบันทึกลง Database: {e}")
 
 @app.post("/auth/dev-login")
 async def dev_login(request: Request):
