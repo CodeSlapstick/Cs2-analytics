@@ -14,46 +14,143 @@
   <!-- link stylesheet = ดึงไฟล์เสื้อผ้า (CSS) เข้ามาใส่ให้หน้านี้ -->
 </head>
 
-<body>
-  <!-- body = ส่วนที่คนมองเห็นจริง ๆ -->
-  <div class="login-wrap">
-    <!-- div = "กล่องเปล่า" ไว้ห่อของ, class = ชื่อเรียกให้ CSS จับไปแต่งตัวได้ -->
-    <div class="card">
-      <!-- การ์ดล็อกอินสีน้ำเงินตรงกลางจอ -->
+<body class="login-page">
+  <!-- class="login-page" = ป้ายบอก CSS ว่า "หน้านี้คือหน้าล็อกอิน" จะได้แต่งคนละแบบกับหน้าหลัก -->
 
-      <div class="logo">
-        <div class="logo-mark">CS2</div>
-        <!-- กล่องสี่เหลี่ยมส้มที่มีตัวอักษร CS2 = โลโก้ -->
-        <div>
-          <h1>CS2 Team Analytics</h1>
-          <!-- h1 = หัวข้อใหญ่ที่สุดของหน้า มีได้หน้าละอันก็พอ -->
-          <div class="sub">วิเคราะห์สมรรถนะทีม Counter-Strike 2</div>
+  <!-- ===================================================================
+       แบ่งจอเป็น 2 ฝั่ง
+       ซ้าย = ภาพโปสเตอร์  |  ขวา = การ์ดล็อกอิน
+       =================================================================== -->
+  <div class="split">
+    <!-- .split = กล่องแม่ที่แบ่งจอเป็น 2 ฝั่ง (สั่งแบ่งจริง ๆ อยู่ใน CSS ด้วย grid) -->
+
+    <!-- ---------- ฝั่งซ้าย: ภาพโปสเตอร์ ---------- -->
+    <section class="hero">
+      <!-- section = กลุ่มเนื้อหาหนึ่งกลุ่ม (ใช้แทน div เพื่อบอกความหมายว่าเป็นส่วน ๆ) -->
+
+      <div class="hero-mark">
+        <!-- โลโก้ตัวหนังสือ COUNTER STRIKE 2 (ถ้ามีไฟล์ภาพจริงจะถูกทับด้วยภาพ) -->
+        <div class="hm-1">COUNTER</div>
+        <div class="hm-2">STRIKE <span>2</span></div>
+        <!-- span ห่อเลข 2 ไว้ เพื่อทำให้เลข 2 เป็นสีส้มอันเดียว -->
+      </div>
+
+      <div class="hero-foot">
+        <!-- ข้อความลิขสิทธิ์มุมล่างซ้าย -->
+        © 2024 Valve Corporation.<br />
+        <!-- br = ขึ้นบรรทัดใหม่ -->
+        Counter-Strike 2 เป็นเครื่องหมายการค้าของ Valve Corporation.
+      </div>
+    </section>
+
+    <!-- ---------- ฝั่งขวา: การ์ดล็อกอิน ---------- -->
+    <section class="auth">
+
+      <div class="card">
+        <!-- การ์ดใหญ่สีเข้ม มุมมน มีเงา -->
+
+        <!-- หัวการ์ด: โลโก้ + ชื่อระบบ -->
+        <div class="card-head">
+          <div class="logo-mark">CS2</div>
+          <!-- กล่องสี่เหลี่ยมส้มที่มีตัวอักษร CS2 = โลโก้ -->
+          <div>
+            <h1>CS2 Team Analytics</h1>
+            <!-- h1 = หัวข้อใหญ่ที่สุดของหน้า มีหน้าละอันก็พอ -->
+            <div class="sub">วิเคราะห์สมรรถนะทีม Counter-Strike 2</div>
+          </div>
         </div>
-      </div>
 
-      <button class="btn-steam" id="btnSteam">
-        <!-- button = ปุ่มกดได้, id = ชื่อเฉพาะตัวไว้ให้ JavaScript เรียกหา -->
-        <span>🎮</span>
-        <!-- span = กล่องเล็ก ๆ สำหรับห่อข้อความชิ้นเดียว (ไม่ขึ้นบรรทัดใหม่) -->
-        <span>เข้าสู่ระบบด้วย Steam</span>
-      </button>
+        <!-- กล่องด้านในที่สีเข้มกว่า (ใส่ของกรอก/ปุ่มทั้งหมดไว้ข้างใน) -->
+        <div class="card-body">
 
-      <div class="divider" id="devDivider">หรือ</div>
-      <!-- เส้นคั่นที่มีคำว่า "หรือ" อยู่ตรงกลาง (เส้นสองข้างวาดด้วย CSS) -->
+          <!-- ===== ทางที่ 1: ล็อกอินด้วย Steam ===== -->
+          <div class="row-head">
+            <!-- แถวหัวข้อ: ไอคอนกลม + ข้อความ 2 บรรทัด -->
+            <span class="icon-circle">
+              <!-- svg = รูปวาดด้วยโค้ด (ย่อขยายเท่าไรก็ไม่แตก และเปลี่ยนสีได้ด้วย CSS) -->
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true">
+                <!-- viewBox = กรอบพิกัดข้างในรูป, currentColor = "ใช้สีตัวหนังสือของกล่องแม่" -->
+                <!-- aria-hidden="true" = บอกโปรแกรมอ่านหน้าจอว่า "ข้ามไอคอนนี้ได้ มันเป็นแค่ของประดับ" -->
+                <path d="M12 2C6.6 2 2.2 6.1 2 11.3l5.4 2.2c.5-.3 1-.5 1.6-.5h.3l2.4-3.4v-.1c0-2.1 1.7-3.8 3.8-3.8s3.8 1.7 3.8 3.8-1.7 3.8-3.8 3.8h-.1l-3.4 2.4v.3c0 1.6-1.3 2.9-2.9 2.9-1.4 0-2.6-1-2.9-2.3L2.4 15C3.6 19.1 7.4 22 12 22c5.5 0 10-4.5 10-10S17.5 2 12 2zm-2.6 15.2-1.1-.5c.2.4.6.8 1.1 1 1 .4 2.1 0 2.5-1s0-2.1-1-2.5c-.5-.2-1-.2-1.4 0l1.1.5c.7.3 1.1 1.1.8 1.8s-1.2 1-1.9.7zm8-6.7c0 1.4-1.1 2.5-2.5 2.5S12.3 11.9 12.3 10.5 13.5 8 14.9 8s2.5 1.1 2.5 2.5zm-4.4 0c0 1 .8 1.9 1.9 1.9s1.9-.8 1.9-1.9-.8-1.9-1.9-1.9-1.9.9-1.9 1.9z"/>
+                <!-- path = เส้นทางการวาด ตัวเลขข้างในคือพิกัดจุดต่าง ๆ (ปกติได้มาจากโปรแกรมวาดรูป ไม่ต้องเขียนเอง) -->
+              </svg>
+            </span>
+            <div>
+              <div class="row-title orange">เข้าสู่ระบบด้วย Steam</div>
+              <div class="row-sub">เชื่อมต่อบัญชี Steam เพื่อใช้งานระบบวิเคราะห์</div>
+            </div>
+          </div>
 
-      <div id="devBox">
-        <!-- กล่องโหมดทดสอบ ถ้าเซิร์ฟเวอร์ปิดโหมดนี้ JavaScript จะซ่อนกล่องนี้ให้ -->
-        <label for="steamid">โหมดทดสอบ — ใส่ SteamID64 เอง</label>
-        <!-- label for="steamid" = ผูกป้ายนี้กับช่องกรอกที่ id="steamid" คลิกที่ป้ายแล้วเคอร์เซอร์จะกระโดดเข้าช่อง -->
-        <input type="text" id="steamid" value="76561198283431555" placeholder="76561198xxxxxxxxx" />
-        <!-- value = ค่าที่เติมไว้ให้ตั้งแต่แรก, placeholder = ข้อความจาง ๆ ตอนช่องว่าง -->
-        <button class="btn-ghost" id="btnDev">เข้าใช้งานแบบทดสอบ</button>
-      </div>
+          <button class="btn-steam" id="btnSteam">
+            <!-- button = ปุ่มกดได้, id = ชื่อเฉพาะตัวไว้ให้ JavaScript เรียกหา -->
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor" aria-hidden="true">
+              <path d="M12 2C6.6 2 2.2 6.1 2 11.3l5.4 2.2c.5-.3 1-.5 1.6-.5h.3l2.4-3.4v-.1c0-2.1 1.7-3.8 3.8-3.8s3.8 1.7 3.8 3.8-1.7 3.8-3.8 3.8h-.1l-3.4 2.4v.3c0 1.6-1.3 2.9-2.9 2.9-1.4 0-2.6-1-2.9-2.3L2.4 15C3.6 19.1 7.4 22 12 22c5.5 0 10-4.5 10-10S17.5 2 12 2zm2.9 6c1.4 0 2.5 1.1 2.5 2.5S16.3 13 14.9 13s-2.5-1.1-2.5-2.5S13.5 8 14.9 8z"/>
+            </svg>
+            <span>เข้าสู่ระบบด้วย Steam</span>
+            <!-- span = กล่องเล็ก ๆ สำหรับห่อข้อความชิ้นเดียว (ไม่ขึ้นบรรทัดใหม่) -->
+            <svg class="chev" viewBox="0 0 24 24" width="18" height="18" fill="none"
+                 stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true">
+              <!-- fill="none" + stroke = วาดแบบ "เส้น" ไม่ระบายสีทึบ (ลูกศร > ต้องใช้แบบเส้น) -->
+              <path d="M9 5l7 7-7 7" />
+              <!-- M9 5 = ยกปากกาไปที่จุด (9,5) แล้ว l7 7 = ลากลงขวา, -7 7 = ลากลงซ้าย -> ได้ลูกศร > -->
+            </svg>
+          </button>
 
-      <div class="msg" id="msg"></div>
-      <!-- กล่องว่าง ๆ ไว้ให้ JavaScript เอาข้อความแจ้งเตือนมาใส่ทีหลัง -->
-    </div>
-  </div>
+          <!-- ===== เส้นคั่น "หรือ" ===== -->
+          <div class="divider" id="devDivider">หรือ</div>
+          <!-- เส้นสองข้างไม่ได้เขียนใน HTML แต่ CSS สร้างให้ด้วย ::before / ::after -->
+
+          <!-- ===== ทางที่ 2: ล็อกอินด้วย SteamID64 (โหมดทดสอบ) ===== -->
+          <div id="devBox">
+            <!-- ถ้าเซิร์ฟเวอร์ปิดโหมดทดสอบ JavaScript จะซ่อนกล่องนี้ทั้งก้อน -->
+
+            <div class="row-title blue">เข้าสู่ระบบด้วย SteamID64</div>
+            <label class="row-sub" for="steamid">ใช้ SteamID64 เพื่อเข้าสู่ระบบโดยตรง</label>
+            <!-- label for="steamid" = ผูกป้ายนี้กับช่องที่ id="steamid" คลิกที่ป้ายแล้วเคอร์เซอร์กระโดดเข้าช่อง -->
+
+            <div class="field">
+              <!-- .field = กล่องห่อ ทำหน้าที่เป็น "จุดอ้างอิง" ให้ไอคอนลอยทับช่องกรอกได้ -->
+              <svg class="field-icon" viewBox="0 0 24 24" width="18" height="18" fill="none"
+                   stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true">
+                <circle cx="12" cy="8" r="3.5" />
+                <!-- circle = วงกลม (หัวคน) cx,cy = จุดกึ่งกลาง, r = รัศมี -->
+                <path d="M4.5 20c0-3.6 3.4-6 7.5-6s7.5 2.4 7.5 6" />
+                <!-- เส้นโค้งเป็นรูปไหล่ -->
+              </svg>
+              <input type="text" id="steamid" value="76561198283431555" placeholder="76561198xxxxxxxxx" />
+              <!-- value = ค่าที่เติมไว้ให้ตั้งแต่แรก, placeholder = ข้อความจาง ๆ ตอนช่องยังว่าง -->
+            </div>
+
+            <button class="btn-ghost" id="btnDev">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none"
+                   stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M3 16l5-5 3.5 3.5L20 6" />
+                <!-- เส้นกราฟหักขึ้น -->
+                <path d="M15 6h5v5" />
+                <!-- หัวลูกศรมุมขวาบน -->
+              </svg>
+              <span>เข้าสู่ระบบ</span>
+            </button>
+          </div>
+
+          <div class="msg" id="msg"></div>
+          <!-- กล่องว่าง ๆ ไว้ให้ JavaScript เอาข้อความแจ้งเตือนมาใส่ทีหลัง -->
+
+          <!-- ===== บรรทัดสร้างความมั่นใจ ===== -->
+          <div class="secure">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none"
+                 stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true">
+              <path d="M12 3l7 3v5c0 4.4-3 8.3-7 10-4-1.7-7-5.6-7-10V6l7-3z" />
+              <!-- รูปโล่ -->
+            </svg>
+            <span>ระบบปลอดภัย ข้อมูลของคุณจะไม่ถูกเปิดเผยต่อบุคคลที่สาม</span>
+          </div>
+
+        </div><!-- จบ .card-body -->
+      </div><!-- จบ .card -->
+
+    </section>
+  </div><!-- จบ .split -->
 
   <script src="/static/login.js"></script>
   <!-- script = ดึงไฟล์ "สมอง" (JavaScript) เข้ามา วางไว้ล่างสุดเพื่อให้ HTML ข้างบนถูกสร้างเสร็จก่อน -->
