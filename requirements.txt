@@ -3,15 +3,23 @@
 # ติดตั้ง:  pip install -r requirements.txt
 # หรือใช้ Docker ก็ไม่ต้องลงเอง — ดู Dockerfile
 
-# โมเดลกับการวาดภาพ — grid_ml.py, round_win.py, round_review.py
+# --- โมเดลกับการวาดภาพ — pipeline/*.py ---
 pandas>=2.2
 numpy>=1.26
 scikit-learn>=1.5
 matplotlib>=3.8
 pillow>=10.0
 
-# เฉพาะตอน parse ไฟล์ .dem — awpy ใช้ demoparser2 (เขียนด้วย Rust) อยู่ข้างใน
-# จึงมี wheel สำเร็จรูป ไม่ต้องมี compiler และคืนค่ามาเป็น polars
-# ถ้ามี all_kills.csv อยู่แล้วและจะรันแค่โมเดล ตัดสองบรรทัดล่างนี้ออกได้ ภาพ Docker จะเล็กลงราวครึ่ง
+# --- หน้าเว็บกับล็อกอิน Steam — frontend/app.py ---
+fastapi>=0.115
+uvicorn[standard]>=0.30
+httpx>=0.27              # โทรไปถาม Steam Web API
+itsdangerous>=2.2        # เซ็นคุกกี้กันปลอมแปลง
+asyncpg>=0.30            # ต่อ PostgreSQL แบบ async
+
+# --- เฉพาะตอน parse ไฟล์ .dem — pipeline/demoparser.py, round_review.py ---
+# awpy ใช้ demoparser2 (เขียนด้วย Rust) อยู่ข้างใน จึงมี wheel สำเร็จรูป
+# ไม่ต้องมี compiler และคืนค่ามาเป็น polars
+# ถ้ามี data/all_kills.csv อยู่แล้วและจะรันแค่โมเดล ตัดสองบรรทัดล่างนี้ออกได้
 awpy>=2.0.2
 polars>=1.0

@@ -1,0 +1,341 @@
+/*---------- ตอนที่ 1 — ค่ากลาง ----------*/
+/* :root = "กล่องเก็บสี" ของทั้งเว็บ  */
+:root {
+  --bg:       #05080f;   
+  --navy-900: #071230;   
+  --navy-800: #0d1728;   
+  --navy-700: #1b2740;   
+  --blue-400: #4d8bff;   
+  --orange:   #ff7a18;   
+  --orange-2: #ffa24c;   
+  --text:     #e9eefb;   
+  --muted:    #8fa0bf;   
+  --line:     rgba(255,255,255,.08);  
+  --radius:   16px;     
+}
+
+* {
+  box-sizing: border-box;   /* ให้ความกว้างที่กำหนด รวมขอบกับ padding เข้าไปด้วย จะได้ไม่ล้นกล่อง */
+  margin: 0;                /* ล้างระยะห่างที่เบราว์เซอร์แถมมาให้ ทุกอย่างเริ่มจากศูนย์ */
+}
+
+body {
+  min-height: 100vh;                                
+  font-family: "Segoe UI", system-ui, sans-serif;   
+  color: var(--text);                               
+  background: var(--bg);
+}
+
+.sub { color: var(--muted); font-size: 13px; }   /* ข้อความคำอธิบายตัวเล็กสีจาง ใช้ได้ทุกหน้า */
+.hidden { display: none; }                      
+
+/* โลโก้สี่เหลี่ยมส้มที่มีตัวอักษร CS2 (ใช้ทั้งหน้าล็อกอินและหน้าหลัก) */
+.logo-mark {
+  width: 52px; height: 52px;                                            /* กล่องสี่เหลี่ยมจัตุรัส */
+  border-radius: 13px;                                                  /* มุมมน */
+  background: linear-gradient(135deg, var(--orange-2), var(--orange));  /* ไล่สีส้มเฉียง 135 องศา */
+  display: grid; place-items: center;                                   /* จัดตัวหนังสือข้างในไว้กลางกล่องพอดี */
+  font-weight: 800; font-size: 17px; color: #22160a;                    /* ตัวหนามาก สีน้ำตาลเข้มให้อ่านชัดบนพื้นส้ม */
+  flex: none;                                                           
+}
+
+/*----------ตอนที่ 2 — หน้าล็อกอิน----------*/
+.login-page { overflow-x: hidden; }   /* กันไม่ให้เลื่อนซ้าย-ขวาได้ (บางทีเงา/ภาพล้นออกไปนิดหน่อย) */
+
+/* ---------- โครงหลัก: แบ่งจอเป็นซ้าย/ขวา ---------- */
+.split {
+  display: grid;                       /* grid = จัดของแบบตาราง */
+  grid-template-columns: 1fr 1fr;      /* 2 คอลัมน์ กว้างเท่ากัน (1fr = "หนึ่งส่วนของที่ว่างที่เหลือ") */
+  min-height: 100vh;                   /* สูงเต็มจอ */
+}
+
+/* ---------- ฝั่งซ้าย: ภาพโปสเตอร์ ---------- */
+.hero {
+  position: relative;                  /* relative = ตั้งตัวเองเป็น "จุดอ้างอิง" ให้ลูกที่ลอยอยู่ (absolute) ยึดตำแหน่งจากกล่องนี้ */
+  overflow: hidden;                    /* อะไรที่ล้นออกนอกกล่องให้ตัดทิ้ง */
+  display: flex;                       /* flex = เรียงลูก ๆ ต่อกัน */
+  align-items: flex-start;             /* จัดลูกไว้ชิดขอบบน (โลโก้จะได้ไม่ไปทับตัวทหารตรงกลางภาพ) */
+  padding: 9vh 60px 56px;              /* เว้นขอบใน: บน 9% ของความสูงจอ, ซ้าย-ขวา 60px, ล่าง 56px */
+
+  background-image:
+    linear-gradient(100deg, rgba(5,8,15,.86) 0%, rgba(5,8,15,.40) 45%, rgba(5,8,15,0) 72%),  /* ชั้น 1: ผ้าคลุมดำจาง ๆ ไล่จากซ้ายไปขวา ให้ตัวหนังสือขาวอ่านออก */
+    url("/static/hero.png"),                                                                  /* ชั้น 2: ภาพทหาร CS2 */
+    linear-gradient(160deg, #0b1220, #05080f 70%);                                            /* ชั้น 3: พื้นเข้มรองล่างสุด (เผื่อภาพยังโหลดไม่เสร็จ) */
+  background-size: cover;              /* ยืดภาพให้เต็มกล่อง (ส่วนที่เกินถูกครอปออก ไม่ยืดจนเบี้ยว) */
+  background-position: center, 46% center, center;   /* ตำแหน่งของแต่ละชั้น เรียงตามลำดับข้างบน — ชั้นภาพเลื่อนไปซ้ายนิดหน่อย (46%) ให้ตัวทหารอยู่กลางพอดี */
+  background-repeat: no-repeat;        /* ห้ามปูภาพซ้ำเป็นกระเบื้อง */
+}
+
+/* ขอบขวาของภาพ ค่อย ๆ จางไปเป็นสีพื้น เพื่อให้กลืนกับฝั่งการ์ดล็อกอิน ไม่ตัดขาดเป็นเส้นตรง */
+.hero::after {
+  content: "";                         /* ::after = สร้างของขึ้นมาใหม่ ต้องมี content ไม่งั้นมันไม่โผล่ */
+  position: absolute;                  /* absolute = ลอยทับอยู่บนภาพ โดยยึดตำแหน่งจาก .hero */
+  inset: 0;                            /* inset:0 = ชิดทั้ง บน/ขวา/ล่าง/ซ้าย = คลุมเต็มกล่องพอดี */
+  background: linear-gradient(90deg, transparent 72%, var(--bg));   /* ใสไปจนถึง 72% แล้วค่อยเข้มเป็นสีพื้นที่ขอบขวา */
+  pointer-events: none;                /* คลิกทะลุผ่านได้ ไม่ไปบังของอื่น */
+}
+
+/* โลโก้ตัวหนังสือ COUNTER STRIKE 2 */
+.hero-mark {
+  position: relative;                  /* ให้ลอยอยู่ "เหนือ" แถบส้ม (ของที่มี position จะทับของที่ไม่มี) */
+  z-index: 2;                          /* z-index = ลำดับชั้นการซ้อน ตัวเลขมากอยู่บน */
+  font-style: italic;                  /* เอียง ให้ได้อารมณ์โลโก้เกม */
+  font-weight: 900;                    /* หนาที่สุด */
+  line-height: .92;                    /* บีบระยะห่างระหว่างสองบรรทัดให้ชิดกัน */
+  letter-spacing: -1px;                /* ดึงตัวอักษรเข้าหากันนิดหน่อย */
+  text-shadow: 0 6px 30px rgba(0,0,0,.6);   /* เงาใต้ตัวหนังสือ ให้อ่านออกแม้พื้นหลังสว่าง */
+}
+.hm-1 { font-size: clamp(34px, 5vw, 62px); color: #fff; }
+/* clamp(เล็กสุด, ยืดหยุ่น, ใหญ่สุด) = ขนาดตัวอักษรที่ยืดตามจอ แต่ไม่เล็กกว่า 34px และไม่ใหญ่กว่า 62px */
+.hm-2 { font-size: clamp(34px, 5vw, 62px); color: #fff; }
+.hm-2 span { color: var(--orange); }   /* เฉพาะเลข 2 ให้เป็นสีส้ม */
+
+/* ข้อความลิขสิทธิ์มุมล่างซ้าย */
+.hero-foot {
+  position: absolute;                  /* ลอยไปติดมุม */
+  left: 60px; bottom: 34px;            /* ห่างจากขอบซ้าย 60px ขอบล่าง 34px */
+  z-index: 2;
+  font-size: 12px; line-height: 1.7;
+  color: rgba(233,238,251,.55);        /* ขาวจาง ๆ*/
+}
+
+/* ---------- ฝั่งขวา: การ์ดล็อกอิน ---------- */
+.auth {
+  display: grid; place-items: center;  /* place-items:center = จัดการ์ดไว้กลางทั้งแนวตั้งและแนวนอนในบรรทัดเดียว */
+  padding: 40px 48px;                  /* เว้นขอบ กันการ์ดชนขอบจอ */
+}
+
+.card {
+  width: 100%;                              /* กว้างเต็มที่ที่มี... */
+  max-width: 520px;                         /* ...แต่ไม่เกิน 520px (บนจอใหญ่จะได้ไม่ยืดจนอ่านยาก) */
+  background: rgba(15,22,38,.78);           /* น้ำเงินเข้มแบบโปร่งนิด ๆ ให้เห็นพื้นหลังลอดผ่าน */
+  border: 1px solid var(--line);            /* เส้นขอบบาง ๆ ให้การ์ดลอยออกจากพื้นหลัง */
+  border-radius: 22px;
+  padding: 26px;
+  box-shadow: 0 30px 80px rgba(0,0,0,.55);  /* เงาใต้การ์ด ทำให้ดูลอย */
+  backdrop-filter: blur(10px);              /* เบลอสิ่งที่อยู่หลังการ์ด เหมือนกระจกฝ้า */
+}
+
+/* หัวการ์ด: โลโก้ + ชื่อระบบ */
+.card-head {
+  display: flex;              /* เรียงโลโก้กับข้อความเป็นแถวเดียวกัน */
+  align-items: center;        /* จัดให้อยู่กึ่งกลางแนวตั้ง */
+  gap: 14px;                  /* เว้นช่องว่างระหว่างกัน 14px */
+  margin-bottom: 20px;        /* เว้นใต้บล็อกนี้ก่อนขึ้นเนื้อหาถัดไป */
+}
+.card-head h1 { font-size: 23px; letter-spacing: .2px; }   /* หัวข้อใหญ่ + ถ่างตัวอักษรนิดหน่อยให้อ่านสบาย */
+.card-head .sub { margin-top: 3px; }
+
+/* กล่องด้านในที่สีเข้มกว่าการ์ด (ใส่ปุ่ม/ช่องกรอกไว้ข้างใน) */
+.card-body {
+  background: rgba(8,13,24,.55);
+  border: 1px solid rgba(255,255,255,.05);
+  border-radius: var(--radius);
+  padding: 22px;
+}
+
+/* แถวหัวข้อ: ไอคอนกลม + ข้อความ 2 บรรทัด */
+.row-head {
+  display: flex; align-items: center; gap: 12px;
+  margin-bottom: 16px;
+}
+.icon-circle {
+  width: 42px; height: 42px; border-radius: 50%;   /* 50% = กลมสนิท */
+  display: grid; place-items: center;              /* จัดไอคอนไว้กลางวงกลม */
+  background: #1a2436;                             /* พื้นวงกลมสีเทาอมน้ำเงิน */
+  border: 1px solid var(--line);
+  color: #cfe0ff;                                  /* สีนี้จะถูกไอคอน SVG หยิบไปใช้ผ่าน currentColor */
+  flex: none;                                      /* ห้ามถูกบีบให้แบน */
+}
+.row-title { font-size: 16px; font-weight: 700; }
+.row-title.orange { color: var(--orange-2); }      /* หัวข้อของฝั่ง Steam = ส้ม */
+.row-title.blue { color: var(--blue-400); }        /* หัวข้อของฝั่ง SteamID64 = น้ำเงิน */
+.row-sub { display: block; font-size: 13px; color: var(--muted); margin-top: 3px; }
+/* display:block = ให้ขึ้นบรรทัดของตัวเอง (จำเป็นเพราะ <label> ปกติอยู่ในบรรทัดเดียวกับของอื่น) */
+
+/* ---------- ปุ่มหลักสีส้ม ---------- */
+.btn-steam {
+  position: relative;                          /* ตั้งเป็นจุดอ้างอิง ให้ลูกศร > ลอยไปเกาะขอบขวาได้ */
+  width: 100%;                                 /* กว้างเต็มกล่อง กดง่ายบนมือถือ */
+  display: flex; align-items: center; justify-content: center; gap: 10px;  /* จัดไอคอน+ข้อความให้อยู่กลางปุ่ม */
+  padding: 15px 20px;                          /* ทำให้ปุ่มสูงพอกดสบาย */
+  border: none;                                /* ไม่เอาเส้นขอบเริ่มต้นของปุ่ม */
+  border-radius: 12px;
+  background: linear-gradient(180deg, #ff9a35, #f2700c);   /* ไล่สีส้มจากอ่อน (บน) ไปเข้ม (ล่าง) ให้ดูนูน */
+  color: #2a1604;                              /* ตัวหนังสือสีเข้มบนพื้นส้ม = อ่านชัด (contrast ดี) */
+  font-size: 16px; font-weight: 700;
+  font-family: inherit;                        /* inherit = "ใช้ฟอนต์เดียวกับกล่องแม่" (ปุ่มมีฟอนต์เริ่มต้นของตัวเอง ต้องสั่งทับ) */
+  cursor: pointer;                             /* เอาเมาส์ชี้แล้วเป็นรูปมือ บอกว่า "กดได้" */
+  transition: transform .12s ease, box-shadow .12s ease;   /* ให้การเปลี่ยนแปลงค่อย ๆ เกิดใน 0.12 วินาที ไม่กระตุก */
+  box-shadow: 0 12px 28px rgba(255,122,24,.30);            /* เงาสีส้มใต้ปุ่ม เหมือนปุ่มเรืองแสง */
+}
+.btn-steam .chev {
+  position: absolute; right: 18px;             /* ลอยไปเกาะขอบขวาของปุ่ม ห่าง 18px */
+  opacity: .8;                                 /* จางลงนิดหน่อย ไม่ให้เด่นเกินข้อความ */
+}
+.btn-steam:hover { transform: translateY(-2px); box-shadow: 0 16px 34px rgba(255,122,24,.42); }  /* :hover = ตอนเมาส์ชี้ ให้ปุ่มลอยขึ้น 2px */
+.btn-steam:active { transform: translateY(0); }   /* :active = ตอนกดค้าง ให้ยุบกลับ เหมือนปุ่มจริง */
+
+/* ---------- เส้นคั่น "หรือ" ---------- */
+.divider {
+  display: flex; align-items: center; gap: 14px;   /* เส้น - ข้อความ - เส้น เรียงเป็นแถว */
+  color: var(--muted); font-size: 12px;
+  margin: 20px 0;                                  /* เว้นบน-ล่าง 20px ซ้าย-ขวา 0 */
+}
+.divider::before, .divider::after {
+  content: "";
+  flex: 1;                          /* flex:1 = "กินที่ว่างที่เหลือให้หมด" -> กลายเป็นเส้นยาวสองข้าง */
+  height: 1px; background: var(--line);
+}
+
+/* ---------- ช่องกรอก ---------- */
+.field {
+  position: relative;               /* จุดอ้างอิงให้ไอคอนรูปคนลอยทับช่องได้ */
+  margin: 12px 0;
+}
+.field-icon {
+  position: absolute;
+  left: 15px;                       /* ห่างขอบซ้ายของช่อง 15px */
+  top: 50%;                         /* ดันลงมาครึ่งหนึ่งของความสูงช่อง... */
+  transform: translateY(-50%);      /* ...แล้วดึงตัวเองขึ้นครึ่งหนึ่งของความสูงตัวเอง = อยู่กึ่งกลางพอดี */
+  color: var(--muted);
+  pointer-events: none;             /* คลิกทะลุไอคอนเข้าไปโดนช่องกรอกได้เลย */
+}
+input[type="text"] {                /* จับเฉพาะช่องกรอกข้อความ */
+  width: 100%;
+  padding: 15px 16px 15px 46px;     /* บน ขวา ล่าง ซ้าย — ซ้าย 46px เพื่อเว้นที่ให้ไอคอน */
+  border-radius: 12px;
+  border: 1px solid var(--navy-700);
+  background: rgba(6,11,20,.85);    /* พื้นในช่องเข้มกว่าการ์ด ให้รู้ว่าตรงนี้พิมพ์ได้ */
+  color: var(--text);
+  font-size: 15px;
+  font-family: inherit;
+  outline: none;                    /* ปิดกรอบเริ่มต้นของเบราว์เซอร์ (เดี๋ยวเราวาดเองตอน :focus) */
+  transition: border-color .15s ease, box-shadow .15s ease;
+}
+input[type="text"]::placeholder { color: #52627e; }   /* สีของข้อความจาง ๆ ตอนช่องยังว่าง */
+input[type="text"]:focus {                            /* :focus = ตอนคลิกเข้าไปพิมพ์ */
+  border-color: var(--orange);
+  box-shadow: 0 0 0 3px rgba(255,122,24,.15);         /* วงเรืองแสงสีส้มรอบช่อง */
+}
+
+/* ---------- ปุ่มรอง (โปร่ง ขอบน้ำเงิน) ---------- */
+.btn-ghost {
+  width: 100%;
+  display: flex; align-items: center; justify-content: center; gap: 9px;
+  padding: 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(77,139,255,.55);
+  background: rgba(77,139,255,.06);   /* พื้นน้ำเงินจาง ๆ เกือบใส */
+  color: var(--blue-400);
+  font-size: 15px; font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background .15s ease, border-color .15s ease;
+}
+.btn-ghost:hover { background: rgba(77,139,255,.16); border-color: var(--blue-400); }   /* ชี้แล้วพื้นเข้มขึ้น */
+
+/* ---------- ข้อความแจ้งเตือน ---------- */
+.msg { margin-top: 12px; font-size: 13px; min-height: 18px; text-align: center; }
+/* min-height = จองที่ไว้ล่วงหน้า กันหน้าเว็บกระตุกตอนข้อความโผล่ */
+.msg.error { color: #ff8b7a; }    /* ผิดพลาด = แดงอมส้ม */
+.msg.ok { color: #6ee7a8; }       /* สำเร็จ = เขียว */
+
+/* ---------- บรรทัดสร้างความมั่นใจ ---------- */
+.secure {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid rgba(255,255,255,.05);   /* เส้นคั่นบาง ๆ ด้านบน */
+  font-size: 12px; color: var(--muted);
+}
+
+/* ---------- จอแคบ (มือถือ/แท็บเล็ต) ---------- */
+/* @media = "กฎที่ใช้เฉพาะตอนจอกว้างไม่เกิน 980px" — ของเดิมทั้งหมดยังใช้อยู่ แค่ทับบางข้อ */
+@media (max-width: 980px) {
+  .split { grid-template-columns: 1fr; }        /* เปลี่ยนจาก 2 คอลัมน์ เหลือ 1 -> ภาพไปอยู่บน การ์ดอยู่ล่าง */
+  .hero {
+    min-height: 230px;                          /* ภาพกลายเป็นแบนเนอร์เตี้ย ๆ ด้านบน */
+    padding: 34px;
+  }
+  .hero-foot { left: 34px; bottom: 18px; font-size: 11px; }
+  .auth { padding: 26px 18px 44px; }
+  .card { padding: 20px; }
+  .card-body { padding: 18px; }
+}
+
+/* ==========================================================================
+   ล็อคอินถึงแค่ตรงนี้ หน้าหลักไม่ได้ทำไม่ได้แก้
+   ========================================================================== */
+
+/* ==========================================================================
+   ตอนที่ 3 — หน้าหลัก
+   ========================================================================== */
+
+.topbar {
+  display: flex; align-items: center; justify-content: space-between;  /* ซ้ายสุด-ขวาสุด แล้วดันช่องว่างไว้ตรงกลาง */
+  padding: 14px 22px;
+  background: rgba(7,18,48,.75);
+  border-bottom: 2px solid var(--orange);   /* เส้นส้มใต้แถบบน = จุดเด่นของธีม */
+  position: sticky; top: 0; z-index: 10;    /* sticky = เลื่อนหน้าลงแล้วแถบนี้ยังหนึบอยู่ด้านบน */
+  backdrop-filter: blur(8px);
+}
+.topbar .logo { display: flex; align-items: center; gap: 12px; }   /* โลโก้ + ชื่อระบบ เรียงเป็นแถว */
+.topbar .logo-mark { width: 42px; height: 42px; border-radius: 11px; font-size: 14px; }  /* ย่อโลโก้ให้เล็กลงบนแถบบน */
+
+.user-box { display: flex; align-items: center; gap: 10px; }   /* รูป + ชื่อ + ปุ่มออก เรียงเป็นแถว */
+.avatar {
+  width: 36px; height: 36px; border-radius: 50%;   /* 50% = กลมสนิท */
+  border: 2px solid var(--orange);                 /* ขอบส้มรอบรูปโปรไฟล์ */
+  object-fit: cover;                               /* รูปไม่ยืดเบี้ยว ให้ครอปพอดีกรอบแทน */
+  background: var(--navy-700);                     /* สีรองตอนรูปยังโหลดไม่เสร็จ */
+}
+.badge {
+  font-size: 11px; padding: 3px 8px; border-radius: 999px;   /* 999px = มนจนกลายเป็นแคปซูล */
+  background: rgba(77,139,255,.18); color: var(--blue-400); border: 1px solid rgba(77,139,255,.35);
+}
+
+.container { max-width: 1080px; margin: 0 auto; padding: 26px 22px 60px; }  /* margin auto ซ้ายขวา = จัดเนื้อหาไว้กลางจอ */
+
+.hello { font-size: 26px; margin-bottom: 4px; }
+.hello span { color: var(--orange); }        /* เน้นชื่อผู้เล่นเป็นสีส้ม */
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));  /* ช่องละอย่างน้อย 210px เหลือที่ก็แบ่งเท่า ๆ กัน จอแคบจะตกบรรทัดเอง */
+  gap: 14px;
+  margin: 22px 0;
+}
+
+.stat {
+  background: var(--navy-800);
+  border: 1px solid var(--navy-700);
+  border-left: 4px solid var(--orange);    /* ขีดส้มหนา ๆ ด้านซ้ายของการ์ดตัวเลข */
+  border-radius: var(--radius);
+  padding: 16px 18px;
+}
+.stat .k { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .6px; }  /* ป้ายชื่อสถิติ ตัวเล็กพิมพ์ใหญ่ */
+.stat .v { font-size: 28px; font-weight: 800; margin-top: 6px; }                                     /* ตัวเลขใหญ่ ๆ ให้เห็นแต่ไกล */
+
+.panels { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 14px; }  /* 2 คอลัมน์บนจอกว้าง, 1 คอลัมน์บนมือถือ */
+
+.panel {
+  background: var(--navy-800);
+  border: 1px solid var(--navy-700);
+  border-radius: var(--radius);
+  padding: 18px;
+}
+.panel h2 { font-size: 15px; margin-bottom: 14px; color: var(--orange-2); }   /* หัวข้อในการ์ดเป็นสีส้มอ่อน */
+
+.bar-row { margin-bottom: 12px; }                                              /* แต่ละแถวของกราฟแท่ง */
+.bar-top { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 5px; }  /* ชื่อไว้ซ้าย ตัวเลขไว้ขวา */
+.bar-top .n { color: var(--muted); }
+.bar-bg { height: 9px; background: var(--navy-700); border-radius: 999px; overflow: hidden; }     /* รางของแท่ง (overflow:hidden = ตัดส่วนที่ล้นออก แท่งจะได้มนตามราง) */
+.bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--blue-400), var(--orange));  /* แท่งไล่สีจากน้ำเงิน (ซ้าย) ไปส้ม (ขวา) */
+  border-radius: 999px;
+  transition: width .5s ease;    /* ตอน JavaScript ใส่ความกว้าง แท่งจะค่อย ๆ ยืดออกใน 0.5 วินาที */
+}
+
+.foot { margin-top: 26px; color: var(--muted); font-size: 12px; text-align: center; }

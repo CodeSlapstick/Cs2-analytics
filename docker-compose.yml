@@ -4,7 +4,7 @@
 #   docker compose down         # ปิด (ข้อมูลยังอยู่ใน volume pgdata)
 #   docker compose down -v      # ปิดแล้วลบข้อมูลทิ้ง
 #
-# ค่าดีฟอลต์ตรงกับที่ web/app.py (branch Tan-Login) คาดไว้ คือ postgres/postgres/cs2_analytics
+# ค่าดีฟอลต์ตรงกับที่ frontend/app.py คาดไว้ คือ postgres/postgres/cs2_analytics
 # ถ้าเครื่องมี PostgreSQL ลงไว้อยู่แล้ว พอร์ต 5432 จะชนกัน ให้ตั้ง POSTGRES_PORT=5433 ใน .env
 # แล้วชี้ DATABASE_URL ไปที่พอร์ตนั้นด้วย
 #

@@ -24,13 +24,13 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-FRONTEND = ROOT / "frontend"
+TEMPLATES = ROOT / "frontend" / "templates"
 OUT = ROOT / "output"
 
 # ชื่อหน้า -> (เทมเพลต, ไฟล์ข้อมูล, ชื่อไฟล์ผลลัพธ์)
 PAGES = {
-    "map": ("template.html", "grid_ml.json", "index"),
-    "rounds": ("rounds.template.html", "round_review.json", "rounds"),
+    "map": ("map.html", "grid_ml.json", "index"),
+    "rounds": ("rounds.html", "round_review.json", "rounds"),
 }
 
 # โครงเอกสารสำหรับไฟล์ที่เปิดเองในเครื่อง
@@ -57,7 +57,7 @@ for _s in (sys.stdout, sys.stderr):
 
 def build(page: str, body_only: bool, out_path: Path | None) -> None:
     tpl_name, data_name, stem = PAGES[page]
-    tpl = FRONTEND / tpl_name
+    tpl = TEMPLATES / tpl_name
     data = OUT / data_name
 
     if not data.exists():

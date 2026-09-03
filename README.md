@@ -84,15 +84,19 @@ docker run --rm \
 ถ้าต้องการแค่ `grid_ml.py` ตัดสองบรรทัดท้ายใน `requirements.txt` ออกแล้ว build ใหม่
 ภาพจะเล็กลงราวครึ่งหนึ่ง
 
-### ฐานข้อมูล (สำหรับหน้าล็อกอิน)
+### หน้าเว็บ + ล็อกอิน Steam
 
-หน้าล็อกอิน Steam อยู่บน branch `Tan-Login` และเก็บผู้ใช้ลง PostgreSQL
+`frontend/app.py` เสิร์ฟหน้าล็อกอินด้วย Steam OpenID แล้วเก็บผู้ใช้ลง PostgreSQL
 `docker-compose.yml` ในรีโปเปิด DB ให้ได้ในคำสั่งเดียว
 
 ```bash
 cp .env.example .env       # แก้ค่าถ้าต้องการ (พอร์ตชนกันให้ตั้ง POSTGRES_PORT=5433)
 docker compose up -d db
+python -m uvicorn frontend.app:app --reload   # เปิด http://localhost:8000
 ```
+
+`.env` ที่รากโปรเจกต์เป็นไฟล์เดียวที่ทั้ง docker compose และ `frontend/app.py` อ่าน
+รายละเอียดของหน้าเว็บอยู่ที่ [frontend/README.md](frontend/README.md)
 
 ## กริด + ML
 
@@ -144,10 +148,16 @@ pipeline/         แกน ML ทั้งหมด
   round_win.py          โมเดลโอกาสชนะรอบ -> ตารางเปิดค่าให้หน้าเว็บใช้
   round_review.py       เจาะแมตช์เดียวเป็นรายรอบ (ใครชนะรอบไหน ชนะด้วยอะไร)
 
-frontend/         หน้าเว็บ — เทมเพลตยังไม่มีข้อมูล เปิดตรง ๆ ไม่ได้ ต้อง build ก่อน
-  template.html         หน้าแผนที่รวมทุกแมตช์
-  rounds.template.html  หน้ารีวิวรายรอบ
+frontend/         หน้าเว็บทั้งหมด
+  app.py                เซิร์ฟเวอร์ FastAPI — ล็อกอิน Steam + /api/stats + เสิร์ฟหน้า pages/
   build.py              ยัดข้อมูล+ภาพเรดาร์เข้าเทมเพลต -> output/*.html ไฟล์เดียวจบ
+  pages/                หน้าที่ app.py เสิร์ฟตอนรันเซิร์ฟเวอร์
+    login.html            หน้าล็อกอิน
+    main.html             หน้าหลักหลังล็อกอิน
+  templates/            เทมเพลตของ build.py (ยังไม่มีข้อมูล เปิดตรง ๆ ไม่ได้)
+    map.html              หน้าแผนที่รวมทุกแมตช์  -> output/index.html
+    rounds.html           หน้ารีวิวรายรอบ        -> output/rounds.html
+  static/               style.css, login.js, main.js, hero.png
 
 data/             all_kills.csv — ชุดคิล 7,270 แถวจาก 50 demo (อยู่ใน git ให้ผลซ้ำได้)
 assets/           ภาพเรดาร์ + ค่าปรับเทียบพิกัด (radars.json คือแหล่งความจริงแหล่งเดียว)
