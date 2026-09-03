@@ -1,0 +1,197 @@
+/* ==========================================================================
+   style.css — "เสื้อผ้า" ของเว็บ (CSS = บอกว่าแต่ละชิ้นหน้าตาเป็นยังไง)
+   ธีม: น้ำเงินเข้ม (พื้นหลัง) + ส้ม (ตัวเด่น/ปุ่ม)
+   ========================================================================== */
+
+/* :root = "กล่องเก็บสี" ของทั้งเว็บ ตั้งชื่อสีไว้ที่เดียว อยากเปลี่ยนธีมแก้แค่ตรงนี้ */
+:root {
+  --navy-900: #071230;   /* น้ำเงินเข้มสุด — ใช้เป็นพื้นหลังหลัก */
+  --navy-800: #0d1e45;   /* น้ำเงินเข้ม — พื้นหลังการ์ด */
+  --navy-700: #142c60;   /* น้ำเงินกลาง — เส้นขอบ/พื้นหลังรอง */
+  --blue-400: #4d8bff;   /* น้ำเงินสว่าง — ลิงก์ ตัวเลข */
+  --orange:   #ff7a18;   /* ส้ม — สีเด่นของแบรนด์ ปุ่มหลัก */
+  --orange-2: #ffa24c;   /* ส้มอ่อน — ไล่เฉดกับสีส้มหลัก */
+  --text:     #e9eefb;   /* สีตัวหนังสือหลัก (ขาวอมฟ้า) */
+  --muted:    #93a4c8;   /* สีตัวหนังสือรอง (จาง ๆ) ไว้ใส่คำอธิบาย */
+  --radius:   14px;      /* ความมนของมุมกล่อง ใช้ค่าเดียวกันทั้งเว็บจะดูเป็นชุดเดียวกัน */
+}
+
+/* * = "ทุกชิ้นบนหน้าเว็บ" — จับทุกอันมาตั้งกฎพื้นฐานพร้อมกัน */
+* {
+  box-sizing: border-box;   /* ให้ความกว้างที่กำหนด รวมขอบกับ padding เข้าไปด้วย จะได้ไม่ล้นกล่อง */
+  margin: 0;                /* ล้างระยะห่างที่เบราว์เซอร์แถมมาให้ ทุกอย่างเริ่มจากศูนย์ */
+}
+
+body {
+  min-height: 100vh;                       /* สูงอย่างน้อยเท่าจอ (vh = % ของความสูงจอ) */
+  font-family: "Segoe UI", system-ui, sans-serif;  /* ฟอนต์ ถ้าตัวแรกไม่มีก็ไล่ไปตัวถัดไป */
+  color: var(--text);                      /* var(--text) = หยิบสีที่ตั้งชื่อไว้ข้างบนมาใช้ */
+  background:                              /* พื้นหลัง 3 ชั้นซ้อนกัน (ชั้นบนสุดเขียนก่อน) */
+    radial-gradient(900px 500px at 15% -10%, rgba(255,122,24,.18), transparent 60%),  /* แสงส้มนวล ๆ มุมบนซ้าย */
+    radial-gradient(800px 500px at 90% 10%, rgba(77,139,255,.20), transparent 60%),   /* แสงน้ำเงินมุมบนขวา */
+    var(--navy-900);                                                                  /* พื้นน้ำเงินเข้มรองล่างสุด */
+}
+
+/* ---------- หน้าล็อกอิน ---------- */
+.login-wrap {
+  min-height: 100vh;          /* ใช้ความสูงเต็มจอ */
+  display: grid;              /* grid = จัดของแบบตาราง */
+  place-items: center;        /* จัดให้อยู่กลางทั้งแนวตั้งและแนวนอนในบรรทัดเดียว */
+  padding: 24px;              /* เว้นขอบรอบ ๆ กันเนื้อหาชนขอบจอบนมือถือ */
+}
+
+.card {
+  width: 100%;                     /* กว้างเต็มที่ที่มี... */
+  max-width: 430px;                /* ...แต่ไม่เกิน 430px (บนจอใหญ่จะได้ไม่ยืดจนอ่านยาก) */
+  background: rgba(13,30,69,.85);  /* น้ำเงินเข้มแบบโปร่งนิด ๆ ให้เห็นแสงพื้นหลังลอดผ่าน */
+  border: 1px solid var(--navy-700);   /* เส้นขอบบาง ๆ ให้การ์ดลอยออกจากพื้นหลัง */
+  border-radius: var(--radius);        /* มุมมน */
+  padding: 32px 28px;                  /* ระยะห่างข้างใน: บน-ล่าง 32px ซ้าย-ขวา 28px */
+  box-shadow: 0 20px 60px rgba(0,0,0,.45);  /* เงาใต้การ์ด ทำให้ดูลอย */
+  backdrop-filter: blur(6px);               /* เบลอสิ่งที่อยู่หลังการ์ด เหมือนกระจกฝ้า */
+}
+
+.logo {
+  display: flex;          /* flex = เรียงลูก ๆ ต่อกันเป็นแถว */
+  align-items: center;    /* จัดลูก ๆ ให้อยู่กึ่งกลางแนวตั้ง */
+  gap: 12px;              /* เว้นช่องว่างระหว่างลูกแต่ละตัว 12px */
+  margin-bottom: 22px;    /* เว้นใต้บล็อกนี้ก่อนขึ้นเนื้อหาถัดไป */
+}
+
+.logo-mark {
+  width: 46px; height: 46px;                                   /* กล่องสี่เหลี่ยมจัตุรัส 46x46 */
+  border-radius: 12px;                                         /* มุมมน */
+  background: linear-gradient(135deg, var(--orange), var(--orange-2));  /* ไล่สีส้มเฉียง 135 องศา */
+  display: grid; place-items: center;                          /* จัดตัวหนังสือข้างในไว้กลางกล่อง */
+  font-weight: 800; color: #22160a;                            /* ตัวหนามาก สีน้ำตาลเข้มให้อ่านชัดบนพื้นส้ม */
+}
+
+h1 { font-size: 22px; letter-spacing: .2px; }              /* หัวข้อใหญ่ + ถ่างตัวอักษรนิดหน่อยให้อ่านสบาย */
+.sub { color: var(--muted); font-size: 13px; margin-top: 3px; }  /* บรรทัดคำอธิบายใต้หัวข้อ ตัวเล็กสีจาง */
+
+/* ปุ่ม Steam สีส้ม (ปุ่มหลักของหน้า) */
+.btn-steam {
+  width: 100%;                    /* กว้างเต็มการ์ด กดง่ายบนมือถือ */
+  display: flex; align-items: center; justify-content: center; gap: 10px;  /* จัดไอคอน+ข้อความให้อยู่กลางปุ่ม */
+  padding: 14px 18px;             /* ทำให้ปุ่มสูงพอกดสบาย */
+  border: none;                   /* ไม่เอาเส้นขอบเริ่มต้นของปุ่ม */
+  border-radius: 12px;
+  background: linear-gradient(135deg, var(--orange), var(--orange-2));   /* ไล่สีส้ม */
+  color: #221305;                 /* ตัวหนังสือสีเข้มบนพื้นส้ม = อ่านชัด (contrast ดี) */
+  font-size: 15px; font-weight: 700;
+  cursor: pointer;                /* เอาเมาส์ชี้แล้วเป็นรูปมือ บอกว่า "กดได้นะ" */
+  transition: transform .12s ease, box-shadow .12s ease;   /* ให้การเปลี่ยนแปลงค่อย ๆ เกิดใน 0.12 วินาที ไม่กระตุก */
+  box-shadow: 0 10px 24px rgba(255,122,24,.28);            /* เงาสีส้มใต้ปุ่ม เหมือนปุ่มเรืองแสง */
+}
+.btn-steam:hover { transform: translateY(-2px); box-shadow: 0 14px 30px rgba(255,122,24,.38); }  /* :hover = ตอนเมาส์ชี้ ให้ปุ่มลอยขึ้น 2px */
+.btn-steam:active { transform: translateY(0); }            /* :active = ตอนกดค้าง ให้ยุบกลับ เหมือนปุ่มจริง */
+
+.divider {
+  display: flex; align-items: center; gap: 12px;   /* เส้น - ข้อความ - เส้น เรียงเป็นแถว */
+  color: var(--muted); font-size: 12px;
+  margin: 22px 0;                                  /* เว้นบน-ล่าง 22px ซ้าย-ขวา 0 */
+}
+.divider::before, .divider::after {   /* ::before/::after = สร้างของขึ้นมาใหม่หน้าและหลังข้อความ */
+  content: "";                        /* ต้องมี content ไม่งั้นมันไม่โผล่ */
+  flex: 1;                            /* flex:1 = "กินที่ว่างที่เหลือให้หมด" -> กลายเป็นเส้นยาว 2 ข้าง */
+  height: 1px; background: var(--navy-700);
+}
+
+label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 8px; }  /* block = ให้ป้ายอยู่คนละบรรทัดกับช่องกรอก */
+
+input[type="text"] {                 /* จับเฉพาะช่องกรอกข้อความ */
+  width: 100%;
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--navy-700);
+  background: rgba(7,18,48,.7);      /* พื้นในช่องเข้มกว่าการ์ด ให้รู้ว่าตรงนี้พิมพ์ได้ */
+  color: var(--text);
+  font-size: 14px;
+  outline: none;                     /* ปิดกรอบเริ่มต้นของเบราว์เซอร์ (เดี๋ยวเราวาดเองตอน :focus) */
+}
+input[type="text"]:focus { border-color: var(--orange); box-shadow: 0 0 0 3px rgba(255,122,24,.18); }  /* :focus = ตอนคลิกเข้าไปพิมพ์ ให้ขอบเป็นส้มเรืองแสง */
+
+.btn-ghost {                        /* ปุ่มรอง แบบโปร่ง ๆ ไม่แย่งซีนปุ่มหลัก */
+  margin-top: 12px;
+  width: 100%;
+  padding: 12px;
+  border-radius: 10px;
+  border: 1px solid var(--blue-400);
+  background: transparent;          /* พื้นใส */
+  color: var(--blue-400);
+  font-weight: 600;
+  cursor: pointer;
+}
+.btn-ghost:hover { background: rgba(77,139,255,.12); }   /* ชี้แล้วมีพื้นน้ำเงินจาง ๆ ขึ้นมา */
+
+.msg { margin-top: 14px; font-size: 13px; min-height: 18px; }  /* กล่องข้อความแจ้งเตือน (min-height กันหน้าเด้งตอนข้อความโผล่) */
+.msg.error { color: #ff8b7a; }    /* ผิดพลาด = แดงอมส้ม */
+.msg.ok { color: #6ee7a8; }       /* สำเร็จ = เขียว */
+.hidden { display: none; }        /* คลาสไว้ "ซ่อน" อะไรก็ได้ ฝั่ง JavaScript จะเติม/ถอดคลาสนี้ */
+
+/* ---------- หน้าหลัก ---------- */
+.topbar {
+  display: flex; align-items: center; justify-content: space-between;  /* ซ้ายสุด-ขวาสุด แล้วดันช่องว่างไว้ตรงกลาง */
+  padding: 14px 22px;
+  background: rgba(7,18,48,.75);
+  border-bottom: 2px solid var(--orange);   /* เส้นส้มใต้แถบบน = จุดเด่นของธีม */
+  position: sticky; top: 0; z-index: 10;    /* sticky = เลื่อนหน้าลงแล้วแถบนี้ยังหนึบอยู่ด้านบน */
+  backdrop-filter: blur(8px);
+}
+
+.user-box { display: flex; align-items: center; gap: 10px; }  /* รูป + ชื่อ + ปุ่มออก เรียงเป็นแถว */
+.avatar {
+  width: 36px; height: 36px; border-radius: 50%;   /* 50% = กลมสนิท */
+  border: 2px solid var(--orange);                 /* ขอบส้มรอบรูปโปรไฟล์ */
+  object-fit: cover;                               /* รูปไม่ยืดเบี้ยว ให้ครอปพอดีกรอบแทน */
+  background: var(--navy-700);                     /* สีรองตอนรูปยังโหลดไม่เสร็จ */
+}
+.badge {
+  font-size: 11px; padding: 3px 8px; border-radius: 999px;   /* 999px = มนจนกลายเป็นแคปซูล */
+  background: rgba(77,139,255,.18); color: var(--blue-400); border: 1px solid rgba(77,139,255,.35);
+}
+
+.container { max-width: 1080px; margin: 0 auto; padding: 26px 22px 60px; }  /* margin auto ซ้ายขวา = จัดเนื้อหาไว้กลางจอ */
+
+.hello { font-size: 26px; margin-bottom: 4px; }
+.hello span { color: var(--orange); }        /* เน้นชื่อผู้เล่นเป็นสีส้ม */
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));  /* ช่องละอย่างน้อย 210px เหลือที่ก็แบ่งเท่า ๆ กัน จอแคบจะตกบรรทัดเอง */
+  gap: 14px;
+  margin: 22px 0;
+}
+
+.stat {
+  background: var(--navy-800);
+  border: 1px solid var(--navy-700);
+  border-left: 4px solid var(--orange);    /* ขีดส้มหนา ๆ ด้านซ้ายของการ์ดตัวเลข */
+  border-radius: var(--radius);
+  padding: 16px 18px;
+}
+.stat .k { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .6px; }  /* ป้ายชื่อสถิติ ตัวเล็กพิมพ์ใหญ่ */
+.stat .v { font-size: 28px; font-weight: 800; margin-top: 6px; }                                     /* ตัวเลขใหญ่ ๆ ให้เห็นแต่ไกล */
+
+.panels { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 14px; }  /* 2 คอลัมน์บนจอกว้าง, 1 คอลัมน์บนมือถือ */
+
+.panel {
+  background: var(--navy-800);
+  border: 1px solid var(--navy-700);
+  border-radius: var(--radius);
+  padding: 18px;
+}
+.panel h2 { font-size: 15px; margin-bottom: 14px; color: var(--orange-2); }   /* หัวข้อในการ์ดเป็นสีส้มอ่อน */
+
+.bar-row { margin-bottom: 12px; }                                              /* แต่ละแถวของกราฟแท่ง */
+.bar-top { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 5px; }  /* ชื่อไว้ซ้าย ตัวเลขไว้ขวา */
+.bar-top .n { color: var(--muted); }
+.bar-bg { height: 9px; background: var(--navy-700); border-radius: 999px; overflow: hidden; }     /* รางของแท่ง (overflow:hidden = ตัดส่วนที่ล้นออก แท่งจะได้มนตามราง) */
+.bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--blue-400), var(--orange));  /* แท่งไล่สีจากน้ำเงิน (ซ้าย) ไปส้ม (ขวา) */
+  border-radius: 999px;
+  transition: width .5s ease;    /* ตอน JavaScript ใส่ความกว้าง แท่งจะค่อย ๆ ยืดออกใน 0.5 วินาที */
+}
+
+.foot { margin-top: 26px; color: var(--muted); font-size: 12px; text-align: center; }

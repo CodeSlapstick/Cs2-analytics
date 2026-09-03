@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<!-- DOCTYPE = บอกเบราว์เซอร์ว่า "ไฟล์นี้เป็น HTML ยุคใหม่นะ" ต้องอยู่บรรทัดแรกเสมอ -->
+<html lang="th">
+<!-- lang="th" = บอกว่าเนื้อหาเป็นภาษาไทย (ช่วยเรื่องฟอนต์และการอ่านออกเสียง) -->
+<head>
+  <!-- head = "ป้ายข้อมูล" ของหน้า ไม่แสดงให้คนเห็น แต่เบราว์เซอร์ต้องรู้ -->
+  <meta charset="UTF-8" />
+  <!-- charset=UTF-8 = ตารางรหัสตัวอักษร ถ้าไม่ใส่ ภาษาไทยจะกลายเป็นตัวประหลาด -->
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <!-- viewport = บอกมือถือว่า "ใช้ความกว้างจอจริง อย่าย่อหน้าเว็บให้เล็กจิ๋ว" -->
+  <title>เข้าสู่ระบบ · CS2 Analytics</title>
+  <!-- title = ชื่อที่โผล่บนแท็บเบราว์เซอร์ -->
+  <link rel="stylesheet" href="/static/style.css" />
+  <!-- link stylesheet = ดึงไฟล์เสื้อผ้า (CSS) เข้ามาใส่ให้หน้านี้ -->
+</head>
+
+<body>
+  <!-- body = ส่วนที่คนมองเห็นจริง ๆ -->
+  <div class="login-wrap">
+    <!-- div = "กล่องเปล่า" ไว้ห่อของ, class = ชื่อเรียกให้ CSS จับไปแต่งตัวได้ -->
+    <div class="card">
+      <!-- การ์ดล็อกอินสีน้ำเงินตรงกลางจอ -->
+
+      <div class="logo">
+        <div class="logo-mark">CS2</div>
+        <!-- กล่องสี่เหลี่ยมส้มที่มีตัวอักษร CS2 = โลโก้ -->
+        <div>
+          <h1>CS2 Team Analytics</h1>
+          <!-- h1 = หัวข้อใหญ่ที่สุดของหน้า มีได้หน้าละอันก็พอ -->
+          <div class="sub">วิเคราะห์สมรรถนะทีม Counter-Strike 2</div>
+        </div>
+      </div>
+
+      <button class="btn-steam" id="btnSteam">
+        <!-- button = ปุ่มกดได้, id = ชื่อเฉพาะตัวไว้ให้ JavaScript เรียกหา -->
+        <span>🎮</span>
+        <!-- span = กล่องเล็ก ๆ สำหรับห่อข้อความชิ้นเดียว (ไม่ขึ้นบรรทัดใหม่) -->
+        <span>เข้าสู่ระบบด้วย Steam</span>
+      </button>
+
+      <div class="divider" id="devDivider">หรือ</div>
+      <!-- เส้นคั่นที่มีคำว่า "หรือ" อยู่ตรงกลาง (เส้นสองข้างวาดด้วย CSS) -->
+
+      <div id="devBox">
+        <!-- กล่องโหมดทดสอบ ถ้าเซิร์ฟเวอร์ปิดโหมดนี้ JavaScript จะซ่อนกล่องนี้ให้ -->
+        <label for="steamid">โหมดทดสอบ — ใส่ SteamID64 เอง</label>
+        <!-- label for="steamid" = ผูกป้ายนี้กับช่องกรอกที่ id="steamid" คลิกที่ป้ายแล้วเคอร์เซอร์จะกระโดดเข้าช่อง -->
+        <input type="text" id="steamid" value="76561198283431555" placeholder="76561198xxxxxxxxx" />
+        <!-- value = ค่าที่เติมไว้ให้ตั้งแต่แรก, placeholder = ข้อความจาง ๆ ตอนช่องว่าง -->
+        <button class="btn-ghost" id="btnDev">เข้าใช้งานแบบทดสอบ</button>
+      </div>
+
+      <div class="msg" id="msg"></div>
+      <!-- กล่องว่าง ๆ ไว้ให้ JavaScript เอาข้อความแจ้งเตือนมาใส่ทีหลัง -->
+    </div>
+  </div>
+
+  <script src="/static/login.js"></script>
+  <!-- script = ดึงไฟล์ "สมอง" (JavaScript) เข้ามา วางไว้ล่างสุดเพื่อให้ HTML ข้างบนถูกสร้างเสร็จก่อน -->
+</body>
+</html>
