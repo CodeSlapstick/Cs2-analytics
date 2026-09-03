@@ -27,3 +27,7 @@ output/
 .env.local
 *.log
 .DS_Store
+
+# ค่าตั้งของ editor แต่ละคน ไม่ใช่ของโปรเจกต์
+.vscode/
+.idea/
