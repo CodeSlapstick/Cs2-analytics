@@ -25,5 +25,5 @@ _old/
 *.log
 .DS_Store
 
-# ชุดคิลที่ parse แล้ว 1.1 MB — ต้องเข้า git ไม่งั้น grid_ml.py รันไม่ได้ตอนโคลนใหม่
-!realparser/all_kills_25demos.csv
+# ชุดคิลที่ parse แล้ว 2.4 MB (49 แมตช์ Mirage) — ต้องเข้า git ไม่งั้น grid_ml.py รันไม่ได้ตอนโคลนใหม่
+!realparser/all_kills.csv

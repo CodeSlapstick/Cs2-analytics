@@ -1,0 +1,50 @@
+# PostgreSQL สำหรับ CS2 Map Zone Analytics
+#
+#   docker compose up -d db          # เปิดฐานข้อมูล (ครั้งแรกจะสร้างตารางจาก db/schema.sql ให้เอง)
+#   python db/load_kills.py          # โหลดชุดคิลจาก csv เข้า db
+#   docker compose exec db psql -U cs2 -d cs2 -f /queries.sql    # ลอง query ตัวอย่าง
+#   docker compose down              # ปิด (ข้อมูลยังอยู่)
+#   docker compose down -v           # ปิดแล้วลบข้อมูลทิ้ง ใช้ตอนแก้ schema.sql
+#
+# รหัสผ่านดีฟอลต์ตั้งไว้ง่าย ๆ เพราะพอร์ตเปิดแค่ในเครื่องตัวเอง
+# ถ้าจะเอาขึ้นเครื่องจริง ให้ก๊อป .env.example เป็น .env แล้วเปลี่ยนค่า
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: cs2-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-cs2}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-cs2}
+      POSTGRES_DB: ${POSTGRES_DB:-cs2}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      # schema.sql รันอัตโนมัติ "เฉพาะตอน volume ว่าง" เท่านั้น
+      - ./db/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+      - ./db/queries.sql:/queries.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-cs2} -d ${POSTGRES_DB:-cs2}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  # ตัวรันสคริปต์ Python สำหรับคนที่ไม่อยากลง Python ในเครื่อง
+  #   docker compose run --rm tools python db/load_kills.py
+  #   docker compose run --rm tools python realparser/grid_ml.py
+  tools:
+    build: .
+    profiles: ["tools"]          # ไม่ถูกสร้างตอน `up` ปกติ ต้องเรียกด้วย `run` เท่านั้น
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      # ในเครือข่ายของ compose ชื่อโฮสต์ของฐานข้อมูลคือ db ไม่ใช่ localhost
+      DATABASE_URL: postgresql://${POSTGRES_USER:-cs2}:${POSTGRES_PASSWORD:-cs2}@db:5432/${POSTGRES_DB:-cs2}
+    volumes:
+      - ./output:/app/output
+
+volumes:
+  pgdata:

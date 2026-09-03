@@ -1,0 +1,1109 @@
+<!--
+  หน้ารีวิวรายรอบ — เทมเพลต ห้ามเปิดตรง ๆ
+
+  ไม่มีข้อมูลในตัว มีที่ว่างสองจุดคือ __PAYLOAD__ กับ __RADAR__
+  ต้องรัน  python frontend/build.py rounds  ก่อน จึงจะได้ output/rounds.html ที่เปิดได้
+
+  ขอบเขตของหน้านี้
+    เป็น mockup ของขั้นตอน "อัปโหลดเดโมแล้วไล่ดูทีละรอบ"
+    การ parse .dem จริงเกิดที่ฝั่ง Python (realparser/round_review.py) ไม่ใช่ในเบราว์เซอร์
+    ไฟล์ที่ผู้ใช้ลากมาวางจึงยังไม่ถูกอ่าน — หน้าจะบอกตรง ๆ แล้วแสดงแมตช์ตัวอย่างแทน
+-->
+<title>Mirage Round Review</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Anuphan:wght@400;500;600&family=Chakra+Petch:wght@600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+
+<style>
+/* ---------------------------------------------------------------------------
+   โทเคนชุดเดียวกับหน้าแผนที่รวม เพื่อให้สองหน้าดูเป็นของชิ้นเดียวกัน
+   นิยาม light ที่ :root ให้ครบก่อน แล้วค่อยทับเฉพาะตัวที่ต่างในโหมดมืด
+   --------------------------------------------------------------------------- */
+:root {
+  color-scheme: light;
+
+  --ground:        #f4f3ef;
+  --surface:       #fcfcfb;
+  --surface-sunk:  #edece6;
+  --ink:           #0b0b0b;
+  --ink-2:         #52514e;
+  --ink-3:         #898781;
+  --rule:          #dedcd3;
+  --accent:        #8a6a26;
+  --accent-soft:   #f0e6cf;
+  --focus:         #a8823c;
+
+  /* สองทีมคือ "ตัวตน" ไม่ใช่ปริมาณ จึงใช้สองสีจากชุด categorical
+     ส่วนฝั่ง CT/T ในหน้านี้ไม่ใช้สีเลย ใช้ป้ายตัวอักษรแทน
+     ถ้าให้สีทำงานสองความหมายพร้อมกัน คนอ่านจะแยกไม่ออกว่าสีนั้นหมายถึงอะไร */
+  --us:            #2a78d6;
+  --them:          #eb6834;
+
+  --plate:         #0c0c0b;
+  --plate-ink:     #f2f1ec;
+  --plate-ink-2:   #a3a199;
+  --plate-rule:    #2e2e2b;
+  --us-plate:      #3987e5;
+  --them-plate:    #d95926;
+
+  --shadow: 0 1px 2px rgba(11,11,11,.05), 0 8px 24px -12px rgba(11,11,11,.18);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --ground:       #111110;
+    --surface:      #1a1a19;
+    --surface-sunk: #232321;
+    --ink:          #ffffff;
+    --ink-2:        #c3c2b7;
+    --ink-3:        #898781;
+    --rule:         #2c2c2a;
+    --accent:       #d8ab52;
+    --accent-soft:  #33291490;
+    --focus:        #d8ab52;
+    --us:           #3987e5;
+    --them:         #d95926;
+    --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 24px -12px rgba(0,0,0,.7);
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --ground:       #111110;
+  --surface:      #1a1a19;
+  --surface-sunk: #232321;
+  --ink:          #ffffff;
+  --ink-2:        #c3c2b7;
+  --ink-3:        #898781;
+  --rule:         #2c2c2a;
+  --accent:       #d8ab52;
+  --accent-soft:  #33291490;
+  --focus:        #d8ab52;
+  --us:           #3987e5;
+  --them:         #d95926;
+  --shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 24px -12px rgba(0,0,0,.7);
+}
+
+* { box-sizing: border-box; }
+/* ต้องมาก่อนคลาสที่ตั้ง display เอง ไม่งั้น [hidden] แพ้ แล้วฉากที่ซ่อนไว้จะยังโผล่อยู่ */
+[hidden] { display: none !important; }
+
+body {
+  margin: 0;
+  background: var(--ground);
+  color: var(--ink);
+  font-family: Anuphan, "Segoe UI", system-ui, sans-serif;
+  font-size: 15px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+h1, h2, h3, .eyebrow, .seg button, .score, .rnum { font-family: "Chakra Petch", Anuphan, "Segoe UI", system-ui, sans-serif; }
+.num, .mono, table { font-family: "IBM Plex Mono", ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+
+.page { max-width: 1240px; margin: 0 auto; padding: 40px 24px 72px; display: flex; flex-direction: column; gap: 24px; }
+.eyebrow { font-size: 11px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; color: var(--accent); }
+:where(button, input, a, [tabindex], summary):focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: 4px; }
+.card { background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; }
+h3 { margin: 0 0 12px; font-size: 13px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); font-weight: 600; }
+
+/* ===== ฉาก 1: อัปโหลด ===================================================== */
+.upload-wrap { min-height: 72vh; display: flex; flex-direction: column; justify-content: center; gap: 22px; max-width: 640px; margin: 0 auto; }
+.upload-wrap h1 { margin: 0; font-size: clamp(28px, 4vw, 40px); font-weight: 700; line-height: 1.15; text-wrap: balance; }
+.upload-wrap .lede { margin: 0; color: var(--ink-2); }
+
+.drop {
+  display: flex; flex-direction: column; align-items: center; gap: 10px;
+  padding: 44px 28px; text-align: center; cursor: pointer;
+  background: var(--surface); border: 1.5px dashed var(--rule); border-radius: 14px;
+  transition: border-color .15s ease, background .15s ease;
+}
+.drop:hover, .drop.over { border-color: var(--focus); background: var(--accent-soft); }
+.drop .big { font-size: 17px; font-weight: 600; font-family: "Chakra Petch", Anuphan, sans-serif; }
+.drop .small { font-size: 13px; color: var(--ink-3); }
+.drop input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+
+.or { display: flex; justify-content: center; }
+.steps { display: flex; flex-direction: column; gap: 9px; padding: 18px 20px; }
+.step { display: grid; grid-template-columns: 18px 1fr auto; gap: 10px; align-items: center; font-size: 14px; color: var(--ink-3); }
+.step .mark { font-family: "IBM Plex Mono", monospace; font-size: 13px; }
+.step.doing { color: var(--ink); }
+.step.done { color: var(--ink-2); }
+.step.done .mark { color: var(--accent); }
+.meter { height: 4px; border-radius: 2px; background: var(--surface-sunk); overflow: hidden; margin-top: 4px; }
+.meter i { display: block; height: 100%; background: var(--accent); width: 0; transition: width .35s ease; }
+
+.note { font-size: 13px; color: var(--ink-2); background: var(--surface-sunk); border-radius: 8px; padding: 12px 14px; }
+.note b { color: var(--ink); font-weight: 600; }
+
+/* ===== ฉาก 2: รีวิว ======================================================= */
+.matchbar { display: flex; flex-wrap: wrap; gap: 18px 26px; align-items: center; justify-content: space-between; padding: 16px 20px; }
+.teams { display: flex; align-items: center; gap: 14px; }
+.team { display: flex; align-items: baseline; gap: 9px; }
+.team .swatch { width: 10px; height: 10px; border-radius: 2px; align-self: center; }
+.team .name { font-size: 17px; font-weight: 600; }
+.score { font-size: 30px; font-weight: 700; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.score .sep { color: var(--ink-3); margin: 0 6px; font-weight: 600; }
+.matchmeta { display: flex; flex-wrap: wrap; gap: 6px 18px; align-items: center; font-size: 13px; color: var(--ink-2); }
+.matchmeta .mono { color: var(--ink-3); }
+
+.seg { display: flex; background: var(--surface-sunk); border-radius: 8px; padding: 3px; gap: 3px; }
+.seg button { border: 0; background: transparent; color: var(--ink-2); font-size: 13.5px; font-weight: 600; padding: 6px 13px; border-radius: 6px; cursor: pointer; min-height: 32px; }
+.seg button:hover { color: var(--ink); }
+.seg button[aria-pressed="true"] { background: var(--surface); color: var(--ink); box-shadow: var(--shadow); }
+.ghost { border: 1px solid var(--rule); background: var(--surface); color: var(--ink-2); font: inherit; font-size: 13.5px; padding: 6px 13px; border-radius: 8px; cursor: pointer; min-height: 32px; }
+.ghost:hover { color: var(--ink); border-color: var(--ink-3); }
+
+/* --- แถบรอบ --- */
+.rail-wrap { padding: 14px 18px 16px; display: flex; flex-direction: column; gap: 10px; }
+.rail-head { display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: baseline; }
+.rail-head h3 { margin: 0; }
+.rail-legend { display: flex; gap: 14px; font-size: 12.5px; color: var(--ink-2); margin-left: auto; }
+.rail-legend span { display: flex; align-items: center; gap: 6px; }
+.rail-legend i { width: 12px; height: 4px; border-radius: 2px; }
+.rail { display: flex; gap: 4px; overflow-x: auto; padding-bottom: 4px; }
+.half-gap { flex: none; width: 1px; background: var(--rule); margin: 2px 8px; }
+.chip {
+  flex: none; width: 42px; padding: 6px 0 0; border: 1px solid transparent; background: var(--surface-sunk);
+  border-radius: 7px; cursor: pointer; font: inherit; color: var(--ink-2);
+  display: flex; flex-direction: column; align-items: center; gap: 5px;
+}
+.chip:hover { color: var(--ink); border-color: var(--ink-3); }
+.chip .rnum { font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.chip .side { font-size: 9.5px; letter-spacing: .1em; color: var(--ink-3); }
+.chip .res { width: 100%; height: 5px; border-radius: 0 0 6px 6px; }
+.chip[aria-current="true"] { background: var(--surface); border-color: var(--ink); color: var(--ink); box-shadow: var(--shadow); }
+
+/* --- พื้นที่ดูรอบ --- */
+.work { display: grid; gap: 20px; grid-template-columns: minmax(0, 1.35fr) minmax(300px, 1fr); align-items: start; }
+@media (max-width: 940px) { .work { grid-template-columns: 1fr; } }
+
+.plate { margin: 0; position: relative; aspect-ratio: 1; background: var(--plate); border: 1px solid var(--rule); border-radius: 12px; overflow: hidden; box-shadow: var(--shadow); }
+.plate img, .plate svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.plate img { opacity: .95; }
+.duel { cursor: pointer; }
+.duel .link { stroke-linecap: round; fill: none; }
+.duel .victim { stroke: var(--plate); stroke-width: 2; }
+.duel .shooter { fill: none; stroke-width: 2.5; }
+.duel .seq { fill: var(--plate-ink); font-family: "IBM Plex Mono", monospace; font-size: 15px; font-weight: 600; text-anchor: middle; pointer-events: none; }
+.duel.dim { opacity: .22; }
+.empty { fill: var(--plate-ink-2); font-family: Anuphan, sans-serif; font-size: 30px; text-anchor: middle; }
+
+/* การดวลที่เพิ่งโผล่ตอนกดเล่น: เส้นลากจากคนยิงไปหาศพ แล้วหมุดค่อยเด้งขึ้น
+   ลำดับนี้สื่อทิศทางของกระสุน ถ้าโผล่มาพร้อมกันหมดจะอ่านไม่ออกว่าใครยิงใคร */
+.duel .link { stroke-dashoffset: 0; }
+.duel.enter { animation: duel-in .18s ease-out both; }
+.duel.enter .link { animation: duel-draw .34s ease-out both; }
+.duel.enter .victim { animation: duel-pop .3s .2s ease-out both; }
+.duel.enter .seq { animation: duel-in .2s .34s ease-out both; }
+@keyframes duel-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes duel-draw { from { stroke-dashoffset: var(--len); } to { stroke-dashoffset: 0; } }
+@keyframes duel-pop { from { r: 0; } to { r: 11; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .duel.enter, .duel.enter .link, .duel.enter .victim, .duel.enter .seq { animation: none; }
+}
+
+/* --- คำอธิบายรอบ --- */
+.story { padding: 14px 16px 16px; border-top: 1px solid var(--rule); }
+.story p { margin: 0 0 7px; font-size: 14px; line-height: 1.65; }
+.story p:last-child { margin-bottom: 0; }
+.story b { font-weight: 600; }
+.story .us { color: var(--us); font-weight: 600; }
+.story .them { color: var(--them); font-weight: 600; }
+
+/* กราฟโอกาสชนะรอบวางชิดบนแถบเลื่อนเวลา แกนนอนเป็นแกนเดียวกัน
+   ตำแหน่งซ้าย-ขวาบนกราฟจึงตรงกับหัวลากเป๊ะ ๆ อ่านคู่กันได้โดยไม่ต้องเทียบเอง */
+.wp-head { display: flex; align-items: baseline; gap: 10px; padding: 12px 16px 0; font-size: 13px; color: var(--ink-2); }
+.wp-head b { color: var(--ink); font-weight: 600; }
+.wp-now { margin-left: auto; font-family: "IBM Plex Mono", monospace; font-size: 17px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.wp-chart { display: block; width: 100%; height: 116px; padding: 6px 8px 0; }
+.wp-none { padding: 12px 16px; font-size: 13px; color: var(--ink-3); }
+.scrub { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; padding: 12px 16px; }
+.scrub button { flex: none; width: 36px; height: 36px; border-radius: 8px; border: 1px solid var(--rule); background: var(--surface); color: var(--ink); cursor: pointer; font-size: 13px; line-height: 1; }
+.scrub button:hover { border-color: var(--ink-3); }
+.scrub .track { flex: 1; display: flex; flex-direction: column; gap: 2px; }
+.scrub input[type="range"] { width: 100%; height: 18px; margin: 0; accent-color: var(--focus); }
+/* จุดคิลอยู่ชั้นบนของราง ระยะซ้าย-ขวาคำนวณด้วยสูตรเดียวกับหัวลากของ input
+   (เผื่อขอบข้างละครึ่งหัวลาก) จุดจึงตรงกับตำแหน่งที่ลากไปหยุดจริง */
+.scrub .ticks { position: relative; height: 12px; margin: 0 8px; }
+.scrub .ticks i { position: absolute; bottom: 0; width: 3px; height: 9px; border-radius: 2px; transform: translateX(-1.5px); }
+.scrub .ticks b { position: absolute; bottom: 0; width: 2px; height: 12px; background: var(--ink); transform: translateX(-1px); }
+.scrub .t { flex: none; font-size: 13.5px; color: var(--ink-2); min-width: 9ch; text-align: right; }
+.scrub-key { flex-basis: 100%; margin: 0; font-size: 12px; color: var(--ink-3); }
+
+/* --- ราง: สรุปรอบ + ฟีดคิล --- */
+.rail-col { display: flex; flex-direction: column; gap: 16px; }
+.rhead { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; padding: 16px 16px 0; }
+.rhead .big { font-size: 22px; font-weight: 700; font-family: "Chakra Petch", Anuphan, sans-serif; }
+.pill { font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 999px; letter-spacing: .04em; }
+.pill.win { background: var(--us); color: #fff; }
+.pill.loss { background: var(--them); color: #fff; }
+.pill.side { background: var(--surface-sunk); color: var(--ink-2); font-family: "IBM Plex Mono", monospace; }
+.rmeta { margin: 0; padding: 12px 16px 16px; display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; align-items: baseline; }
+.rmeta dt { font-size: 13px; color: var(--ink-2); }
+.rmeta dd { margin: 0; text-align: right; font-weight: 600; font-size: 13.5px; }
+
+.feed { max-height: 340px; overflow-y: auto; }
+.feed-row {
+  display: grid; grid-template-columns: 4.5ch 1fr auto; gap: 10px; align-items: baseline;
+  width: 100%; text-align: left; font: inherit; background: none; border: 0; border-top: 1px solid var(--rule);
+  padding: 8px 16px; cursor: pointer; color: inherit;
+}
+.feed-row:first-child { border-top: 0; }
+.feed-row:hover, .feed-row.lit { background: var(--surface-sunk); }
+.feed-row.future { opacity: .38; }
+.feed-row .tm { font-family: "IBM Plex Mono", monospace; font-size: 12.5px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.feed-row .who { font-size: 13.5px; }
+.feed-row .who .k { font-weight: 600; }
+.feed-row .who .arrow { color: var(--ink-3); margin: 0 5px; }
+.feed-row .who .v { color: var(--ink-2); }
+.feed-row .wp { font-family: "IBM Plex Mono", monospace; font-size: 12px; color: var(--ink-3); }
+.feed-row .hs { color: var(--accent); font-weight: 600; }
+
+/* --- ตารางผู้เล่น --- */
+.table-scroll { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+th, td { padding: 9px 16px; text-align: right; border-bottom: 1px solid var(--rule); white-space: nowrap; }
+th:first-child, td:first-child { text-align: left; }
+th { font-size: 11px; letter-spacing: .07em; text-transform: uppercase; color: var(--ink-3); font-weight: 600; font-family: Anuphan, sans-serif; }
+tbody tr:last-child td { border-bottom: 0; }
+td .swatch { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 9px; }
+td.name { font-family: "IBM Plex Mono", monospace; font-weight: 500; }
+
+footer { border-top: 1px solid var(--rule); padding-top: 20px; color: var(--ink-2); font-size: 13.5px; }
+footer p { margin: 0 0 8px; max-width: 78ch; }
+footer code { font-family: "IBM Plex Mono", monospace; font-size: .92em; background: var(--surface-sunk); padding: 1px 5px; border-radius: 4px; }
+
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<div class="page">
+
+  <!-- ================= ฉาก 1: อัปโหลด ================= -->
+  <section class="upload-wrap" id="stage-upload">
+    <div>
+      <div class="eyebrow">SP-404 Senior Project · UTCC STECH</div>
+      <h1>อัปโหลดเดโม แล้วไล่ดูว่าแต่ละรอบเป็นยังไง</h1>
+    </div>
+    <p class="lede">
+      วางไฟล์ <code>.dem</code> ของแมตช์ที่เพิ่งเล่นจบ ระบบจะแยกออกมาเป็นรายรอบ
+      ให้ดูว่ารอบไหนชนะเพราะอะไร เปิดหัวได้หรือเสียหัว และการดวลแต่ละครั้งเกิดตรงไหนบนแมพ
+    </p>
+
+    <label class="drop" id="drop">
+      <span class="big">ลากไฟล์ .dem มาวางตรงนี้</span>
+      <span class="small">หรือคลิกเพื่อเลือกไฟล์ · รองรับเดโม CS2 จาก HLTV, FACEIT หรือในเกม</span>
+      <input type="file" id="file" accept=".dem">
+    </label>
+
+    <div class="or">
+      <button type="button" class="ghost" id="sample">ดูแมตช์ตัวอย่างเลย — Vitality vs Legacy · Mirage</button>
+    </div>
+
+    <div class="card steps" id="steps" hidden></div>
+
+    <p class="note">
+      <b>นี่คือ mockup ของขั้นตอน</b> — การอ่านไฟล์ <code>.dem</code> จริงทำที่ฝั่ง Python
+      (<code>realparser/round_review.py</code>) ไม่ได้ทำในเบราว์เซอร์ ไฟล์ที่ลากมาวางจึงยังไม่ถูกอ่าน
+      หน้านี้จะแสดงแมตช์ตัวอย่างที่ parse ไว้ล่วงหน้าแทน เพื่อให้เห็นว่าหน้าตาปลายทางเป็นยังไง
+    </p>
+  </section>
+
+  <!-- ================= ฉาก 2: รีวิว ================= -->
+  <main id="stage-review" hidden>
+    <div class="page" style="padding: 0; gap: 20px;">
+
+      <p class="note" id="fake-note" hidden></p>
+
+      <div class="card matchbar">
+        <div class="teams">
+          <div class="team">
+            <span class="swatch" id="sw-us"></span>
+            <span class="name" id="name-us">—</span>
+          </div>
+          <div class="score"><span id="sc-us">0</span><span class="sep">–</span><span id="sc-them">0</span></div>
+          <div class="team">
+            <span class="swatch" id="sw-them"></span>
+            <span class="name" id="name-them">—</span>
+          </div>
+        </div>
+        <div class="matchmeta">
+          <span id="meta-map" class="mono">—</span>
+          <span id="meta-file" class="mono">—</span>
+          <span id="meta-rounds">—</span>
+        </div>
+        <div class="matchmeta">
+          <span>ทีมของเรา</span>
+          <div class="seg" id="team-seg" role="group" aria-label="เลือกทีมของเรา"></div>
+          <button type="button" class="ghost" id="again">เปลี่ยนไฟล์</button>
+        </div>
+      </div>
+
+      <nav class="card rail-wrap" aria-label="เลือกรอบ">
+        <div class="rail-head">
+          <h3>รอบทั้งหมด</h3>
+          <div class="rail-legend">
+            <span><i id="lg-us"></i> ทีมเราชนะรอบ</span>
+            <span><i id="lg-them"></i> อีกฝั่งชนะรอบ</span>
+          </div>
+        </div>
+        <div class="rail" id="rail"></div>
+      </nav>
+
+      <div class="work">
+        <div style="display:flex; flex-direction:column; gap:12px;">
+          <figure class="plate" id="plate">
+            <img id="radar" alt="แผนที่เรดาร์" src="__RADAR__">
+            <svg id="duels" viewBox="0 0 1024 1024" aria-label="ตำแหน่งการดวลในรอบที่เลือก"></svg>
+          </figure>
+          <div class="card">
+            <div class="wp-head">
+              <span>โอกาสชนะรอบของ <b id="wp-team">—</b></span>
+              <span class="wp-now num" id="wp-now">—</span>
+            </div>
+            <canvas class="wp-chart" id="wpchart"></canvas>
+            <div class="scrub">
+            <button type="button" id="play" aria-label="เล่นไทม์ไลน์ของรอบ">▶</button>
+            <div class="track">
+              <div class="ticks" id="ticks"></div>
+              <input type="range" id="time" min="0" max="100" step="0.1" value="100" aria-label="เวลาในรอบ">
+            </div>
+            <span class="t num" id="tlabel">—</span>
+          </div>
+            <p class="scrub-key">ขีดบนราง = เวลาที่เกิดคิล สีตามทีมที่ยิง · ขีดดำ = ตอนปักระเบิด</p>
+            </div>
+          </div>
+
+        <div class="rail-col">
+          <div class="card">
+            <div class="rhead">
+              <span class="big" id="r-title">รอบ —</span>
+              <span class="pill" id="r-result">—</span>
+              <span class="pill side" id="r-side">—</span>
+            </div>
+            <dl class="rmeta" id="r-meta"></dl>
+            <div class="story" id="r-story"></div>
+          </div>
+          <div class="card">
+            <h3 style="padding: 16px 16px 0; margin: 0 0 4px;">ลำดับการดวล</h3>
+            <div class="feed" id="feed"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3 style="padding: 16px 16px 0; margin: 0;">สถิติรายคนทั้งแมตช์</h3>
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr><th>ผู้เล่น</th><th>ทีม</th><th>K</th><th>D</th><th>+/−</th><th>HS%</th></tr>
+            </thead>
+            <tbody id="players"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <footer>
+        <p>
+          <b>เวลาในรอบนับจากหมด freeze time</b> ไม่ใช่จากตอนเริ่มโหลดรอบ และตัดการตายที่ไม่ใช่การดวล
+          (ตกที่สูง ฆ่าตัวตาย ตายก่อนรอบเริ่ม) ออกแล้ว รอบหนึ่งจึงมีคิลได้ไม่เกิน 10 ครั้ง
+        </p>
+        <p>
+          ฝั่ง CT/T สลับกันตอนครึ่งหลัง หน้านี้จึงยึด<b>ชื่อทีม</b>เป็นหลักแทนที่จะยึดฝั่ง
+          สลับ “ทีมของเรา” ได้ตลอดโดยตัวเลขทุกช่องคำนวณใหม่ให้
+        </p>
+        <p>สร้างจาก <code>realparser/round_review.py</code> → <code>frontend/build.py rounds</code></p>
+      </footer>
+    </div>
+  </main>
+</div>
+
+<script>
+"use strict";
+const DATA = __PAYLOAD__;
+
+const $ = id => document.getElementById(id);
+const R = DATA.radar;
+const NS = "http://www.w3.org/2000/svg";
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+
+/* พิกัดในเกม -> พิกเซลบนภาพเรดาร์ ตามค่าปรับเทียบใน assets/radars.json */
+const gx = X => (X - R.pos_x) / R.scale;
+const gy = Y => (R.pos_y - Y) / R.scale;
+
+let ours = DATA.clans[0];
+let theirs = DATA.clans[1];
+let sel = 0;             // index ของรอบที่เลือกอยู่
+let tNow = Infinity;     // เวลาในรอบที่ scrub ไปถึง (Infinity = ทั้งรอบ)
+let playing = null;
+
+/* ===========================================================================
+   ฉาก 1 -> ฉาก 2
+   ขั้นตอนที่ไล่ทีละบรรทัดเป็นการ "แสดง" ลำดับงานจริงของ round_review.py
+   ไม่ได้อ่านไฟล์จริง จึงเขียนบอกไว้ตรง ๆ ในหน้า ไม่ทำเป็นเหมือนของจริงเงียบ ๆ
+   =========================================================================== */
+const STEPS = [
+  ["อ่าน header ของเดโม", 420],
+  ["ดึง event: player_death, round_*, bomb_*", 900],
+  ["ประกอบขอบเขตของแต่ละรอบ", 520],
+  ["จับคู่คิลเข้ารอบ แล้วคิดเวลาในรอบ", 480],
+];
+
+function runFakeParse(filename) {
+  const box = $("steps");
+  box.hidden = false;
+  box.replaceChildren();
+
+  const rows = STEPS.map(([label]) => {
+    const d = document.createElement("div");
+    d.className = "step";
+    const m = document.createElement("span"); m.className = "mark"; m.textContent = "·";
+    const t = document.createElement("span"); t.textContent = label;
+    const s = document.createElement("span"); s.className = "mark"; s.textContent = "";
+    d.append(m, t, s);
+    box.appendChild(d);
+    return { row: d, mark: m, right: s };
+  });
+
+  const meter = document.createElement("div"); meter.className = "meter";
+  const bar = document.createElement("i"); meter.appendChild(bar);
+  box.appendChild(meter);
+
+  let i = 0;
+  const tick = () => {
+    if (i > 0) {
+      rows[i - 1].row.className = "step done";
+      rows[i - 1].mark.textContent = "✓";
+      rows[i - 1].right.textContent = "";
+    }
+    if (i >= rows.length) {
+      bar.style.width = "100%";
+      setTimeout(() => enterReview(filename), 260);
+      return;
+    }
+    rows[i].row.className = "step doing";
+    rows[i].mark.textContent = "→";
+    bar.style.width = ((i + 1) / rows.length * 100) + "%";
+    setTimeout(tick, STEPS[i++][1]);
+  };
+  tick();
+}
+
+function enterReview(filename) {
+  $("stage-upload").hidden = true;
+  $("stage-review").hidden = false;
+  const note = $("fake-note");
+  if (filename) {
+    note.hidden = false;
+    note.replaceChildren();
+    const b = document.createElement("b");
+    b.textContent = "ไฟล์ " + filename + " ยังไม่ได้ถูก parse จริง";
+    note.append(b, document.createTextNode(
+      " — mockup นี้แสดงแมตช์ตัวอย่างที่ parse ไว้ล่วงหน้าด้วย realparser/round_review.py แทน"));
+  } else {
+    note.hidden = true;
+  }
+  render();
+  window.scrollTo({ top: 0, behavior: "instant" });
+}
+
+$("file").addEventListener("change", e => {
+  const f = e.target.files[0];
+  if (f) runFakeParse(f.name);
+});
+["dragenter", "dragover"].forEach(t => $("drop").addEventListener(t, e => {
+  e.preventDefault(); $("drop").classList.add("over");
+}));
+["dragleave", "drop"].forEach(t => $("drop").addEventListener(t, e => {
+  e.preventDefault(); $("drop").classList.remove("over");
+}));
+$("drop").addEventListener("drop", e => {
+  const f = e.dataTransfer.files[0];
+  if (f) runFakeParse(f.name);
+});
+$("again").addEventListener("click", () => {
+  stopPlay();
+  $("stage-review").hidden = true;
+  $("stage-upload").hidden = false;
+  $("steps").hidden = true;
+  $("file").value = "";
+});
+
+/* ===========================================================================
+   ตัวช่วยที่ขึ้นกับว่าใครคือ "ทีมเรา" — ข้อมูลดิบเก็บเป็นชื่อทีมล้วน
+   ตัวเลขทุกช่องจึงคำนวณใหม่ได้ทันทีที่สลับทีม ไม่ต้อง parse ใหม่
+   =========================================================================== */
+const won = r => r.winner_clan === ours;
+const ourSide = r => (r.ct_clan === ours ? "ct" : "t");
+const fmt = s => s.toFixed(1) + " วิ";
+
+/* ===========================================================================
+   แถบรอบ
+   =========================================================================== */
+function renderRail() {
+  const rail = $("rail");
+  rail.replaceChildren();
+  DATA.rounds.forEach((r, i) => {
+    // ครึ่งหลังเริ่มตรงที่ฝั่งของทีมเราเปลี่ยน — คั่นเส้นให้เห็นว่าสลับข้างตรงไหน
+    if (i > 0 && ourSide(r) !== ourSide(DATA.rounds[i - 1])) {
+      const gap = document.createElement("div");
+      gap.className = "half-gap";
+      rail.appendChild(gap);
+    }
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "chip";
+    b.setAttribute("aria-current", String(i === sel));
+    b.setAttribute("aria-label", "รอบ " + r.n + " " + (won(r) ? "ชนะ" : "แพ้"));
+
+    const n = document.createElement("span"); n.className = "rnum"; n.textContent = r.n;
+    const s = document.createElement("span"); s.className = "side"; s.textContent = ourSide(r).toUpperCase();
+    const res = document.createElement("span"); res.className = "res";
+    res.style.background = won(r) ? css("--us") : css("--them");
+
+    b.append(n, s, res);
+    b.addEventListener("click", () => select(i));
+    b.addEventListener("keydown", e => {
+      const d = { ArrowLeft: -1, ArrowRight: 1 }[e.key];
+      if (!d) return;
+      e.preventDefault();
+      const j = Math.min(DATA.rounds.length - 1, Math.max(0, i + d));
+      select(j);
+      rail.querySelectorAll(".chip")[j].focus();
+    });
+    rail.appendChild(b);
+  });
+  rail.querySelectorAll(".chip")[sel]?.scrollIntoView({ block: "nearest", inline: "center" });
+}
+
+/* ===========================================================================
+   แผนที่ของรอบที่เลือก — หนึ่งการดวลคือเส้นจากคนยิงไปหาศพ
+   เส้นบอกทิศและระยะ ปลายทึบคือคนตาย วงกลมกลวงคือคนยิง
+   สีบอกว่าใครเป็นคนยิง ตัวเลขบอกลำดับก่อนหลังในรอบ
+
+   ไม่วาดหมุดจุดปักระเบิดลงแผนที่ เพราะข้อมูลมีแค่ "ไซต์ไหน" กับ "วินาทีที่เท่าไร"
+   ไม่มีพิกัดจริง ถ้าเดาตำแหน่งวางเองจะกลายเป็นข้อมูลปลอมบนแผนที่
+   =========================================================================== */
+let duelEls = [];        // <g> ของการดวลทุกครั้งในรอบ เรียงตามลำดับเวลา
+
+/* วาดครั้งเดียวต่อรอบ แล้วค่อยเปิด-ปิดตามเวลา
+   เดิมวาดใหม่ทั้งชุดทุก 100ms ตอนกดเล่น ซึ่งนอกจากเปลือง ยังทำให้ใส่ animation ไม่ได้เลย
+   เพราะ element ถูกสร้างใหม่ทุกเฟรม การเปลี่ยนผ่านจึงไม่มีวันเริ่ม */
+function buildMap() {
+  const svg = $("duels");
+  svg.replaceChildren();
+  duelEls = [];
+  const r = DATA.rounds[sel];
+
+  const empty = document.createElementNS(NS, "text");
+  empty.setAttribute("class", "empty");
+  empty.setAttribute("x", R.size / 2);
+  empty.setAttribute("y", R.size / 2);
+  svg.appendChild(empty);
+
+  r.kills.forEach((k, i) => {
+    const mine = k.atk_clan === ours;
+    const color = mine ? css("--us-plate") : css("--them-plate");
+
+    const g = document.createElementNS(NS, "g");
+    g.setAttribute("class", "duel");
+    g.dataset.i = i;
+
+    const x1 = gx(k.ax), y1 = gy(k.ay), x2 = gx(k.x), y2 = gy(k.y);
+    const line = document.createElementNS(NS, "line");
+    line.setAttribute("class", "link");
+    line.setAttribute("x1", x1); line.setAttribute("y1", y1);
+    line.setAttribute("x2", x2); line.setAttribute("y2", y2);
+    line.setAttribute("stroke", color);
+    line.setAttribute("stroke-width", 2);
+    line.setAttribute("stroke-opacity", .55);
+    // ความยาวเส้นจริง ส่งให้ CSS ใช้เป็นระยะที่ต้องลากตอน animate
+    const len = Math.hypot(x2 - x1, y2 - y1);
+    line.style.strokeDasharray = len;
+    line.style.setProperty("--len", len);
+
+    const shooter = document.createElementNS(NS, "circle");
+    shooter.setAttribute("class", "shooter");
+    shooter.setAttribute("cx", x1); shooter.setAttribute("cy", y1);
+    shooter.setAttribute("r", 6);
+    shooter.setAttribute("stroke", color);
+
+    const victim = document.createElementNS(NS, "circle");
+    victim.setAttribute("class", "victim");
+    victim.setAttribute("cx", x2); victim.setAttribute("cy", y2);
+    victim.setAttribute("r", 11);
+    victim.setAttribute("fill", color);
+
+    const seq = document.createElementNS(NS, "text");
+    seq.setAttribute("class", "seq");
+    seq.setAttribute("x", x2); seq.setAttribute("y", y2 + 5);
+    seq.textContent = i + 1;
+
+    const title = document.createElementNS(NS, "title");
+    title.textContent = `${i + 1}. ${k.atk} → ${k.vic} · ${k.weapon}${k.hs ? " · headshot" : ""} · ${k.place} · ${fmt(k.t)}`;
+
+    g.append(line, shooter, victim, seq, title);
+    g.addEventListener("pointerenter", () => highlight(i));
+    g.addEventListener("pointerleave", () => highlight(null));
+    svg.appendChild(g);
+    duelEls.push(g);
+  });
+  applyTime();
+}
+
+/* เปิด-ปิดการดวลตามเวลาที่เลื่อนไปถึง
+   ใส่คลาส enter เฉพาะตอนกดเล่นเท่านั้น ถ้าลากแถบเองแล้วมี animation ด้วย
+   ภาพจะกระตุกตามมือ ไม่ได้ช่วยให้เข้าใจอะไรเพิ่ม */
+function applyTime() {
+  const r = DATA.rounds[sel];
+  let shownCount = 0;
+  duelEls.forEach((g, i) => {
+    const on = r.kills[i].t <= tNow;
+    if (on) shownCount++;
+    if (on && !g.dataset.on) {
+      g.dataset.on = "1";
+      if (playing) { g.classList.remove("enter"); void g.getBBox(); g.classList.add("enter"); }
+    } else if (!on && g.dataset.on) {
+      g.dataset.on = "";
+      g.classList.remove("enter");
+    }
+    g.style.display = on ? "" : "none";
+  });
+  const empty = $("duels").querySelector(".empty");
+  if (empty) {
+    empty.textContent = shownCount ? "" : "ยังไม่มีการดวลก่อนวินาทีที่ " + tNow.toFixed(1);
+  }
+}
+
+function highlight(i) {
+  document.querySelectorAll("#duels .duel").forEach(g => {
+    g.classList.toggle("dim", i !== null && +g.dataset.i !== i);
+  });
+  document.querySelectorAll(".feed-row").forEach(row => {
+    row.classList.toggle("lit", i !== null && +row.dataset.i === i);
+  });
+}
+
+/* ===========================================================================
+   กราฟโอกาสชนะรอบ
+   ค่าที่เก็บในข้อมูลคือ P(CT ชนะรอบ) เสมอ ตรงนี้พลิกให้เป็นมุมของ "ทีมเรา"
+   ตามว่ารอบนั้นทีมเราอยู่ฝั่งไหน — ครึ่งหลังสลับข้าง ถ้าไม่พลิกกราฟจะกลับหัว
+
+   วาดเป็นขั้นบันได ไม่ใช่เส้นโค้ง เพราะค่ามันเปลี่ยนเฉพาะตอนมีคนตายจริง ๆ
+   เส้นโค้งจะสื่อว่ามีการไล่ระดับระหว่างนั้น ซึ่งข้อมูลไม่ได้บอกแบบนั้น
+   =========================================================================== */
+function ourWp(r, p) {
+  if (p === null || p === undefined) return null;
+  return r.ct_clan === ours ? p : 1 - p;
+}
+
+function wpPoints(r) {
+  if (!r.wp) return null;
+  const pts = r.wp.map(w => ({ t: w.t, p: ourWp(r, w.p), i: w.i })).filter(w => w.p !== null);
+  return pts.length ? pts : null;
+}
+
+/* หาคิลที่ขยับโอกาสชนะมากที่สุดไปทางฝ่ายที่ชนะจริง = จังหวะที่ตัดสินรอบ */
+function decisiveKill(r) {
+  const pts = wpPoints(r);
+  if (!pts || pts.length < 2) return null;
+  const wonByUs = r.winner_clan === ours;
+  let best = null;
+  for (let i = 1; i < pts.length; i++) {
+    if (pts[i].i === null) continue;
+    const d = pts[i].p - pts[i - 1].p;
+    const towardWinner = wonByUs ? d : -d;
+    if (towardWinner > 0.12 && (!best || towardWinner > best.swing)) {
+      best = { idx: pts[i].i, swing: towardWinner, from: pts[i - 1].p, to: pts[i].p };
+    }
+  }
+  return best;
+}
+
+function drawWp() {
+  const cv = $("wpchart"), r = DATA.rounds[sel];
+  const pts = wpPoints(r);
+  const head = $("wp-team"), now = $("wp-now");
+  head.textContent = ours;
+
+  const dpr = window.devicePixelRatio || 1;
+  const box0 = cv.getBoundingClientRect();
+  const W = Math.max(1, Math.round(box0.width)), H = Math.max(1, Math.round(box0.height));
+  cv.width = W * dpr; cv.height = H * dpr;
+  const g = cv.getContext("2d");
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  g.clearRect(0, 0, W, H);
+
+  if (!pts) {
+    now.textContent = "—";
+    g.fillStyle = css("--ink-3");
+    g.font = '13px Anuphan, sans-serif';
+    g.fillText("ยังไม่มีตารางโอกาสชนะ — รัน python realparser/round_win.py", 8, 24);
+    return;
+  }
+
+  // วัดตำแหน่งรางของแถบเลื่อนจริง ๆ แล้วให้พื้นที่กราฟกว้างเท่ากันพอดี
+  // ตั้งค่าคงที่ไว้เฉย ๆ จะเหลื่อมทันทีที่ปุ่มเล่นหรือป้ายเวลากว้างไม่เท่าเดิม
+  // (+8 คือระยะที่เบราว์เซอร์เผื่อไว้ให้หัวลากครึ่งหนึ่ง ค่ากลางของหัวลากจึงไม่ถึงขอบราง)
+  const cvBox = cv.getBoundingClientRect();
+  const trBox = $("time").getBoundingClientRect();
+  const padL = Math.max(30, trBox.left - cvBox.left + 8);
+  const padR = Math.max(8, cvBox.right - trBox.right + 8);
+  const padT = 8, padB = 14;
+  const span = Math.max(r.length, 1);
+  const X = t => padL + (t / span) * (W - padL - padR);
+  const Y = p => padT + (1 - p) * (H - padT - padB);
+
+  // เส้น 50% คือเส้นแบ่ง "ใครได้เปรียบ" พื้นที่ที่ห่างจากเส้นนี้คือขนาดของความได้เปรียบ
+  g.strokeStyle = css("--rule"); g.lineWidth = 1;
+  [0, 0.5, 1].forEach(v => {
+    g.beginPath(); g.moveTo(padL, Y(v) + .5); g.lineTo(W - padR, Y(v) + .5); g.stroke();
+  });
+  g.fillStyle = css("--ink-3");
+  g.font = '10px "IBM Plex Mono", monospace';
+  g.textAlign = "right";
+  [[1, "100%"], [0.5, "50%"], [0, "0%"]].forEach(([v, label]) => g.fillText(label, padL - 6, Y(v) + 3));
+  g.textAlign = "left";
+
+  const usC = css("--us"), themC = css("--them");
+
+  // ระบายพื้นที่ทีละขั้น สีตามว่าขั้นนั้นอยู่เหนือหรือใต้เส้น 50%
+  for (let i = 0; i < pts.length - 1; i++) {
+    const x1 = X(pts[i].t), x2 = X(pts[i + 1].t), y = Y(pts[i].p);
+    if (x2 <= x1) continue;
+    g.fillStyle = pts[i].p >= 0.5 ? usC : themC;
+    g.globalAlpha = .18;
+    g.fillRect(x1, Math.min(y, Y(0.5)), x2 - x1, Math.abs(y - Y(0.5)));
+    g.globalAlpha = 1;
+  }
+
+  // เส้นขั้นบันได
+  g.lineWidth = 2; g.lineJoin = "round";
+  for (let i = 0; i < pts.length - 1; i++) {
+    g.strokeStyle = pts[i].p >= 0.5 ? usC : themC;
+    g.beginPath();
+    g.moveTo(X(pts[i].t), Y(pts[i].p));
+    g.lineTo(X(pts[i + 1].t), Y(pts[i].p));
+    g.lineTo(X(pts[i + 1].t), Y(pts[i + 1].p));
+    g.stroke();
+  }
+
+  // จุดที่มีคนตาย + วงเน้นจังหวะที่ตัดสินรอบ
+  const dec = decisiveKill(r);
+  pts.forEach(w => {
+    if (w.i === null) return;
+    g.fillStyle = w.p >= 0.5 ? usC : themC;
+    g.beginPath(); g.arc(X(w.t), Y(w.p), 3, 0, 6.284); g.fill();
+    if (dec && w.i === dec.idx) {
+      g.strokeStyle = css("--ink"); g.lineWidth = 2;
+      g.beginPath(); g.arc(X(w.t), Y(w.p), 6.5, 0, 6.284); g.stroke();
+    }
+  });
+
+  // เส้นบอกว่าตอนนี้เลื่อนมาถึงไหน
+  const tShown = Math.min(tNow, span);
+  if (tShown < span) {
+    g.strokeStyle = css("--focus"); g.lineWidth = 1.5;
+    g.beginPath(); g.moveTo(X(tShown), padT); g.lineTo(X(tShown), H - padB); g.stroke();
+  }
+
+  // ตัวเลขมุมขวาบน = ค่าที่เวลาที่เลื่อนมาถึง ไม่ใช่ค่าตอนจบรอบ
+  let cur = pts[0].p;
+  for (const w of pts) if (w.t <= tShown) cur = w.p;
+  now.textContent = Math.round(cur * 100) + "%";
+  now.style.color = cur >= 0.5 ? usC : themC;
+}
+
+/* ===========================================================================
+   อธิบายรอบเป็นภาษาคน
+   ทุกประโยคมาจากลำดับคิลล้วน ๆ ไม่มีการเดาหรือเติมสีสันที่ข้อมูลไม่ได้บอก
+   สิ่งที่พูดถึงคือสี่อย่างที่คนดูเกมใช้ตัดสินรอบจริง ๆ:
+     เปิดหัวใครได้ / แลกคืนทันหรือไม่ / คนเหลือกี่ต่อกี่ / จบยังไง
+   =========================================================================== */
+function describeRound(r) {
+  const out = [];
+  const ks = r.kills;
+  const mine = k => k.atk_clan === ours;
+
+  // --- ท่อนที่ 1: เปิดหัว กับการแลกคืน ---
+  if (ks.length) {
+    const k0 = ks[0];
+    const got = mine(k0);
+    let line = (got ? "เปิดหัวได้" : "เสียหัวก่อน") +
+      ` — ${k0.atk} ยิง ${k0.vic} ที่ ${k0.place} วินาทีที่ ${k0.t.toFixed(0)}`;
+    // แลกคืน = คิลถัดไปเป็นของอีกฝั่งภายใน 5 วินาที ซึ่งเป็นช่วงที่ยังถือว่าตอบโต้กันอยู่
+    const k1 = ks[1];
+    if (k1 && k1.atk_clan !== k0.atk_clan && k1.t - k0.t <= 5) {
+      line += got ? ` แต่โดนแลกคืนใน ${(k1.t - k0.t).toFixed(1)} วินาที`
+                  : ` แล้วแลกคืนได้ใน ${(k1.t - k0.t).toFixed(1)} วินาที`;
+    }
+    out.push(line);
+  }
+
+  // --- ท่อนที่ 2: คนเหลือกี่ต่อกี่ หาจุดที่ห่างกันมากสุดของแต่ละทาง ---
+  // ไม่นับสถานะหลังคิลสุดท้าย เพราะรอบที่จบด้วยการไล่เก็บหมดทีมจะได้ 0v5 เสมอ
+  // ซึ่งประโยค "จบด้วย..." ข้างล่างพูดไปแล้ว ตรงนี้ต้องการช่วงกลางรอบที่ยังสูสีอยู่
+  let us = 5, them = 5, best = 0, bestAt = "", bestI = null, worst = 0, worstAt = "", worstI = null;
+  for (let i = 0; i < ks.length - 1; i++) {
+    if (ks[i].vic_clan === ours) us--; else them--;
+    const d = us - them;
+    if (d > best) { best = d; bestAt = us + "v" + them; bestI = i; }
+    if (d < worst) { worst = d; worstAt = us + "v" + them; worstI = i; }
+  }
+  // แต่จำนวนคนที่เหลือ "ตอนจบจริง" ยังต้องนับให้ครบ ไว้ดูว่าเป็น clutch หรือเปล่า
+  if (ks.length) { if (ks[ks.length - 1].vic_clan === ours) us--; else them--; }
+  // แนบโอกาสชนะ ณ จุดนั้นไปด้วย ตัวเลขทำให้ "ตกเป็นรอง 3v5" มีน้ำหนักที่วัดได้
+  // ไม่ใช่แค่คำบรรยาย — 3v5 ก่อนปักระเบิดกับหลังปักระเบิดเป็นคนละเรื่องกัน
+  const pts = wpPoints(r);
+  const wpAt = at => {
+    if (!pts) return "";
+    const hit = pts.find(w => w.i === at);
+    return hit ? ` (โอกาสชนะรอบ ${Math.round(hit.p * 100)}%)` : "";
+  };
+  if (best >= 2 && worst <= -2) {
+    out.push(`รอบนี้พลิกไปมา — เคยนำถึง ${bestAt}${wpAt(bestI)} และเคยตามหลังถึง ${worstAt}${wpAt(worstI)}`);
+  } else if (best >= 2) {
+    out.push(`ขึ้นนำจำนวนคนถึง ${bestAt}${wpAt(bestI)}`);
+  } else if (worst <= -2) {
+    out.push(`ตกเป็นรอง ${worstAt}${wpAt(worstI)}`);
+  }
+
+  const dec = decisiveKill(r);
+  if (dec) {
+    const k = ks[dec.idx];
+    out.push(`จังหวะที่ตัดสินรอบคือคิลที่ ${dec.idx + 1} — ${k.atk} ยิง ${k.vic} ที่ ${k.place} ` +
+             `ทำให้โอกาสชนะของทีมเราขยับจาก ${Math.round(dec.from * 100)}% เป็น ${Math.round(dec.to * 100)}%`);
+  }
+
+  // --- ท่อนที่ 3: ระเบิด ---
+  if (r.bomb_site) {
+    const site = r.bomb_site === "bombsite_a" ? "A" : "B";
+    const plantedByUs = r.t_clan === ours;      // ระเบิดปักได้เฉพาะฝั่ง T เท่านั้น
+    out.push((plantedByUs ? "ทีมเราปักระเบิด" : "อีกฝั่งปักระเบิด") +
+             `ไซต์ ${site} ที่วินาทีที่ ${r.bomb_plant_t.toFixed(0)}` +
+             (r.reason === "ปลดระเบิดได้" ? " แล้วถูกรีเทคปลดทัน" :
+              r.reason === "ระเบิดลง" ? " และกันไว้ได้จนระเบิดลง" : ""));
+  }
+
+  // --- ท่อนที่ 4: ปิดรอบยังไง ---
+  const winnerIsUs = r.winner_clan === ours;
+  const lastAlive = winnerIsUs ? us : them;
+  // นับเป็น clutch ต่อเมื่อฝ่ายชนะเหลือคนเดียว "และ" คิลสุดท้ายของรอบเป็นของฝ่ายนั้นจริง
+  // ถ้ารอบจบด้วยปลดระเบิดหรือหมดเวลา คิลสุดท้ายอาจเป็นของอีกฝั่ง การเขียนว่า "ปิดรอบ" จะผิด
+  const last = ks[ks.length - 1];
+  let end = `จบด้วย${r.reason} `;
+  if (lastAlive === 1 && last && last.atk_clan === r.winner_clan) {
+    end += `โดยเหลือคนสุดท้ายคนเดียว (${last.atk} ปิดรอบ) `;
+  }
+  end += winnerIsUs ? "— ทีมเราได้รอบนี้" : "— เสียรอบนี้ไป";
+  out.push(end + ` สกอร์เป็น ${r.score_after[ours]}–${r.score_after[theirs]}`);
+
+  return out;
+}
+
+/* ===========================================================================
+   สรุปรอบ + ฟีดคิล
+   =========================================================================== */
+function renderRound() {
+  const r = DATA.rounds[sel];
+  const w = won(r);
+
+  $("r-title").textContent = "รอบ " + r.n;
+  const res = $("r-result");
+  res.textContent = w ? "ชนะ" : "แพ้";
+  res.className = "pill " + (w ? "win" : "loss");
+  $("r-side").textContent = "เล่นฝั่ง " + ourSide(r).toUpperCase();
+
+  const dl = $("r-meta");
+  dl.replaceChildren();
+  const add = (k, v) => {
+    const dt = document.createElement("dt"); dt.textContent = k;
+    const dd = document.createElement("dd"); dd.textContent = v;
+    dl.append(dt, dd);
+  };
+  add("จบด้วย", r.reason);
+  if (r.bomb_site) {
+    add("ปักระเบิด", (r.bomb_site === "bombsite_a" ? "ไซต์ A" : "ไซต์ B") +
+        (r.bomb_plant_t === null ? "" : " · วินาทีที่ " + r.bomb_plant_t.toFixed(1)));
+  }
+  add("ความยาวรอบ", fmt(r.length));
+  add("เปิดหัว", r.opening_clan === null ? "—"
+      : (r.opening_clan === ours ? "ทีมเราได้" : "อีกฝั่งได้") + " (" + r.kills[0].atk + ")");
+  const ourK = r.kills.filter(k => k.atk_clan === ours).length;
+  add("คิลในรอบ", ourK + " – " + (r.kills.length - ourK));
+  const sc = r.score_after;
+  add("สกอร์หลังรอบ", sc[ours] + " – " + sc[theirs]);
+
+  const story = $("r-story");
+  story.replaceChildren();
+  for (const line of describeRound(r)) {
+    const el = document.createElement("p");
+    el.textContent = line;
+    story.appendChild(el);
+  }
+
+  const feed = $("feed");
+  feed.replaceChildren();
+  r.kills.forEach((k, i) => {
+    const row = document.createElement("button");
+    row.type = "button";
+    row.className = "feed-row" + (k.t > tNow ? " future" : "");
+    row.dataset.i = i;
+
+    const tm = document.createElement("span"); tm.className = "tm"; tm.textContent = k.t.toFixed(1);
+    const who = document.createElement("span"); who.className = "who";
+    const kr = document.createElement("span");
+    kr.className = "k";
+    kr.style.color = k.atk_clan === ours ? css("--us") : css("--them");
+    kr.textContent = k.atk;
+    const ar = document.createElement("span"); ar.className = "arrow"; ar.textContent = "→";
+    const vc = document.createElement("span"); vc.className = "v"; vc.textContent = k.vic;
+    who.append(kr, ar, vc);
+
+    const wp = document.createElement("span"); wp.className = "wp";
+    wp.textContent = k.weapon;
+    if (k.hs) {
+      const h = document.createElement("span"); h.className = "hs"; h.textContent = " HS";
+      wp.appendChild(h);
+    }
+
+    row.append(tm, who, wp);
+    row.addEventListener("pointerenter", () => highlight(i));
+    row.addEventListener("pointerleave", () => highlight(null));
+    row.addEventListener("focus", () => highlight(i));
+    row.addEventListener("click", () => setTime(k.t));
+    feed.appendChild(row);
+  });
+}
+
+/* ===========================================================================
+   แถบเลื่อนเวลา — จุดบนรางคือเวลาที่เกิดคิล เส้นดำคือตอนปักระเบิด
+   =========================================================================== */
+function renderScrub() {
+  const r = DATA.rounds[sel];
+  const span = Math.max(r.length, 1);
+  $("time").max = span;
+  $("time").value = Math.min(tNow, span);
+
+  const ticks = $("ticks");
+  ticks.replaceChildren();
+  r.kills.forEach(k => {
+    const i = document.createElement("i");
+    i.style.left = (k.t / span * 100) + "%";
+    i.style.background = k.atk_clan === ours ? css("--us") : css("--them");
+    ticks.appendChild(i);
+  });
+  if (r.bomb_plant_t !== null) {
+    const b = document.createElement("b");
+    b.style.left = (r.bomb_plant_t / span * 100) + "%";
+    b.title = "ปักระเบิด";
+    ticks.appendChild(b);
+  }
+  const shown = tNow >= span ? span : tNow;
+  $("tlabel").textContent = shown.toFixed(1) + " / " + span.toFixed(1) + "s";
+}
+
+function setTime(t) {
+  const span = Math.max(DATA.rounds[sel].length, 1);
+  tNow = Math.min(t, span);
+  applyTime(); renderRound(); renderScrub(); drawWp();
+}
+
+function stopPlay() {
+  if (playing) { clearInterval(playing); playing = null; $("play").textContent = "▶"; }
+}
+
+$("time").addEventListener("input", e => { stopPlay(); setTime(+e.target.value); });
+
+$("play").addEventListener("click", () => {
+  if (playing) return stopPlay();
+  const span = Math.max(DATA.rounds[sel].length, 1);
+  if (tNow >= span) tNow = 0;
+  $("play").textContent = "❚❚";
+  // เดินเร็วกว่าเวลาจริง 4 เท่า — รอบหนึ่งยาว 30-70 วิ ถ้าเดินเท่าเวลาจริงจะรอนาน
+  playing = setInterval(() => {
+    setTime(tNow + 0.4);
+    if (tNow >= span) stopPlay();
+  }, 100);
+});
+
+/* ===========================================================================
+   ประกอบหน้า
+   =========================================================================== */
+function select(i) {
+  stopPlay();
+  sel = i;
+  tNow = Infinity;
+  renderRail(); buildMap(); renderRound(); renderScrub(); drawWp();
+}
+
+function renderHeader() {
+  $("name-us").textContent = ours;
+  $("name-them").textContent = theirs;
+  $("sc-us").textContent = DATA.score[ours];
+  $("sc-them").textContent = DATA.score[theirs];
+  $("sw-us").style.background = css("--us");
+  $("sw-them").style.background = css("--them");
+  $("lg-us").style.background = css("--us");
+  $("lg-them").style.background = css("--them");
+  $("meta-map").textContent = DATA.map;
+  $("meta-file").textContent = DATA.demo_file;
+  $("meta-rounds").textContent = DATA.rounds.length + " รอบ · " +
+    DATA.rounds.reduce((a, r) => a + r.kills.length, 0) + " คิล";
+
+  const seg = $("team-seg");
+  seg.replaceChildren();
+  DATA.clans.forEach(clan => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.textContent = clan;
+    b.setAttribute("aria-pressed", String(clan === ours));
+    b.addEventListener("click", () => {
+      if (clan === ours) return;
+      ours = clan;
+      theirs = DATA.clans.find(c => c !== clan);
+      render();
+    });
+    seg.appendChild(b);
+  });
+}
+
+function renderPlayers() {
+  const tb = $("players");
+  tb.replaceChildren();
+  const rows = DATA.players.slice().sort((a, b) =>
+    (a.clan === ours ? 0 : 1) - (b.clan === ours ? 0 : 1) || b.k - a.k);
+  for (const p of rows) {
+    const tr = document.createElement("tr");
+    const name = document.createElement("td");
+    name.className = "name";
+    const sw = document.createElement("span");
+    sw.className = "swatch";
+    sw.style.background = p.clan === ours ? css("--us") : css("--them");
+    name.append(sw, document.createTextNode(p.name));
+
+    const diff = p.k - p.d;
+    const vals = [p.clan, p.k, p.d, (diff > 0 ? "+" : "") + diff,
+                  p.k ? Math.round(p.hs / p.k * 100) + "%" : "—"];
+    tr.appendChild(name);
+    vals.forEach((v, i) => {
+      const td = document.createElement("td");
+      if (i > 0) td.className = "num";
+      td.textContent = v;
+      tr.appendChild(td);
+    });
+    tb.appendChild(tr);
+  }
+}
+
+function render() {
+  renderHeader(); renderRail(); buildMap(); renderRound(); renderScrub(); drawWp(); renderPlayers();
+}
+
+new ResizeObserver(() => drawWp()).observe($("wpchart"));
+
+$("sample").addEventListener("click", () => runFakeParse(null));
+
+// เปิดมาที่ฉากอัปโหลดเสมอ เพราะขั้นตอนนั้นคือสิ่งที่ mockup นี้ต้องการแสดง
+render();
+</script>
