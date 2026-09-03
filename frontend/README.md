@@ -15,7 +15,7 @@ copy .env.example .env      # Windows
 # cp .env.example .env      # macOS / Linux
 
 # 3) รันเซิร์ฟเวอร์
-python -m uvicorn frontend.app:app --reload
+python -m uvicorn backend.app:app --reload
 ```
 
 เปิดเบราว์เซอร์ที่ **http://localhost:8000**

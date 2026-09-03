@@ -86,17 +86,21 @@ docker run --rm \
 
 ### หน้าเว็บ + ล็อกอิน Steam
 
-`frontend/app.py` เสิร์ฟหน้าล็อกอินด้วย Steam OpenID แล้วเก็บผู้ใช้ลง PostgreSQL
-`docker-compose.yml` ในรีโปเปิด DB ให้ได้ในคำสั่งเดียว
+`backend/app.py` เสิร์ฟหน้าล็อกอินด้วย Steam OpenID และตอบ `/api/*` จาก PostgreSQL
+(แมตช์ / รอบ / คิล / นักแข่ง — โครงอยู่ที่ `backend/schema.sql`)
 
 ```bash
-cp .env.example .env       # แก้ค่าถ้าต้องการ (พอร์ตชนกันให้ตั้ง POSTGRES_PORT=5433)
-docker compose up -d db
-python -m uvicorn frontend.app:app --reload   # เปิด http://localhost:8000
+cp .env.example .env                    # แก้ค่าถ้าต้องการ (พอร์ตชนกันให้ตั้ง POSTGRES_PORT=5433)
+docker compose up -d db                 # เปิดฐานข้อมูล สร้างตารางให้เอง
+python backend/load_kills.py            # โหลด data/all_kills.csv เข้า DB
+python -m uvicorn backend.app:app --reload    # เปิด http://localhost:8000  (Swagger ที่ /docs)
 ```
 
-`.env` ที่รากโปรเจกต์เป็นไฟล์เดียวที่ทั้ง docker compose และ `frontend/app.py` อ่าน
-รายละเอียดของหน้าเว็บอยู่ที่ [frontend/README.md](frontend/README.md)
+หรือ `docker compose up -d` เปิดทั้ง db + api ในคำสั่งเดียว ไม่ต้องลง Python
+
+`.env` ที่รากโปรเจกต์เป็นไฟล์เดียวที่ทั้ง docker compose และ `backend/` อ่าน
+รายละเอียด API และโครงตารางอยู่ที่ [backend/README.md](backend/README.md)
+ส่วนหน้าเว็บอยู่ที่ [frontend/README.md](frontend/README.md)
 
 ## กริด + ML
 
@@ -148,8 +152,13 @@ pipeline/         แกน ML ทั้งหมด
   round_win.py          โมเดลโอกาสชนะรอบ -> ตารางเปิดค่าให้หน้าเว็บใช้
   round_review.py       เจาะแมตช์เดียวเป็นรายรอบ (ใครชนะรอบไหน ชนะด้วยอะไร)
 
+backend/          เซิร์ฟเวอร์หลังบ้าน + ฐานข้อมูล (รายละเอียดใน backend/README.md)
+  app.py                FastAPI — ล็อกอิน Steam + /api/* ดึงจาก PostgreSQL + เสิร์ฟหน้า frontend/pages/
+  db.py                 จุดเดียวที่ต่อ PostgreSQL
+  schema.sql            โครงตาราง matches / rounds / kills / players / users + view สรุป
+  load_kills.py         data/all_kills.csv -> DB (รันซ้ำได้ ข้ามแมตช์ที่มีแล้ว)
+
 frontend/         หน้าเว็บทั้งหมด
-  app.py                เซิร์ฟเวอร์ FastAPI — ล็อกอิน Steam + /api/stats + เสิร์ฟหน้า pages/
   build.py              ยัดข้อมูล+ภาพเรดาร์เข้าเทมเพลต -> output/*.html ไฟล์เดียวจบ
   pages/                หน้าที่ app.py เสิร์ฟตอนรันเซิร์ฟเวอร์
     login.html            หน้าล็อกอิน

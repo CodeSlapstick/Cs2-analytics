@@ -1,15 +1,15 @@
-# PostgreSQL สำหรับ CS2 Map Zone Analytics
+# CS2 Analytics — ฐานข้อมูล + เซิร์ฟเวอร์หลังบ้าน
 #
-#   docker compose up -d db     # เปิดฐานข้อมูล
-#   docker compose down         # ปิด (ข้อมูลยังอยู่ใน volume pgdata)
-#   docker compose down -v      # ปิดแล้วลบข้อมูลทิ้ง
+#   docker compose up -d db                    # เปิดแค่ฐานข้อมูล (ใช้ตอนรัน python ในเครื่องเอง)
+#   docker compose up -d                       # เปิดทั้ง db + api  ->  http://localhost:8000
+#   docker compose run --rm api python backend/load_kills.py     # โหลด data/all_kills.csv เข้า DB
+#   docker compose logs -f api                 # ดู log เซิร์ฟเวอร์
+#   docker compose down                        # ปิด (ข้อมูลยังอยู่ใน volume pgdata)
+#   docker compose down -v                     # ปิดแล้วลบข้อมูลทิ้ง ใช้ตอนแก้ schema.sql แล้วอยากเริ่มใหม่
 #
-# ค่าดีฟอลต์ตรงกับที่ frontend/app.py คาดไว้ คือ postgres/postgres/cs2_analytics
+# ค่าตั้งอ่านจาก .env ที่รากโปรเจกต์ (ก๊อปจาก .env.example) ถ้าไม่มีใช้ค่าดีฟอลต์ที่เขียนไว้ตรงนี้
 # ถ้าเครื่องมี PostgreSQL ลงไว้อยู่แล้ว พอร์ต 5432 จะชนกัน ให้ตั้ง POSTGRES_PORT=5433 ใน .env
-# แล้วชี้ DATABASE_URL ไปที่พอร์ตนั้นด้วย
-#
-# ตาราง users ที่หน้าล็อกอินใช้ ยังต้องสร้างเองครั้งแรก:
-#   docker compose exec db psql -U postgres -d cs2_analytics -c "CREATE TABLE IF NOT EXISTS users (steamid VARCHAR(32) PRIMARY KEY, name VARCHAR(255), avatar TEXT, profile_url TEXT, mode VARCHAR(32), last_login TIMESTAMP DEFAULT CURRENT_TIMESTAMP);"
+# แล้วชี้ DATABASE_URL ของฝั่ง python-ในเครื่อง ไปที่พอร์ตนั้นด้วย (service api ไม่กระทบ เพราะคุยกันในเครือข่ายของ compose)
 
 services:
   db:
@@ -24,19 +24,35 @@ services:
       - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+      # สร้างตารางให้เองตอน volume ยังว่าง (ครั้งแรกเท่านั้น) — หลังจากนั้น backend/app.py
+      # จะรัน schema.sql ซ้ำทุกครั้งที่สตาร์ตอยู่แล้ว (ปลอดภัย ทุกคำสั่งเป็น IF NOT EXISTS)
+      - ./backend/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-cs2_analytics}"]
       interval: 5s
       timeout: 5s
       retries: 12
 
-  # ตัวรันสคริปต์ Python สำหรับคนที่ไม่อยากลง Python ในเครื่อง
-  #   docker compose run --rm tools python pipeline/grid_ml.py
-  tools:
+  # เซิร์ฟเวอร์หลังบ้าน (FastAPI) — เสิร์ฟหน้าเว็บ + ล็อกอิน Steam + /api/*
+  api:
     build: .
-    profiles: ["tools"]          # ไม่ถูกสร้างตอน `up` ปกติ ต้องเรียกด้วย `run` เท่านั้น
+    container_name: cs2-api
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      # ในเครือข่ายของ compose ชื่อโฮสต์ของฐานข้อมูลคือ db ไม่ใช่ localhost และพอร์ตคือ 5432 เสมอ
+      DATABASE_URL: postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-cs2_analytics}
+      BASE_URL: ${BASE_URL:-http://localhost:8000}
+      SECRET_KEY: ${SECRET_KEY:-}
+      STEAM_API_KEY: ${STEAM_API_KEY:-}
+      ALLOW_DEV_LOGIN: ${ALLOW_DEV_LOGIN:-1}
+    ports:
+      - "${API_PORT:-8000}:8000"
     volumes:
-      - ./output:/app/output
+      - ./output:/app/output          # ให้ผลจาก pipeline/ ที่รันในเครื่องมองเห็นได้จากใน container
+    command: python -m uvicorn backend.app:app --host 0.0.0.0 --port 8000
 
 volumes:
   pgdata:
