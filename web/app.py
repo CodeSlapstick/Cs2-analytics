@@ -19,7 +19,8 @@ web/app.py — "หลังบ้าน" (backend) ของเว็บ CS2 An
 # ---------------------------------------------------------------------------
 # ส่วนที่ 0 — ขนเครื่องมือเข้ามาใช้ (import = "หยิบกล่องเครื่องมือมาวางบนโต๊ะ")
 # ---------------------------------------------------------------------------
-import os                      # os = คุยกับระบบเครื่อง เอาไว้ "อ่านค่าลับ" จาก environment
+import os
+import asyncpg                      # os = คุยกับระบบเครื่อง เอาไว้ "อ่านค่าลับ" จาก environment
 import re                      # re = ตัวจับรูปแบบข้อความ (regex) ใช้ตรวจว่าเลข Steam หน้าตาถูกไหม
 import secrets                 # secrets = เครื่องสุ่มรหัสลับแบบปลอดภัย ใช้สร้างกุญแจเซ็นคุกกี้
 import urllib.parse            # urllib.parse = ตัวประกอบ/แกะ URL (ต่อ "?key=value" ให้ถูกไวยากรณ์)
@@ -163,9 +164,39 @@ async def steam_callback(request: Request):
     user = {"steamid": steamid, **profile, "mode": "steam"}   # ** = "เทของใน dict profile มารวมในนี้"
 
     response = RedirectResponse("/main", status_code=303)  # เตรียมคำสั่งเด้งไปหน้าหลัก (303 = "ไปต่อที่นี่ด้วยวิธี GET")
+    await save_user_to_db(user)
     make_session_cookie(response, user)                    # แปะคุกกี้ติดไปกับคำสั่งเด้งด้วย
     return response
 
+
+
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/cs2_analytics")
+
+async def save_user_to_db(user: dict):
+    try:
+        conn = await asyncpg.connect(DATABASE_URL)
+        query = """
+            INSERT INTO users (steamid, name, avatar, profile_url, mode, last_login)
+            VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP)
+            ON CONFLICT (steamid) DO UPDATE 
+            SET name = EXCLUDED.name,
+                avatar = EXCLUDED.avatar,
+                profile_url = EXCLUDED.profile_url,
+                mode = EXCLUDED.mode,
+                last_login = CURRENT_TIMESTAMP;
+        """
+        await conn.execute(
+            query,
+            str(user.get("steamid", "")),
+            str(user.get("name", "")),
+            str(user.get("avatar", "")),
+            str(user.get("profile_url", "")),
+            str(user.get("mode", "dev"))
+        )
+        await conn.close()
+        print(f"[DB] บันทึกผู้ใช้ {user.get("steamid")} สำเร็จ!")
+    except Exception as e:
+        print(f"[DB Error] ไม่สามารถบันทึกลง Database: {e}")
 
 @app.post("/auth/dev-login")
 async def dev_login(request: Request):
@@ -180,6 +211,7 @@ async def dev_login(request: Request):
 
     profile = await fetch_steam_profile(steamid)  # ลองขอโปรไฟล์จริงดู (ถ้ามีกุญแจก็ได้ชื่อจริงมาเลย)
     user = {"steamid": steamid, **profile, "mode": "dev"}   # mode="dev" ไว้ให้หน้าเว็บโชว์ป้าย "โหมดทดสอบ"
+    await save_user_to_db(user)
 
     response = JSONResponse({"ok": True, "user": user})     # ตอบกลับเป็น JSON ว่าเรียบร้อย
     make_session_cookie(response, user)                     # พร้อมแปะคุกกี้
