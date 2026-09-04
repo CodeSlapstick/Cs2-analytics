@@ -91,6 +91,24 @@ CREATE INDEX IF NOT EXISTS kills_weapon_idx   ON kills (weapon);
 CREATE INDEX IF NOT EXISTS rounds_match_idx   ON rounds (match_id);
 
 -- ---------------------------------------------------------------------------
+
+-- ---------------------------------------------------------------------------
+-- ดาเมจ — หนึ่งแถวต่อการสร้างความเสียหายหนึ่งครั้ง (สำหรับคำนวณ ADR / KAST)
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS damages (
+    id          BIGSERIAL PRIMARY KEY,
+    round_id    INT NOT NULL REFERENCES rounds(id) ON DELETE CASCADE,
+    tick        INT NOT NULL,
+    attacker_id BIGINT REFERENCES players(steam_id),
+    victim_id   BIGINT NOT NULL REFERENCES players(steam_id),
+    weapon      TEXT,
+    damage      INT NOT NULL,
+    hitgroup    TEXT
+);
+
+CREATE INDEX IF NOT EXISTS damages_round_idx ON damages (round_id);
+CREATE INDEX IF NOT EXISTS damages_attacker_idx ON damages (attacker_id);
+
 -- View สรุป — เขียน SQL ยาก ๆ ไว้ที่เดียว API แค่ SELECT * FROM view
 -- ---------------------------------------------------------------------------
 
