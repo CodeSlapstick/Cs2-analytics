@@ -10,7 +10,6 @@
 <body>
 
 <header class="topbar" id="topbar"></header>
-<!-- แถบเมนู — common.js เติมให้ -->
 
 <main class="wrap">
 
@@ -29,18 +28,16 @@
     <div id="rwKpis" class="kpis" style="margin:12px 0 18px"></div>
 
     <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:14px">
-      <!-- 4 ช่องเลือกนี้ = ฟีเจอร์ 4 ตัวที่โมเดลใช้ตัดสินใจ -->
-      <select id="rwCt"></select>       <!-- CT เหลือกี่คน — ml.js เติมตัวเลือก 1-5 ให้ -->
+      <select id="rwCt"></select>       <!-- CT เหลือกี่คน -->
       <select id="rwT"></select>        <!-- T เหลือกี่คน -->
       <select id="rwPlant">
         <option value="0">ยังไม่ปักระเบิด</option>
         <option value="1">ปักระเบิดแล้ว</option>
       </select>
-      <select id="rwTime"></select>     <!-- ช่วงเวลา — อ่านมาจากไฟล์โมเดล ไม่ได้พิมพ์ทิ้งไว้ -->
+      <select id="rwTime"></select>     
     </div>
 
     <div id="rwOut"></div>
-    <!-- ตัวเลข % ใหญ่ ๆ ของสถานะที่เลือกอยู่ -->
 
     <div class="eyebrow" style="margin-top:20px">ตารางเต็ม · แถว = CT เหลือ, คอลัมน์ = T เหลือ</div>
     <div id="rwTable" style="margin-top:8px"></div>
@@ -57,7 +54,7 @@
   <div class="foot">CS2 Tactical Analysis · SP-404 Senior Project · UTCC STECH</div>
 </main>
 
-<script src="/static/common.js"></script>   <!-- 1) กล่องเครื่องมือกลาง -->
-<script src="/static/ml.js"></script>       <!-- 2) สมองของหน้านี้ -->
+<script src="/static/common.js"></script>   
+<script src="/static/ml.js"></script>       
 </body>
 </html>

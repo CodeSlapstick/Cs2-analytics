@@ -403,6 +403,11 @@ h1 { font-size: 25px; letter-spacing: .2px; }
   transition: width .5s ease;             /* ตอน JavaScript ใส่ความกว้าง แท่งจะค่อย ๆ ยืดออก */
 }
 
+/* หน้าแท็คติกดูทีละฝั่ง แท่งกราฟจึงเปลี่ยนสีตามฝั่งที่เลือก ไม่ใช้ไล่สีสองสีแบบหน้าอื่น
+   JavaScript เป็นคนใส่คลาส side-ct / side-t ให้ <body> ตอนกดปุ่มสลับ */
+body.side-ct .bar-fill { background: linear-gradient(90deg, #1e4488, var(--ct)); }   /* ฝั่ง CT = น้ำเงิน */
+body.side-t  .bar-fill { background: linear-gradient(90deg, #8a3d05, var(--t)); }    /* ฝั่ง T  = ส้ม */
+
 /* ---------- ตาราง ---------- */
 table { width: 100%; border-collapse: collapse; font-size: 13px; }
 /* border-collapse: collapse = ยุบเส้นขอบของช่องที่ติดกันให้เหลือเส้นเดียว ไม่งั้นจะเห็นเส้นคู่ */
@@ -429,6 +434,9 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 }
 .tag.ct { background: rgba(77,139,255,.16); color: var(--ct); }    /* ป้ายฝั่ง CT = น้ำเงิน */
 .tag.t  { background: rgba(255,122,24,.16); color: var(--t); }     /* ป้ายฝั่ง T  = ส้ม */
+.tag.weak { opacity: .5; }
+/* .weak = ป้ายแบบจาง ใช้กับค่าที่ต่ำกว่าครึ่ง
+   สีของป้ายบอก "ฝั่งไหน" ส่วนความจาง-เข้มบอก "มากหรือน้อย" แยกกันคนละหน้าที่ */
 
 /* ---------- ช่องเลือก (dropdown) ---------- */
 select {
@@ -454,6 +462,9 @@ select:focus { outline: none; border-color: var(--orange); }   /* คลิก�
 }
 .seg button + button { border-left: 1px solid var(--line); }   /* "button + button" = ปุ่มที่มีปุ่มอยู่ข้างหน้า -> ใส่เส้นคั่น */
 .seg button.on { background: var(--orange); color: #2a1604; font-weight: 700; }   /* ปุ่มที่ถูกเลือก */
+.seg button.on[data-side="ct"] { background: var(--ct); color: #071426; }
+/* [data-side="ct"] = จับเฉพาะปุ่มที่มี data-side="ct" ในไฟล์ HTML
+   -> ปุ่มฝั่ง CT ตอนถูกเลือกจะเป็นน้ำเงิน ไม่ใช่ส้ม ให้ตรงกับกติกาสีของทั้งเว็บ */
 
 /* ---------- ไทม์ไลน์รายรอบ ---------- */
 .timeline { display: flex; flex-wrap: wrap; gap: 4px; }   /* เรียงกล่องรอบเป็นแถว เต็มแล้วขึ้นบรรทัดใหม่ */
@@ -502,13 +513,15 @@ select:focus { outline: none; border-color: var(--orange); }   /* คลิก�
   display: flex; align-items: center; gap: 9px;
   margin-top: 12px;
 }
+.legend + .legend { margin-top: 6px; }     /* ".legend + .legend" = แถบที่มีแถบอยู่ข้างหน้า -> ชิดขึ้นหน่อย */
+
 .legend-bar {
   flex: 1;                                 /* flex:1 = กินที่ว่างที่เหลือให้หมด */
   height: 9px;
   border-radius: 99px;
   border: 1px solid var(--line);
-  background: linear-gradient(90deg, rgba(255,122,24,.12), rgba(255,122,24,.92));
-  /* ไล่จากส้มจาง (ซ้าย = คนตายน้อย) ไปส้มเข้ม (ขวา = คนตายเยอะ) ให้ตรงกับสีบนแผนที่ */
+  /* สีของแถบถูก map.js ใส่ให้ตอนวาด เพราะต้องเปลี่ยนตามฝั่งที่เลือก
+     (CT = ไล่น้ำเงินจางไปเข้ม, T = ไล่ส้มจางไปเข้ม) ให้ตรงกับสีช่องบนแผนที่ */
 }
 
 /* ---------- ข้อความสถานะ ---------- */

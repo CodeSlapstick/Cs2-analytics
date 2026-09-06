@@ -1,46 +1,33 @@
 <!DOCTYPE html>
-<!-- DOCTYPE = บอกเบราว์เซอร์ว่า "ไฟล์นี้เป็น HTML ยุคใหม่นะ" ต้องอยู่บรรทัดแรกเสมอ -->
 <html lang="th">
 <head>
-  <!-- head = "ป้ายข้อมูล" ของหน้า ไม่แสดงให้คนเห็น แต่เบราว์เซอร์ต้องรู้ -->
   <meta charset="UTF-8" />
-  <!-- charset=UTF-8 = ตารางรหัสตัวอักษร ถ้าไม่ใส่ ภาษาไทยจะกลายเป็นตัวประหลาด -->
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <!-- viewport = บอกมือถือว่า "ใช้ความกว้างจอจริง อย่าย่อหน้าเว็บให้เล็กจิ๋ว" -->
   <title>ภาพรวม · CS2 Analytics</title>
-  <!-- title = ชื่อที่โผล่บนแท็บเบราว์เซอร์ -->
   <link rel="stylesheet" href="/static/style.css" />
-  <!-- ดึงไฟล์ "เสื้อผ้า" (CSS) เข้ามา — ทุกหน้าใช้ไฟล์เดียวกัน -->
 </head>
 
 <body>
 
 <header class="topbar" id="topbar"></header>
-<!-- แถบเมนูด้านบน — ปล่อยว่างไว้ ให้ common.js เติมเนื้อในให้
-     เขียนไว้ที่เดียวใน common.js ทุกหน้าจะได้เมนูเหมือนกันหมด ไม่ต้องก๊อป 6 รอบ -->
 
 <main class="wrap">
-  <!-- main = เนื้อหาหลักของหน้า, .wrap = จำกัดความกว้างแล้วจัดไว้กลางจอ -->
 
   <div class="page-head">
-    <!-- แถวหัวหน้า: ชื่อหน้าไว้ซ้าย เครื่องมือไว้ขวา -->
     <div>
-      <div class="eyebrow">Dashboard</div>   <!-- ป้ายตัวเล็กสีส้มเหนือหัวข้อ -->
-      <h1>ภาพรวม</h1>                        <!-- h1 = หัวข้อใหญ่ที่สุดของหน้า มีหน้าละอันก็พอ -->
+      <div class="eyebrow">Dashboard</div>  
+      <h1>ภาพรวม</h1>                        
     </div>
     <select id="mapFilter"></select>
-    <!-- ช่องเลือกแมพ — ปล่อยว่างไว้ ให้ overview.js เติมรายชื่อแมพจากฐานข้อมูล -->
   </div>
 
   <div class="kpis" id="kpis"></div>
-  <!-- กล่องว่าง ๆ รอ JavaScript สร้างการ์ดตัวเลขมาใส่ -->
 
   <div class="cols">
-    <!-- .cols = แบ่ง 2 คอลัมน์บนจอกว้าง, จอแคบจะตกลงมาเรียงกันเอง -->
     <div class="box">
       <div class="eyebrow">Weapons</div>
       <h2>อาวุธที่ใช้ฆ่ามากที่สุด</h2>
-      <div id="wpBars"></div>              <!-- รอ JavaScript วาดกราฟแท่ง -->
+      <div id="wpBars"></div>              
     </div>
     <div class="box">
       <div class="eyebrow">Hot zones</div>
@@ -59,8 +46,6 @@
 </main>
 
 <script src="/static/common.js"></script>
-<!-- 1) กล่องเครื่องมือกลาง ต้องมาก่อนเสมอ -->
 <script src="/static/overview.js"></script>
-<!-- 2) สมองของหน้านี้โดยเฉพาะ -->
 </body>
 </html>

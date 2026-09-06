@@ -1,8 +1,8 @@
 <!DOCTYPE html>
 <html lang="th">
 <head>
-  <meta charset="UTF-8" />                                <!-- ให้ภาษาไทยแสดงถูก -->
-  <meta name="viewport" content="width=device-width, initial-scale=1" />  <!-- ให้พอดีจอมือถือ -->
+  <meta charset="UTF-8" />                                
+  <meta name="viewport" content="width=device-width, initial-scale=1" />  
   <title>แมตช์ · CS2 Analytics</title>
   <link rel="stylesheet" href="/static/style.css" />
 </head>
@@ -10,7 +10,6 @@
 <body>
 
 <header class="topbar" id="topbar"></header>
-<!-- แถบเมนู — common.js เติมให้ (ดูคำอธิบายเต็มใน overview.html) -->
 
 <main class="wrap">
 
@@ -22,16 +21,13 @@
   </div>
 
   <div class="cols wide">
-    <!-- .wide = ซ้ายกว้างกว่าขวา (1.6 ต่อ 1 ส่วน) -->
 
     <div class="box">
       <h2>ทั้งหมด <span class="sub" id="matchCount"></span></h2>
-      <!-- span id="matchCount" = ที่ว่างให้ JavaScript เติมจำนวนนัดเข้าไป -->
       <div id="matchTable"></div>
     </div>
 
     <div class="box" id="matchDetail">
-      <!-- กล่องรายละเอียด เริ่มต้นเป็นข้อความชวนให้กด พอคลิกแถวแล้ว JavaScript จะเขียนทับ -->
       <div class="empty">เลือกแมตช์จากตารางทางซ้าย เพื่อดูรายรอบและสกอร์บอร์ด</div>
     </div>
   </div>
@@ -39,7 +35,7 @@
   <div class="foot">CS2 Tactical Analysis · SP-404 Senior Project · UTCC STECH</div>
 </main>
 
-<script src="/static/common.js"></script>     <!-- 1) กล่องเครื่องมือกลาง -->
-<script src="/static/matches.js"></script>    <!-- 2) สมองของหน้านี้ -->
+<script src="/static/common.js"></script>     
+<script src="/static/matches.js"></script>    
 </body>
 </html>

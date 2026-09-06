@@ -1,11 +1,4 @@
-// ==========================================================================
-// tactical.js — สมองของหน้า "แท็คติก"  (คู่กับ frontend/pages/tactical.html)
-//
-// แนวคิดหลัก: "การดวลแรกของรอบ" (opening duel) = คิลแรกสุดของรอบนั้น
-// ใครชนะการดวลแรก มักลากยาวไปชนะทั้งรอบ เลยเป็นตัวเลขที่โค้ชดูก่อนเพื่อน
-// ==========================================================================
-
-let side = "t";     // มองจากมุมฝั่งไหน ("t" หรือ "ct")
+let side = "t";     
 
 async function load() {
   await fillMapSelect("tacMap");
@@ -22,10 +15,18 @@ async function draw() {
   const S = d.summary;
   const sideName = side.toUpperCase();          // toUpperCase = เปลี่ยนเป็นตัวพิมพ์ใหญ่ "t" -> "T"
 
+  // ติดป้ายบอกฝั่งไว้ที่ <body> — CSS จะได้เปลี่ยนสีแท่งกราฟตาม (CT = น้ำเงิน, T = ส้ม)
+  // classList.toggle("ชื่อคลาส", เงื่อนไข) = เงื่อนไขจริงใส่คลาสให้ เงื่อนไขเท็จถอดคลาสออก
+  document.body.classList.toggle("side-ct", side === "ct");
+  document.body.classList.toggle("side-t", side === "t");
+
+  const sideColor = side === "ct" ? "var(--ct)" : "var(--t)";   // สีประจำฝั่งที่กำลังดูอยู่
+
   // --- การ์ดตัวเลขสรุป ---
   drawKpis("tacKpis", [
     { k: "รอบทั้งหมด",     v: fmt(S.rounds),                             s: esc(map) },
-    { k: `${sideName} ชนะ`, v: pct(S.wins, S.rounds),                    s: `${fmt(S.wins)} รอบ` },
+    { k: `${sideName} ชนะ`, v: `<span style="color:${sideColor}">${pct(S.wins, S.rounds)}</span>`,
+                            s: `${fmt(S.wins)} รอบ` },
     { k: "รอบที่ปักระเบิด", v: pct(S.planted, S.rounds),                  s: `${fmt(S.planted)} รอบ` },
     { k: "ปะทะแรกเฉลี่ย",  v: `${S.avg_first_contact}<small> วิ</small>`, s: "นับจากหมดเวลาซื้อของ" },
   ]);
@@ -36,8 +37,8 @@ async function draw() {
     d.opening.map((o) => [
       esc(o.place),
       { n: o.duels },
-      { n: badge(o.won, o.duels) },              // badge = ป้ายสี ดูง่ายกว่าตัวเลขเปล่า (อยู่ใน common.js)
-      { n: badge(o.round_wins, o.duels) },
+      { n: badge(o.won, o.duels, side) },        // badge = ป้ายสี ดูง่ายกว่าตัวเลขเปล่า (อยู่ใน common.js)
+      { n: badge(o.round_wins, o.duels, side) }, // ส่ง side ไปด้วย ป้ายจะได้เป็นสีของฝั่งที่กำลังดู
     ]));
 
   // --- ปะทะแรกเกิดตอนวินาทีที่เท่าไร ---

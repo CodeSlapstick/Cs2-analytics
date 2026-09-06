@@ -1,17 +1,3 @@
-// ==========================================================================
-// map.js — สมองของหน้า "แผนที่"  (คู่กับ frontend/pages/map.html)
-//
-// สิ่งที่หน้านี้ทำ
-//   1) เอาภาพเรดาร์จริงของแมพ (assets/maps/de_mirage.webp) มาเป็นพื้นหลัง
-//   2) แบ่งภาพเป็นตารางช่องเล็ก ๆ เช่น 32x32 ช่อง
-//   3) นับว่าแต่ละช่องมีคนตายกี่คน แล้วระบายสีส้ม — ช่องยิ่งเข้ม = ยิ่งตายเยอะ
-//
-// หัวใจคือการแปลงพิกัด 2 ระบบให้ตรงกัน
-//   พิกัดในเกม  = ติดลบได้ หน่วยเป็น "unit" ของเกม แกน y เพิ่มขึ้นด้านบน
-//   พิกัดบนภาพ  = 0 ถึง 1024 หน่วยเป็นพิกเซล แกน y เพิ่มลงด้านล่าง
-// ค่าที่ใช้แปลง (pos_x, pos_y, scale) มาจาก assets/radars.json ผ่าน /api/radar
-// ==========================================================================
-
 let side = "";        // ฝั่งที่กรองอยู่: "" = ทั้งหมด, "ct", "t"
 let radar = null;     // ค่าปรับเทียบของแมพที่เลือกอยู่ (null = แมพนี้ยังไม่มีค่าปรับเทียบ)
 let radarImg = null;  // ตัวภาพเรดาร์ที่โหลดเสร็จแล้ว
@@ -74,16 +60,14 @@ async function loadRadar(map) {
     return;                                           // ไม่มีค่าปรับเทียบก็ไม่พัง แค่ไม่มีภาพพื้นหลัง
   }
 
-  // โหลดไฟล์ภาพ — การโหลดรูปใช้เวลา ต้องรอให้เสร็จก่อนถึงจะวาดลงผ้าใบได้
+  // โหลดไฟล์ภาพ 
   radarImg = await new Promise((resolve, reject) => {
-    // Promise = "ใบสัญญาว่าเดี๋ยวจะมีคำตอบ" เอาไว้ห่อของที่ต้องรอ ให้ใช้ await ได้
     const img = new Image();                          // new Image() = สร้าง <img> ในหน่วยความจำ (ไม่ได้แปะบนหน้าเว็บ)
     img.onload = () => resolve(img);                  // onload = "โหลดรูปเสร็จแล้ว" -> ส่งรูปออกไป
     img.onerror = () => reject(new Error("โหลดภาพเรดาร์ไม่ได้"));
     img.src = radar.image;                            // .src = ที่อยู่ของรูป (พอตั้งค่านี้ เบราว์เซอร์เริ่มโหลดทันที)
   }).catch(() => null);                               // โหลดรูปพลาด -> ใช้ null แล้ววาดแบบไม่มีพื้นหลัง
 }
-
 
 // --------------------------------------------------------------------------
 // ส่วนที่ 3 — นับคนตายรายช่อง
@@ -157,7 +141,6 @@ function countCells(pts) {
   }));
 }
 
-
 // --------------------------------------------------------------------------
 // ส่วนที่ 4 — วาดลงผ้าใบ
 // --------------------------------------------------------------------------
@@ -173,8 +156,9 @@ function paint() {
   // --- ชั้นที่ 1: ภาพเรดาร์ ---
   if (radarImg) {
     ctx.drawImage(radarImg, 0, 0, size, size);   // drawImage(รูป, x, y, กว้าง, สูง)
-    ctx.fillStyle = "rgba(5,8,15,.62)";          // ผ้าคลุมดำโปร่ง ๆ ทับภาพ
-    ctx.fillRect(0, 0, size, size);              // ถ้าไม่คลุม ภาพเรดาร์จะสว่างจนสีส้มกลืนหาย
+    ctx.fillStyle = "rgba(5,8,15,.52)";          // ผ้าคลุมดำโปร่ง ๆ ทับภาพ
+    ctx.fillRect(0, 0, size, size);              // ถ้าไม่คลุม ภาพเรดาร์จะสว่างจนสีของช่องกลืนหาย
+                                                 // แต่ถ้าคลุมเข้มไป ก็จะมองไม่เห็นว่าช่องนั้นอยู่ตรงไหนของแมพ
   } else {
     ctx.fillStyle = "#0a1322";
     ctx.fillRect(0, 0, size, size);
@@ -198,29 +182,30 @@ function paint() {
   const max = Math.max(...cells.map((c) => c.n));   // ช่องที่ตายเยอะสุด = เข้มสุด ที่เหลือเทียบกับมัน
 
   cells.forEach((c) => {
-    ctx.fillStyle = heatColor(c.n / max);           // ยิ่งสัดส่วนสูง สียิ่งเข้ม
+    ctx.fillStyle = cellColor(c, c.n / max);        // สี = ฝั่ง, ความเข้ม = จำนวนคนตาย
     ctx.fillRect(c.cx * cell, c.cy * cell, cell, cell);   // ระบายสี่เหลี่ยมเต็มช่อง
   });
 
   // --- ชั้นที่ 4: กรอบเน้นช่องที่ร้อนที่สุด 3 อันดับแรก ---
   const top3 = [...cells].sort((a, b) => b.n - a.n).slice(0, 3);
   // [...cells] = ก๊อป array ก่อนเรียง (ถ้าเรียงตัวจริงเลย ลำดับเดิมจะหายไป)
-  ctx.strokeStyle = "#ffd6a8";
+  ctx.strokeStyle = "rgba(255,255,255,.9)";         // ขาว ใช้ได้กับช่องทั้งสองสี
   ctx.lineWidth = Math.max(2, size / 400);
   top3.forEach((c) => ctx.strokeRect(c.cx * cell, c.cy * cell, cell, cell));   // strokeRect = วาดแค่กรอบ ไม่ระบายข้างใน
 }
 
-/**
- * แปลง "สัดส่วนความร้อน" (0 ถึง 1) เป็นสี
- * 0 = ส้มจาง ๆ เกือบมองไม่เห็น, 1 = ส้มเข้มจัด
- */
-function heatColor(ratio) {
-  const a = 0.12 + 0.80 * Math.pow(ratio, 0.55);
-  // Math.pow(ratio, 0.55) = ยกกำลัง 0.55 (น้อยกว่า 1 = ดันค่าน้อย ๆ ให้สูงขึ้น)
+function cellColor(c, ratio) {
+  // กรองฝั่งไว้ -> ใช้สีฝั่งนั้น | ดูทั้งหมด -> ใช้สีของฝั่งที่ตายเยอะกว่าในช่องนั้น
+  const isCt = side === "ct" ? true
+             : side === "t"  ? false
+             : c.ct >= c.t;
+  const a = 0.10 + 0.80 * Math.pow(ratio, 0.6);
+  // Math.pow(ratio, 0.6) = ยกกำลัง 0.6 (น้อยกว่า 1 = ดันค่าน้อย ๆ ให้สูงขึ้น)
   // ถ้าไม่ทำ ช่องที่ตาย 1-2 คนจะจางจนมองไม่เห็นเลย เพราะช่องร้อนสุดมีเป็นร้อย
-  return `rgba(255,122,24,${a.toFixed(3)})`;
+  return `rgba(${isCt ? SIDE_RGB.ct : SIDE_RGB.t},${a.toFixed(3)})`;
 }
 
+const SIDE_RGB = { ct: "77,139,255", t: "255,122,24" };   // สีประจำฝั่ง เก็บเป็นเลข R,G,B ไว้ใช้กับ rgba()
 
 // --------------------------------------------------------------------------
 // ส่วนที่ 5 — การ์ดตัวเลข + ตารางอันดับ
@@ -233,14 +218,45 @@ function drawStats(d, map) {
   drawKpis("heatKpis", [
     { k: "จุดที่นับ",      v: fmt(d.count),                s: esc(map) },
     { k: "ช่องที่มีคนตาย", v: fmt(cells.length),           s: `จากทั้งหมด ${fmt(gridN * gridN)} ช่อง` },
-    { k: "ช่องที่ร้อนสุด",  v: fmt(max),                    s: hottest ? esc(hottest.place) : "-" },
+    { k: "ช่องที่ตายเยอะที่สุด",  v: fmt(max),                    s: hottest ? esc(hottest.place) : "-" },
     { k: "เฉลี่ยต่อช่อง",   v: cells.length ? (d.count / cells.length).toFixed(1) : "0",
                             s: "เฉพาะช่องที่มีคนตาย" },
   ]);
 
-  $("legendMax").textContent = `เข้มสุด = ${fmt(max)} คน`;
+  drawLegend(max);
 
-  // ตารางอันดับช่องที่อันตรายที่สุด
+  drawTopTable();
+}
+
+/**
+ * วาดแถบไล่สีใต้แผนที่ ให้สีตรงกับที่ระบายบนช่องจริง ๆ
+ * กรองฝั่งไว้ -> แถบเดียว สีของฝั่งนั้น
+ * ดูทั้งหมด   -> สองแถบ บอกว่าน้ำเงินคือช่องที่ CT ตายเยอะกว่า ส้มคือ T ตายเยอะกว่า
+ */
+function drawLegend(max) {
+  /** สร้างแถบไล่สีหนึ่งแถบ จากจางไปเข้ม */
+  const bar = (rgb) =>
+    `<div class="legend-bar" style="background:linear-gradient(90deg,
+       rgba(${rgb},.10), rgba(${rgb},.90))"></div>`;
+
+  const rows = side
+    ? `<div class="legend">
+         <span class="sub">น้อย</span>${bar(SIDE_RGB[side])}<span class="sub">มาก</span>
+       </div>`
+    : `<div class="legend">
+         <span class="sub" style="min-width:96px">CT ตายเยอะกว่า</span>${bar(SIDE_RGB.ct)}
+       </div>
+       <div class="legend">
+         <span class="sub" style="min-width:96px">T ตายเยอะกว่า</span>${bar(SIDE_RGB.t)}
+       </div>`;
+  // min-width = จองความกว้างป้ายเท่ากันทั้งสองแถว แถบไล่สีจะได้เริ่มตรงกันพอดี
+
+  $("legend").innerHTML = rows +
+    `<div class="sub" style="margin-top:6px">ช่องที่เข้มที่สุด = ตาย ${fmt(max)} คน</div>`;
+}
+
+/** ตารางอันดับช่องที่อันตรายที่สุด (ฝั่งขวาของหน้า) */
+function drawTopTable() {
   const top = [...cells].sort((a, b) => b.n - a.n).slice(0, 10);
   $("topCells").innerHTML = tableHTML(
     ["ตำแหน่ง", "ช่อง", "ตาย", "CT / T"],
@@ -251,7 +267,6 @@ function drawStats(d, map) {
       { n: `<span class="tag ct">${c.ct}</span> <span class="tag t">${c.t}</span>` },
     ]));
 }
-
 
 // --------------------------------------------------------------------------
 // ส่วนที่ 6 — เอาเมาส์ชี้ช่องแล้วโชว์ตัวเลข
@@ -290,4 +305,4 @@ function bindHover() {
 }
 
 
-start(load);   // เช็กล็อกอิน -> วาดเมนู -> เรียก load() (ฟังก์ชัน start อยู่ใน common.js)
+start(load);   
