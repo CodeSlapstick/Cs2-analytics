@@ -1,89 +1,276 @@
 <!DOCTYPE html>
+<!-- DOCTYPE = บอกเบราว์เซอร์ว่า "ไฟล์นี้เป็น HTML ยุคใหม่นะ" ต้องอยู่บรรทัดแรกเสมอ -->
 <html lang="th">
 <head>
-  <meta charset="UTF-8" />                                <!-- ให้ภาษาไทยแสดงถูกต้อง -->
-  <meta name="viewport" content="width=device-width, initial-scale=1" />  <!-- ให้หน้าเว็บพอดีจอมือถือ -->
-  <title>หน้าหลัก · CS2 Analytics</title>                 <!-- ชื่อบนแท็บเบราว์เซอร์ -->
-  <link rel="stylesheet" href="/static/style.css" />      <!-- ใช้ไฟล์ธีมน้ำเงิน-ส้มใบเดียวกับหน้าล็อกอิน -->
+  <meta charset="UTF-8" />                                <!-- ตารางรหัสตัวอักษร ถ้าไม่ใส่ ภาษาไทยจะเป็นตัวประหลาด -->
+  <meta name="viewport" content="width=device-width, initial-scale=1" />  <!-- บอกมือถือให้ใช้ความกว้างจอจริง -->
+  <title>แดชบอร์ด · CS2 Analytics</title>                 <!-- ชื่อบนแท็บเบราว์เซอร์ -->
+  <link rel="stylesheet" href="/static/style.css" />      <!-- ดึงไฟล์ "เสื้อผ้า" (CSS) เข้ามา -->
 </head>
 
 <body>
-  <!-- ===== แถบบนสุด: โลโก้ซ้าย / ผู้ใช้ขวา ===== -->
-  <header class="topbar">
-    <!-- header = แถบหัวเว็บ (ใช้แทน div เฉย ๆ เพื่อบอกความหมายว่านี่คือส่วนหัว) -->
-    <div class="logo">
-      <div class="logo-mark">CS2</div>
+
+<!-- ======================================================================
+     แถบบนสุด — โลโก้ / เมนู 4 แท็บ / กล่องผู้ใช้
+     ====================================================================== -->
+<header class="topbar">
+  <!-- header = ส่วนหัวของหน้า (ใช้แทน div เพื่อบอกความหมาย) -->
+
+  <div class="brand">
+    <span class="dot"></span>          <!-- span ว่าง ๆ ที่ CSS วาดเป็นสี่เหลี่ยมส้ม = โลโก้ -->
+    <span>CS2 ANALYTICS</span>
+  </div>
+
+  <nav class="nav">
+    <!-- nav = กลุ่มลิงก์เมนู -->
+    <!-- href="#overview" = ลิงก์ที่ไม่โหลดหน้าใหม่ แค่เปลี่ยนตัวหนังสือหลัง # ใน URL
+         JavaScript คอยฟังการเปลี่ยนนั้น แล้วสลับหน้าให้เอง (เรียกว่า hash routing) -->
+    <a href="#overview" data-tab="overview">ภาพรวม</a>
+    <!-- data-tab = ช่องเก็บข้อมูลของเราเอง ตั้งชื่ออะไรก็ได้ที่ขึ้นต้นด้วย data-
+         JavaScript ใช้ค่านี้ตัดสินว่าลิงก์นี้คู่กับหน้าไหน -->
+    <a href="#matches" data-tab="matches">แมตช์</a>
+    <a href="#players" data-tab="players">นักแข่ง</a>
+    <a href="#map"     data-tab="map">แผนที่</a>
+    <a href="#tactical" data-tab="tactical">แท็คติก</a>
+    <a href="#ml"       data-tab="ml">โมเดล ML</a>
+  </nav>
+
+  <div class="user-box">
+    <img class="avatar" id="avatar" alt="รูปโปรไฟล์" />
+    <!-- alt = ข้อความสำรองตอนรูปโหลดไม่ขึ้น (โปรแกรมอ่านหน้าจอก็อ่านอันนี้) -->
+    <span id="userName">…</span>
+    <button class="btn-mini" id="btnLogout">ออกจากระบบ</button>
+  </div>
+</header>
+
+<main class="wrap">
+  <!-- main = เนื้อหาหลักของหน้า -->
+
+  <!-- ==================================================================
+       หน้า 1 — ภาพรวม
+       class="page on" -> "on" แปลว่าเป็นหน้าที่เปิดอยู่ตอนแรก
+       ================================================================== -->
+  <section class="page on" id="page-overview">
+
+    <div class="page-head">
       <div>
-        <h1 style="font-size:16px">CS2 Team Analytics</h1>
-        <!-- style="..." = แต่งตรงนี้จุดเดียว (ปกติควรไปเขียนใน CSS แต่กรณีเล็ก ๆ ใส่ตรงนี้ได้) -->
-        <div class="sub">หน้าหลัก</div>
+        <div class="eyebrow">Dashboard</div>   <!-- ป้ายตัวเล็กสีส้มเหนือหัวข้อ -->
+        <h1>ภาพรวม</h1>
+      </div>
+      <select id="mapFilter">
+        <!-- select = ช่องเลือกแบบดึงลง, option ข้างในคือตัวเลือกแต่ละอัน -->
+        <option value="">ทุกแมพ</option>
+        <!-- value="" = ค่าว่าง แปลว่าไม่กรอง (JavaScript จะไม่ส่ง ?map= ไปเลย) -->
+      </select>
+    </div>
+
+    <div class="kpis" id="kpis"></div>
+    <!-- กล่องว่าง ๆ รอ JavaScript สร้างการ์ดตัวเลขมาใส่ -->
+
+    <div class="cols">
+      <div class="box">
+        <div class="eyebrow">Weapons</div>
+        <h2>อาวุธที่ใช้ฆ่ามากที่สุด</h2>
+        <div id="wpBars"></div>              <!-- รอ JavaScript วาดกราฟแท่ง -->
+      </div>
+      <div class="box">
+        <div class="eyebrow">Hot zones</div>
+        <h2>จุดที่มีคนตายบ่อยที่สุด</h2>
+        <div id="plBars"></div>
       </div>
     </div>
 
-    <div class="user-box">
-      <span class="badge hidden" id="modeBadge">โหมดทดสอบ</span>
-      <!-- ป้ายบอกว่ากำลังใช้โหมดทดสอบ เริ่มต้นซ่อนไว้ (class="hidden") -->
-      <img class="avatar" id="avatar" alt="รูปโปรไฟล์" />
-      <!-- img = รูป, alt = ข้อความสำรองตอนรูปโหลดไม่ขึ้น (คนตาบอดใช้โปรแกรมอ่านหน้าจอก็ได้ยินอันนี้) -->
-      <div>
-        <div id="userName" style="font-size:14px;font-weight:600">กำลังโหลด…</div>
-        <div class="sub" id="userId"></div>
-      </div>
-      <button class="btn-ghost" id="btnLogout" style="width:auto;padding:8px 14px;margin:0">ออกจากระบบ</button>
+    <div class="box">
+      <div class="eyebrow">Recent</div>
+      <h2>แมตช์ล่าสุด 5 นัด</h2>
+      <div id="recent"></div>
     </div>
-  </header>
+  </section>
 
-  <!-- ===== เนื้อหาหลัก ===== -->
-  <main class="container">
-    <!-- main = เนื้อหาหลักของหน้า -->
-    <div class="hello">สวัสดี <span id="helloName">…</span> 👋</div>
-    <!-- ชื่อผู้เล่นจะถูก JavaScript เอามาเติมในช่อง span id="helloName" -->
-    <div class="sub">สรุปข้อมูลจากไฟล์เดโมทั้งหมดที่ระบบ parse ไว้แล้ว</div>
+  <!-- ==================================================================
+       หน้า 2 — แมตช์
+       ไม่มี "on" -> ซ่อนอยู่ จนกว่าจะกดแท็บ
+       ================================================================== -->
+  <section class="page" id="page-matches">
+    <div class="page-head">
+      <div>
+        <div class="eyebrow">Matches</div>
+        <h1>รายการแมตช์</h1>
+      </div>
+    </div>
 
-    <!-- การ์ดตัวเลขสรุป 4 ใบ -->
-    <section class="grid">
-      <!-- section = กลุ่มเนื้อหาหนึ่งกลุ่ม -->
-      <div class="stat"><div class="k">การฆ่าทั้งหมด</div><div class="v" id="sTotal">—</div></div>
-      <!-- — (em dash) = ค่าเริ่มต้นก่อนข้อมูลจริงจะมา -->
-      <div class="stat"><div class="k">ยิงหัว (headshot)</div><div class="v" id="sHs">—</div></div>
-      <div class="stat"><div class="k">อัตรายิงหัว</div><div class="v" id="sHsRate">—</div></div>
-      <div class="stat"><div class="k">รอบเฉลี่ยต่อแมตช์</div><div class="v" id="sRound">—</div></div>
-    </section>
+    <div class="cols wide">
+      <!-- wide = ซ้ายกว้างกว่าขวา -->
+      <div class="box">
+        <h2>ทั้งหมด <span class="sub" id="matchCount"></span></h2>
+        <div id="matchTable"></div>
+      </div>
+      <div class="box" id="matchDetail">
+        <div class="empty">เลือกแมตช์จากตารางทางซ้าย เพื่อดูรายรอบและสกอร์บอร์ด</div>
+      </div>
+    </div>
+  </section>
 
-    <!-- สองคอลัมน์: ปืนยอดฮิต / จุดที่คนตายบ่อย -->
-    <section class="panels">
-      <div class="panel">
-        <h2>🔫 อาวุธที่ใช้ฆ่ามากที่สุด</h2>
-        <div id="weapons"></div>
-        <!-- กล่องเปล่า รอ JavaScript สร้างแท่งกราฟใส่ให้ -->
+  <!-- ==================================================================
+       หน้า 3 — นักแข่ง
+       ================================================================== -->
+  <section class="page" id="page-players">
+    <div class="page-head">
+      <div>
+        <div class="eyebrow">Players</div>
+        <h1>นักแข่ง</h1>
+      </div>
+      <select id="minMatches">
+        <option value="1">ทุกคน</option>
+        <option value="3">เล่นอย่างน้อย 3 แมตช์</option>
+        <option value="5">เล่นอย่างน้อย 5 แมตช์</option>
+      </select>
+    </div>
+
+    <div class="cols wide">
+      <div class="box">
+        <h2>อันดับตามจำนวนคิล</h2>
+        <div id="playerTable"></div>
+      </div>
+      <div class="box" id="playerDetail">
+        <div class="empty">เลือกนักแข่งจากตารางทางซ้าย เพื่อดูอาวุธและจุดที่เขาเล่นบ่อย</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ==================================================================
+       หน้า 4 — แผนที่ (heatmap จุดที่คนตาย)
+       ================================================================== -->
+  <section class="page" id="page-map">
+    <div class="page-head">
+      <div>
+        <div class="eyebrow">Map analysis</div>
+        <h1>จุดที่คนตายบนแมพ</h1>
+      </div>
+      <div style="display:flex; gap:10px; flex-wrap:wrap">
+        <!-- style="..." = แต่งเฉพาะจุดนี้จุดเดียว (ของที่ใช้ซ้ำควรไปเขียนใน CSS) -->
+        <select id="heatMap"></select>
+        <div class="seg" id="sideSeg">
+          <!-- ปุ่มสลับ 3 อัน — data-side คือค่าที่ JavaScript จะส่งไปให้ API -->
+          <button data-side="" class="on">ทั้งหมด</button>
+          <button data-side="ct">CT</button>
+          <button data-side="t">T</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="kpis" id="heatKpis"></div>
+
+    <div class="map-box">
+      <canvas id="heat" width="900" height="600"></canvas>
+      <!-- canvas = "ผ้าใบเปล่า" ให้ JavaScript วาดรูปลงไปทีละจุด
+           width/height ที่เขียนตรงนี้คือขนาด "ในผ้าใบ" (จำนวนจุดที่วาดได้)
+           ส่วนขนาดที่เห็นบนจอถูก CSS ยืดให้เต็มกล่องอีกที -->
+    </div>
+    <div class="sub" style="margin-top:8px">
+      จุดยิ่งสว่าง = ยิ่งมีคนตายตรงนั้นบ่อย · <span style="color:var(--ct)">น้ำเงิน = CT ตาย</span> ·
+      <span style="color:var(--t)">ส้ม = T ตาย</span>
+    </div>
+  </section>
+
+  <!-- ==================================================================
+       หน้า 5 — แท็คติก
+       "การดวลแรกของรอบ" = คิลแรกสุดของรอบนั้น ใครชนะดวลแรกมักชนะทั้งรอบ
+       ================================================================== -->
+  <section class="page" id="page-tactical">
+    <div class="page-head">
+      <div>
+        <div class="eyebrow">Tactical analysis</div>
+        <h1>วิเคราะห์แท็คติก</h1>
+      </div>
+      <div style="display:flex; gap:10px; flex-wrap:wrap">
+        <select id="tacMap"></select>
+        <div class="seg" id="tacSide">
+          <!-- เลือกว่าจะมองจากมุมฝั่งไหน — ตัวเลขทั้งหน้าจะเปลี่ยนตาม -->
+          <button data-side="t" class="on">มุมฝั่ง T</button>
+          <button data-side="ct">มุมฝั่ง CT</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="kpis" id="tacKpis"></div>
+
+    <div class="cols">
+      <div class="box">
+        <div class="eyebrow">Opening duels</div>
+        <h2>การดวลแรกของรอบ แยกตามตำแหน่งที่ยืน</h2>
+        <div id="tacOpening"></div>
+        <div class="sub" style="margin-top:10px">
+          ชนะดวล% = ดวลแรกที่ยิงชนะ · ชนะรอบ% = รอบที่จบด้วยฝั่งเราชนะ (แสดงเฉพาะตำแหน่งที่เจอ 5 ครั้งขึ้นไป)
+        </div>
+      </div>
+      <div class="box">
+        <div class="eyebrow">Round timing</div>
+        <h2>ปะทะแรกเกิดตอนวินาทีที่เท่าไร</h2>
+        <div id="tacTiming"></div>
+      </div>
+    </div>
+
+    <div class="cols">
+      <div class="box">
+        <div class="eyebrow">How rounds end</div>
+        <h2>รอบจบด้วยอะไร</h2>
+        <div id="tacEndings"></div>
+      </div>
+      <div class="box">
+        <div class="eyebrow">Bomb</div>
+        <h2>ปักระเบิดแล้วต่างกันแค่ไหน</h2>
+        <div id="tacBomb"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ==================================================================
+       หน้า 6 — โมเดล ML
+       ตัวเลขมาจากไฟล์ที่สคริปต์ใน pipeline/ เทรนเสร็จแล้วเขียนไว้
+       ================================================================== -->
+  <section class="page" id="page-ml">
+    <div class="page-head">
+      <div>
+        <div class="eyebrow">ML insights</div>
+        <h1>โมเดลทำนาย</h1>
+      </div>
+    </div>
+
+    <div class="box" style="margin-bottom:14px">
+      <div class="eyebrow">Round win model</div>
+      <h2>โอกาสชนะรอบ จากสถานะกลางรอบ</h2>
+      <div id="rwKpis" class="kpis" style="margin:12px 0 18px"></div>
+
+      <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:14px">
+        <!-- 4 ช่องเลือก = ฟีเจอร์ 4 ตัวที่โมเดลใช้ -->
+        <select id="rwCt"></select>
+        <select id="rwT"></select>
+        <select id="rwPlant">
+          <option value="0">ยังไม่ปักระเบิด</option>
+          <option value="1">ปักระเบิดแล้ว</option>
+        </select>
+        <select id="rwTime"></select>
       </div>
 
-      <div class="panel">
-        <h2>📍 จุดที่มีคนตายบ่อยที่สุด</h2>
-        <div id="places"></div>
-      </div>
+      <div id="rwOut"></div>
 
-      <div class="panel">
-        <h2>⚖️ เทียบสองฝั่ง</h2>
-        <div id="sides"></div>
-      </div>
+      <div class="eyebrow" style="margin-top:20px">ตารางเต็ม · แถว = CT เหลือ, คอลัมน์ = T เหลือ</div>
+      <div id="rwTable" style="margin-top:8px"></div>
+    </div>
 
-      <div class="panel">
-        <h2>🧪 ขั้นต่อไป</h2>
-        <p class="sub" style="line-height:1.9">
-          <!-- p = ย่อหน้าข้อความ, line-height = ความห่างระหว่างบรรทัด อ่านง่ายขึ้น -->
-          • อัปโหลดไฟล์ .dem เข้าระบบ<br />
-          <!-- br = ขึ้นบรรทัดใหม่ -->
-          • ดูแผนที่ hotspot จาก main.py<br />
-          • KPI รายบุคคลของทีม
-        </p>
-      </div>
-    </section>
+    <div class="box">
+      <div class="eyebrow">Grid model</div>
+      <h2>ช่องไหนบนแมพที่ฝั่งไหนได้เปรียบ</h2>
+      <div id="gridKpis" class="kpis" style="margin:12px 0 18px"></div>
+      <div id="gridTable"></div>
+    </div>
+  </section>
 
-    <div class="foot">SP-404 Senior Project · UTCC STECH</div>
-  </main>
+  <div class="foot">CS2 Tactical Analysis · SP-404 Senior Project · UTCC STECH</div>
+</main>
 
-  <script src="/static/main.js"></script>
-  <!-- โหลดสมองของหน้านี้ -->
+<script src="/static/main.js"></script>
+<!-- โหลด "สมอง" ของหน้านี้ วางไว้ล่างสุดเพื่อให้ HTML ข้างบนถูกสร้างเสร็จก่อน -->
 </body>
 </html>

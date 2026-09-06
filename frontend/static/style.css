@@ -268,74 +268,239 @@ input[type="text"]:focus {                            /* :focus = ตอนค�
    ล็อคอินถึงแค่ตรงนี้ หน้าหลักไม่ได้ทำไม่ได้แก้
    ========================================================================== */
 
+
 /* ==========================================================================
-   ตอนที่ 3 — หน้าหลัก
+   ตอนที่ 3 — หน้าหลัก (แดชบอร์ด)
+   ธีม: พื้นน้ำเงินเข้ม + ตัวเน้นสีส้ม
+   กติกาสีที่ใช้ทั้งหน้า: ฝั่ง CT = น้ำเงิน, ฝั่ง T = ส้ม (เหมือนในเกม)
    ========================================================================== */
 
+/* สีเพิ่มเติมเฉพาะหน้านี้ — ประกาศซ้ำใน :root ได้ ของใหม่จะรวมกับของเดิม */
+:root {
+  --panel:  #0d1728;                  /* พื้นการ์ด */
+  --panel2: #111d33;                  /* พื้นแถวที่เข้มกว่า/แถบหัวตาราง */
+  --ct:     #4d8bff;                  /* สีฝั่ง CT = น้ำเงิน */
+  --t:      #ff7a18;                  /* สีฝั่ง T  = ส้ม */
+}
+
+/* ---------- แถบบนสุด ---------- */
 .topbar {
-  display: flex; align-items: center; justify-content: space-between;  /* ซ้ายสุด-ขวาสุด แล้วดันช่องว่างไว้ตรงกลาง */
-  padding: 14px 22px;
-  background: rgba(7,18,48,.75);
-  border-bottom: 2px solid var(--orange);   /* เส้นส้มใต้แถบบน = จุดเด่นของธีม */
-  position: sticky; top: 0; z-index: 10;    /* sticky = เลื่อนหน้าลงแล้วแถบนี้ยังหนึบอยู่ด้านบน */
-  backdrop-filter: blur(8px);
+  display: flex; align-items: center; gap: 26px;   /* เรียงโลโก้ - เมนู - ผู้ใช้ เป็นแถวเดียว */
+  padding: 0 22px;
+  height: 58px;                                    /* ความสูงคงที่ ทุกอย่างในแถบจะได้อยู่แนวเดียวกัน */
+  background: #070d18;
+  border-bottom: 1px solid var(--line);
+  position: sticky; top: 0; z-index: 20;           /* sticky = เลื่อนหน้าลงแล้วแถบนี้ยังหนึบอยู่ด้านบน */
 }
-.topbar .logo { display: flex; align-items: center; gap: 12px; }   /* โลโก้ + ชื่อระบบ เรียงเป็นแถว */
-.topbar .logo-mark { width: 42px; height: 42px; border-radius: 11px; font-size: 14px; }  /* ย่อโลโก้ให้เล็กลงบนแถบบน */
 
-.user-box { display: flex; align-items: center; gap: 10px; }   /* รูป + ชื่อ + ปุ่มออก เรียงเป็นแถว */
+.brand { display: flex; align-items: center; gap: 10px; font-weight: 800; letter-spacing: .5px; }
+.brand .dot {
+  width: 15px; height: 15px; border-radius: 4px;   /* สี่เหลี่ยมส้มเล็ก ๆ หน้าชื่อแบรนด์ */
+  background: var(--orange);
+}
+
+/* ---------- เมนู (แท็บ) ---------- */
+.nav { display: flex; gap: 4px; flex: 1; }         /* flex:1 = กินที่ว่างที่เหลือ ดันกล่องผู้ใช้ไปขวาสุด */
+.nav a {
+  padding: 8px 12px;
+  font-size: 13.5px;
+  color: var(--muted);
+  text-decoration: none;                           /* เอาเส้นใต้ของลิงก์ออก */
+  border-bottom: 2px solid transparent;            /* จองที่ไว้ให้เส้นส้ม กันหน้าขยับตอนเปลี่ยนแท็บ */
+  transition: color .15s ease;
+}
+.nav a:hover { color: var(--text); }
+.nav a.active {                                    /* แท็บที่กำลังเปิดอยู่ (JavaScript เป็นคนใส่คลาสนี้) */
+  color: #fff;
+  border-bottom-color: var(--orange);              /* ขีดส้มใต้แท็บ */
+}
+
+/* ---------- กล่องผู้ใช้มุมขวาบน ---------- */
+.user-box { display: flex; align-items: center; gap: 10px; font-size: 13px; }
 .avatar {
-  width: 36px; height: 36px; border-radius: 50%;   /* 50% = กลมสนิท */
-  border: 2px solid var(--orange);                 /* ขอบส้มรอบรูปโปรไฟล์ */
+  width: 30px; height: 30px; border-radius: 50%;   /* 50% = กลมสนิท */
+  border: 2px solid var(--orange);
   object-fit: cover;                               /* รูปไม่ยืดเบี้ยว ให้ครอปพอดีกรอบแทน */
-  background: var(--navy-700);                     /* สีรองตอนรูปยังโหลดไม่เสร็จ */
+  background: var(--panel2);
 }
-.badge {
-  font-size: 11px; padding: 3px 8px; border-radius: 999px;   /* 999px = มนจนกลายเป็นแคปซูล */
-  background: rgba(77,139,255,.18); color: var(--blue-400); border: 1px solid rgba(77,139,255,.35);
+.btn-mini {
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px; font-family: inherit;
+  cursor: pointer;
+}
+.btn-mini:hover { color: var(--text); border-color: var(--ct); }
+
+/* ---------- โครงเนื้อหา ---------- */
+.wrap { max-width: 1180px; margin: 0 auto; padding: 24px 22px 70px; }   /* margin auto = จัดเนื้อหาไว้กลางจอ */
+
+.page { display: none; }        /* ทุกหน้าซ่อนไว้ก่อน... */
+.page.on { display: block; }    /* ...หน้าที่ถูกเลือกเท่านั้นที่โผล่ (JavaScript สลับคลาส on) */
+
+.page-head {
+  display: flex; align-items: flex-end; justify-content: space-between;  /* หัวข้อซ้าย เครื่องมือขวา */
+  gap: 16px; flex-wrap: wrap;                                            /* จอแคบให้ตกบรรทัดได้ */
+  margin-bottom: 18px;
+}
+h1 { font-size: 25px; letter-spacing: .2px; }
+.eyebrow {                                    /* ป้ายตัวเล็กสีส้มเหนือหัวข้อ */
+  font-size: 11px; font-weight: 700;
+  letter-spacing: 1.2px; text-transform: uppercase;   /* text-transform = บังคับเป็นตัวพิมพ์ใหญ่ */
+  color: var(--orange);
+  margin-bottom: 5px;
 }
 
-.container { max-width: 1080px; margin: 0 auto; padding: 26px 22px 60px; }  /* margin auto ซ้ายขวา = จัดเนื้อหาไว้กลางจอ */
-
-.hello { font-size: 26px; margin-bottom: 4px; }
-.hello span { color: var(--orange); }        /* เน้นชื่อผู้เล่นเป็นสีส้ม */
-
-.grid {
+/* ---------- แถบตัวเลขสรุป (KPI) ---------- */
+.kpis {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));  /* ช่องละอย่างน้อย 210px เหลือที่ก็แบ่งเท่า ๆ กัน จอแคบจะตกบรรทัดเอง */
-  gap: 14px;
-  margin: 22px 0;
+  grid-template-columns: repeat(auto-fit, minmax(165px, 1fr));  /* ช่องละอย่างน้อย 165px เหลือที่ก็แบ่งเท่า ๆ กัน จอแคบตกบรรทัดเอง */
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  overflow: hidden;                                             /* ตัดมุมที่ล้นออก ขอบจะได้มนสวย */
+  margin-bottom: 18px;
 }
+.kpi { padding: 15px 18px; border-left: 1px solid var(--line); }  /* เส้นคั่นระหว่างช่อง */
+.kpi:first-child { border-left: none; }                           /* ช่องแรกไม่ต้องมีเส้นซ้าย */
+.kpi .k { font-size: 10.5px; letter-spacing: 1px; text-transform: uppercase; color: var(--muted); }
+.kpi .v { font-size: 27px; font-weight: 800; margin-top: 5px; line-height: 1; }
+.kpi .v small { font-size: 15px; font-weight: 600; color: var(--muted); }   /* หน่วยเล็ก ๆ ต่อท้ายตัวเลข เช่น % */
+.kpi .s { font-size: 11.5px; color: var(--muted); margin-top: 6px; }        /* บรรทัดอธิบายใต้ตัวเลข */
 
-.stat {
-  background: var(--navy-800);
-  border: 1px solid var(--navy-700);
-  border-left: 4px solid var(--orange);    /* ขีดส้มหนา ๆ ด้านซ้ายของการ์ดตัวเลข */
-  border-radius: var(--radius);
+/* ---------- การ์ด ---------- */
+.cols {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(330px, 1fr));   /* 2 คอลัมน์บนจอกว้าง, 1 คอลัมน์บนมือถือ */
+  gap: 14px;
+  margin-bottom: 14px;
+}
+.cols.wide { grid-template-columns: 1.6fr 1fr; }                 /* แบบซ้ายกว้างกว่าขวา (1.6 ต่อ 1 ส่วน) */
+@media (max-width: 900px) { .cols.wide { grid-template-columns: 1fr; } }   /* จอแคบ -> เรียงลงมาแทน */
+
+.box {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
   padding: 16px 18px;
 }
-.stat .k { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .6px; }  /* ป้ายชื่อสถิติ ตัวเล็กพิมพ์ใหญ่ */
-.stat .v { font-size: 28px; font-weight: 800; margin-top: 6px; }                                     /* ตัวเลขใหญ่ ๆ ให้เห็นแต่ไกล */
+.box h2 { font-size: 15px; margin-bottom: 14px; }
+.box .eyebrow { margin-bottom: 3px; }
 
-.panels { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 14px; }  /* 2 คอลัมน์บนจอกว้าง, 1 คอลัมน์บนมือถือ */
-
-.panel {
-  background: var(--navy-800);
-  border: 1px solid var(--navy-700);
-  border-radius: var(--radius);
-  padding: 18px;
-}
-.panel h2 { font-size: 15px; margin-bottom: 14px; color: var(--orange-2); }   /* หัวข้อในการ์ดเป็นสีส้มอ่อน */
-
-.bar-row { margin-bottom: 12px; }                                              /* แต่ละแถวของกราฟแท่ง */
-.bar-top { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 5px; }  /* ชื่อไว้ซ้าย ตัวเลขไว้ขวา */
+/* ---------- กราฟแท่งแนวนอน ---------- */
+.bar-row { margin-bottom: 11px; }
+.bar-top { display: flex; justify-content: space-between; font-size: 12.5px; margin-bottom: 5px; }  /* ชื่อไว้ซ้าย ตัวเลขไว้ขวา */
 .bar-top .n { color: var(--muted); }
-.bar-bg { height: 9px; background: var(--navy-700); border-radius: 999px; overflow: hidden; }     /* รางของแท่ง (overflow:hidden = ตัดส่วนที่ล้นออก แท่งจะได้มนตามราง) */
+.bar-bg {
+  height: 7px;
+  background: #16233c;                    /* รางของแท่ง */
+  border-radius: 99px;
+  overflow: hidden;                       /* ตัดส่วนที่ล้น แท่งจะได้มนตามราง */
+}
 .bar-fill {
   height: 100%;
-  background: linear-gradient(90deg, var(--blue-400), var(--orange));  /* แท่งไล่สีจากน้ำเงิน (ซ้าย) ไปส้ม (ขวา) */
-  border-radius: 999px;
-  transition: width .5s ease;    /* ตอน JavaScript ใส่ความกว้าง แท่งจะค่อย ๆ ยืดออกใน 0.5 วินาที */
+  background: linear-gradient(90deg, var(--ct), var(--t));   /* ไล่สีจากน้ำเงิน (ซ้าย) ไปส้ม (ขวา) */
+  border-radius: 99px;
+  transition: width .5s ease;             /* ตอน JavaScript ใส่ความกว้าง แท่งจะค่อย ๆ ยืดออก */
 }
 
-.foot { margin-top: 26px; color: var(--muted); font-size: 12px; text-align: center; }
+/* ---------- ตาราง ---------- */
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+/* border-collapse: collapse = ยุบเส้นขอบของช่องที่ติดกันให้เหลือเส้นเดียว ไม่งั้นจะเห็นเส้นคู่ */
+th {
+  text-align: left;                       /* ข้อความหัวตารางชิดซ้าย (ค่าเริ่มต้นคือกึ่งกลาง) */
+  font-size: 10.5px; letter-spacing: 1px; text-transform: uppercase;
+  color: var(--muted); font-weight: 600;
+  padding: 9px 10px;
+  border-bottom: 1px solid var(--line);
+}
+td { padding: 10px; border-bottom: 1px solid rgba(255,255,255,.045); }
+tbody tr:last-child td { border-bottom: none; }        /* แถวสุดท้ายไม่ต้องมีเส้นใต้ */
+tbody tr.click { cursor: pointer; }                    /* แถวที่กดได้ ให้เมาส์เป็นรูปมือ */
+tbody tr.click:hover { background: rgba(255,122,24,.07); }   /* ชี้แล้วมีพื้นส้มจาง ๆ */
+tbody tr.sel { background: rgba(255,122,24,.13); }           /* แถวที่ถูกเลือกอยู่ */
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+/* tabular-nums = บังคับให้เลขทุกตัวกว้างเท่ากัน ตัวเลขในคอลัมน์จะได้เรียงตรงกันเป๊ะ */
+
+/* ---------- ป้ายเล็ก ๆ ---------- */
+.tag {
+  display: inline-block;                  /* ให้กำหนดความกว้าง/ระยะห่างได้ แต่ยังอยู่ในบรรทัดเดียวกับข้อความ */
+  padding: 2px 8px; border-radius: 99px;
+  font-size: 11px; font-weight: 700;
+}
+.tag.ct { background: rgba(77,139,255,.16); color: var(--ct); }    /* ป้ายฝั่ง CT = น้ำเงิน */
+.tag.t  { background: rgba(255,122,24,.16); color: var(--t); }     /* ป้ายฝั่ง T  = ส้ม */
+
+/* ---------- ช่องเลือก (dropdown) ---------- */
+select {
+  padding: 8px 12px;
+  border-radius: 9px;
+  border: 1px solid var(--line);
+  background: var(--panel2);
+  color: var(--text);
+  font-size: 13px; font-family: inherit;
+  cursor: pointer;
+}
+select:focus { outline: none; border-color: var(--orange); }   /* คลิกแล้วขอบเป็นส้ม */
+
+/* ---------- ปุ่มสลับ (ทั้งหมด / CT / T) ---------- */
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 9px; overflow: hidden; }
+.seg button {
+  padding: 8px 15px;
+  border: none;
+  background: var(--panel2);
+  color: var(--muted);
+  font-size: 12.5px; font-family: inherit;
+  cursor: pointer;
+}
+.seg button + button { border-left: 1px solid var(--line); }   /* "button + button" = ปุ่มที่มีปุ่มอยู่ข้างหน้า -> ใส่เส้นคั่น */
+.seg button.on { background: var(--orange); color: #2a1604; font-weight: 700; }   /* ปุ่มที่ถูกเลือก */
+
+/* ---------- ไทม์ไลน์รายรอบ ---------- */
+.timeline { display: flex; flex-wrap: wrap; gap: 4px; }   /* เรียงกล่องรอบเป็นแถว เต็มแล้วขึ้นบรรทัดใหม่ */
+.rnd {
+  width: 34px; height: 34px;
+  border-radius: 6px;
+  display: grid; place-items: center;      /* จัดเลขไว้กลางกล่อง */
+  font-size: 11px; font-weight: 700;
+  color: #0a1020;
+}
+.rnd.ct { background: var(--ct); }                          /* รอบที่ CT ชนะ = น้ำเงิน */
+.rnd.t  { background: var(--t); }                           /* รอบที่ T ชนะ  = ส้ม */
+.rnd.na { background: #22304a; color: var(--muted); }       /* ข้อมูลไม่บอกว่าใครชนะ = เทา */
+
+/* ---------- แผนที่ความร้อน (heatmap) ---------- */
+.map-box {
+  position: relative;                      /* จุดอ้างอิงให้ป้ายที่ลอยอยู่มุมกล่อง */
+  background: #0a1322;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 12px;
+}
+#heat {
+  width: 100%;                             /* ให้ canvas ยืดเต็มกล่อง */
+  display: block;                          /* ตัดช่องว่างใต้ canvas ที่เบราว์เซอร์แถมมา */
+  border-radius: 8px;
+  background: #060c17;
+}
+
+/* ---------- ข้อความสถานะ ---------- */
+.empty { color: var(--muted); font-size: 13px; padding: 14px 0; }
+.err { color: #ff8b7a; font-size: 13px; padding: 14px 0; }
+
+/* ---------- ท้ายหน้า ---------- */
+.foot {
+  margin-top: 30px; padding-top: 16px;
+  border-top: 1px solid var(--line);
+  color: var(--muted); font-size: 11px;
+  letter-spacing: .8px; text-transform: uppercase;
+}
+
+/* ---------- จอแคบ ---------- */
+@media (max-width: 760px) {
+  .topbar { gap: 12px; padding: 0 12px; overflow-x: auto; }   /* เมนูเลื่อนซ้าย-ขวาได้เมื่อที่ไม่พอ */
+  .nav a { padding: 8px 8px; font-size: 12.5px; }
+  .wrap { padding: 18px 12px 50px; }
+}
