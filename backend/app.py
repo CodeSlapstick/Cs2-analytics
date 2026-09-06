@@ -23,6 +23,7 @@ backend/app.py — "หลังบ้าน" (backend) ของเว็บ CS
 # ส่วนที่ 0 — ขนเครื่องมือเข้ามาใช้
 # ---------------------------------------------------------------------------
 import json
+import mimetypes
 import os
 import re
 import secrets
@@ -47,6 +48,7 @@ ROOT = Path(__file__).resolve().parent.parent   # โฟลเดอร์โป
 FRONTEND = ROOT / "frontend"                    # โฟลเดอร์ของหน้าเว็บทั้งหมด
 PAGES_DIR = FRONTEND / "pages"                  # หน้า .html ที่ไฟล์นี้เสิร์ฟให้เบราว์เซอร์
 STATIC_DIR = FRONTEND / "static"                # ไฟล์นิ่ง ๆ (.css .js รูป)
+ASSETS_DIR = ROOT / "assets"                    # ภาพเรดาร์ของแต่ละแมพ + ค่าปรับเทียบพิกัด (radars.json)
 
 # คอนโซลของ Windows ดีฟอลต์เป็น cp1252 ซึ่งพิมพ์ภาษาไทยไม่ได้ ถ้าไม่ตั้งบรรทัดนี้
 # print() ที่มีข้อความไทยจะโยน UnicodeEncodeError ออกมากลางคัน ทำให้ทั้ง request พัง
@@ -103,6 +105,11 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="CS2 Analytics API", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")  # URL ที่ขึ้นต้นด้วย /static ให้ไปหยิบไฟล์จริงใน frontend/static/
+app.mount("/assets", StaticFiles(directory=ASSETS_DIR), name="assets")  # URL ที่ขึ้นต้นด้วย /assets ให้ไปหยิบไฟล์จริงใน assets/ (ภาพเรดาร์)
+
+# Windows บางเครื่องไม่รู้จักนามสกุล .webp ทำให้ส่งไฟล์ออกไปเป็น application/octet-stream
+# บอกชนิดไฟล์ให้ถูกต้องไว้ก่อน เบราว์เซอร์จะได้รู้แน่ ๆ ว่านี่คือรูปภาพ
+mimetypes.add_type("image/webp", ".webp")
 
 
 async def db(request: Request) -> asyncpg.Connection:
@@ -156,10 +163,49 @@ def page_login():
     return FileResponse(PAGES_DIR / "login.html")
 
 
+# แต่ละหน้าเป็นไฟล์ .html ของตัวเองใน frontend/pages/ (1 หน้า = 1 ไฟล์ html + 1 ไฟล์ js)
+# ตัว JS ในแต่ละหน้าจะเช็คเองว่าล็อกอินแล้วหรือยัง ถ้ายังจะเด้งกลับมาหน้า /
+
+@app.get("/overview")
+def page_overview():
+    """ภาพรวม — การ์ดตัวเลขสรุป + กราฟ + แมตช์ล่าสุด"""
+    return FileResponse(PAGES_DIR / "overview.html")
+
+
+@app.get("/matches")
+def page_matches():
+    """แมตช์ — ตารางแมตช์ + รายรอบ + สกอร์บอร์ด"""
+    return FileResponse(PAGES_DIR / "matches.html")
+
+
+@app.get("/players")
+def page_players():
+    """นักแข่ง — อันดับ + รายละเอียดรายคน"""
+    return FileResponse(PAGES_DIR / "players.html")
+
+
+@app.get("/map")
+def page_map():
+    """แผนที่ — heatmap จุดที่คนตาย"""
+    return FileResponse(PAGES_DIR / "map.html")
+
+
+@app.get("/tactical")
+def page_tactical():
+    """แท็คติก — การดวลแรกของรอบ / จังหวะปะทะ / ผลของการปักระเบิด"""
+    return FileResponse(PAGES_DIR / "tactical.html")
+
+
+@app.get("/ml")
+def page_ml():
+    """โมเดล ML — โอกาสชนะรอบ + โมเดลกริด"""
+    return FileResponse(PAGES_DIR / "ml.html")
+
+
 @app.get("/main")
 def page_main():
-    """หน้าหลักหลังล็อกอิน (ตัว JS ในหน้าจะเช็คเองว่าล็อกอินแล้วหรือยัง)"""
-    return FileResponse(PAGES_DIR / "main.html")
+    """ที่อยู่เดิมสมัยยังเป็นหน้าเดียว — ส่งต่อไปหน้าภาพรวม ลิงก์เก่าจะได้ไม่พัง"""
+    return RedirectResponse("/overview")
 
 
 # ---------------------------------------------------------------------------
@@ -433,11 +479,42 @@ async def api_heatmap(
     พิกัดเป็นระบบของเกม หน้าเว็บต้องแปลงด้วย assets/radars.json (pos_x, pos_y, scale) ก่อนวาด
     """
     recs = await conn.fetch("""
-        SELECT k.victim_x AS x, k.victim_y AS y, k.victim_side AS side, k.weapon, k.headshot
+        SELECT k.victim_x AS x, k.victim_y AS y, k.victim_side AS side,
+               k.weapon, k.headshot, k.victim_place AS place
         FROM kills k JOIN rounds r ON r.id = k.round_id JOIN matches m ON m.id = r.match_id
         WHERE m.map_name = $1 AND k.victim_x IS NOT NULL
           AND ($2::text IS NULL OR k.victim_side = $2)""", map_name, side)
     return {"map": map_name, "side": side, "count": len(recs), "points": rows(recs)}
+
+
+@app.get("/api/radar")
+def api_radar(
+    map_name: str = Query(..., alias="map", pattern=r"^de_[a-z0-9_]+$"),
+    _: dict = Depends(require_login),
+):
+    """ค่าปรับเทียบภาพเรดาร์ของแมพ — ไว้ให้หน้าเว็บแปลงพิกัดในเกมเป็นพิกเซลบนภาพ
+
+    ค่าทั้งหมดอ่านจาก assets/radars.json ซึ่งเป็นแหล่งความจริงแหล่งเดียวของทั้งระบบ
+    (สคริปต์ฝั่ง Python ก็อ่านไฟล์เดียวกันนี้ ตัวเลขสองฝั่งจึงไม่มีทางเพี้ยนจากกัน)
+
+    สูตรแปลงพิกัด — หน้าเว็บเอาไปใช้ตรง ๆ ได้เลย
+        pixel_x = (game_x - pos_x) / scale
+        pixel_y = (pos_y - game_y) / scale      <- แกน y กลับด้าน เพราะในเกม y เพิ่มขึ้นด้านบน
+                                                   แต่บนภาพ y เพิ่มลงด้านล่าง
+    """
+    data = json.loads((ASSETS_DIR / "radars.json").read_text(encoding="utf-8"))
+    cal = data.get(map_name)
+    if not cal:
+        raise HTTPException(404, f"ยังไม่มีค่าปรับเทียบเรดาร์ของ {map_name} ใน assets/radars.json")
+
+    return {
+        "map": map_name,
+        "image": "/assets" + cal["image"],   # cal["image"] เก็บเป็น "/maps/de_mirage.webp" -> เติม /assets ข้างหน้าให้เป็น URL จริง
+        "size": cal["size"],                 # ภาพเป็นจัตุรัส ด้านละกี่พิกเซล
+        "pos_x": cal["pos_x"],               # พิกัดเกมของมุมบนซ้ายของภาพ
+        "pos_y": cal["pos_y"],
+        "scale": cal["scale"],               # 1 พิกเซล = กี่หน่วยเกม
+    }
 
 
 # ===========================================================================

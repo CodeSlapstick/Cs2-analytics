@@ -337,9 +337,6 @@ input[type="text"]:focus {                            /* :focus = ตอนค�
 /* ---------- โครงเนื้อหา ---------- */
 .wrap { max-width: 1180px; margin: 0 auto; padding: 24px 22px 70px; }   /* margin auto = จัดเนื้อหาไว้กลางจอ */
 
-.page { display: none; }        /* ทุกหน้าซ่อนไว้ก่อน... */
-.page.on { display: block; }    /* ...หน้าที่ถูกเลือกเท่านั้นที่โผล่ (JavaScript สลับคลาส on) */
-
 .page-head {
   display: flex; align-items: flex-end; justify-content: space-between;  /* หัวข้อซ้าย เครื่องมือขวา */
   gap: 16px; flex-wrap: wrap;                                            /* จอแคบให้ตกบรรทัดได้ */
@@ -480,10 +477,38 @@ select:focus { outline: none; border-color: var(--orange); }   /* คลิก�
   padding: 12px;
 }
 #heat {
-  width: 100%;                             /* ให้ canvas ยืดเต็มกล่อง */
+  width: 100%;                             /* ให้ canvas ยืดเต็มกล่อง (สูงตามสัดส่วนเอง เพราะภาพเป็นจัตุรัส) */
   display: block;                          /* ตัดช่องว่างใต้ canvas ที่เบราว์เซอร์แถมมา */
   border-radius: 8px;
   background: #060c17;
+  cursor: crosshair;                       /* เมาส์เป็นกากบาท บอกว่า "ชี้ช่องได้นะ" */
+}
+
+/* กล่องข้อความเล็ก ๆ ที่ลอยตามเมาส์ตอนชี้ช่อง */
+.tip {
+  position: absolute;                      /* ลอยอยู่เหนือผ้าใบ โดยยึดตำแหน่งจาก .map-box */
+  pointer-events: none;                    /* คลิก/ชี้ทะลุผ่านได้ ไม่งั้นกล่องจะไปบังผ้าใบจนเมาส์หลุด */
+  background: rgba(7,13,24,.95);
+  border: 1px solid var(--orange);
+  border-radius: 8px;
+  padding: 8px 11px;
+  font-size: 12px; line-height: 1.6;
+  white-space: nowrap;                     /* ห้ามตัดขึ้นบรรทัดใหม่เอง */
+  z-index: 5;
+}
+
+/* แถบไล่สีใต้แผนที่ บอกว่าเข้มแค่ไหนแปลว่าเท่าไร */
+.legend {
+  display: flex; align-items: center; gap: 9px;
+  margin-top: 12px;
+}
+.legend-bar {
+  flex: 1;                                 /* flex:1 = กินที่ว่างที่เหลือให้หมด */
+  height: 9px;
+  border-radius: 99px;
+  border: 1px solid var(--line);
+  background: linear-gradient(90deg, rgba(255,122,24,.12), rgba(255,122,24,.92));
+  /* ไล่จากส้มจาง (ซ้าย = คนตายน้อย) ไปส้มเข้ม (ขวา = คนตายเยอะ) ให้ตรงกับสีบนแผนที่ */
 }
 
 /* ---------- ข้อความสถานะ ---------- */

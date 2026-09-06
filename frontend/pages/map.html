@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<!-- DOCTYPE = บอกเบราว์เซอร์ว่า "ไฟล์นี้เป็น HTML ยุคใหม่นะ" ต้องอยู่บรรทัดแรกเสมอ -->
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />                                <!-- ให้ภาษาไทยแสดงถูก ไม่กลายเป็นตัวประหลาด -->
+  <meta name="viewport" content="width=device-width, initial-scale=1" />  <!-- ให้พอดีจอมือถือ -->
+  <title>แผนที่ · CS2 Analytics</title>                   <!-- ชื่อบนแท็บเบราว์เซอร์ -->
+  <link rel="stylesheet" href="/static/style.css" />      <!-- ดึงไฟล์ "เสื้อผ้า" (CSS) เข้ามา -->
+</head>
+
+<body>
+
+<header class="topbar" id="topbar"></header>
+<!-- แถบเมนู — ปล่อยว่างไว้ ให้ common.js เติมเนื้อในให้ -->
+
+<main class="wrap">
+
+  <div class="page-head">
+    <div>
+      <div class="eyebrow">Map analysis</div>   <!-- ป้ายตัวเล็กสีส้มเหนือหัวข้อ -->
+      <h1>ตารางจุดตายบนแมพ</h1>
+    </div>
+
+    <div style="display:flex; gap:10px; flex-wrap:wrap">
+      <!-- style="..." = แต่งเฉพาะจุดนี้จุดเดียว (ของที่ใช้ซ้ำควรไปเขียนใน CSS) -->
+
+      <select id="mapSelect"></select>
+      <!-- ช่องเลือกแมพ — ปล่อยว่าง ให้ map.js เติมรายชื่อจากฐานข้อมูล -->
+
+      <select id="gridSize">
+        <!-- ความละเอียดของตาราง: ยิ่งช่องเยอะ ยิ่งเห็นละเอียด แต่แต่ละช่องมีข้อมูลน้อยลง -->
+        <option value="24">ช่องใหญ่ · 24x24</option>
+        <option value="32" selected>ช่องกลาง · 32x32</option>
+        <!-- selected = ตัวเลือกที่ถูกเลือกไว้ตั้งแต่แรก -->
+        <option value="48">ช่องเล็ก · 48x48</option>
+        <option value="64">ช่องจิ๋ว · 64x64</option>
+      </select>
+
+      <div class="seg" id="sideSeg">
+        <!-- ปุ่มสลับ — data-side คือค่าที่ JavaScript จะส่งไปให้ API -->
+        <button data-side="" class="on">ตายทั้งหมด</button>
+        <button data-side="ct">CT ตาย</button>
+        <button data-side="t">T ตาย</button>
+        <!-- class="on" = ปุ่มที่ถูกเลือกอยู่ตอนแรก -->
+      </div>
+    </div>
+  </div>
+
+  <div class="kpis" id="heatKpis"></div>
+  <!-- กล่องว่าง รอ JavaScript สร้างการ์ดตัวเลขมาใส่ -->
+
+  <div class="cols wide">
+    <!-- .wide = ซ้ายกว้างกว่าขวา (1.6 ต่อ 1 ส่วน) -->
+
+    <!-- ---------- ฝั่งซ้าย: ตารางบนภาพแมพ ---------- -->
+    <div class="box">
+      <div class="map-box" id="mapBox">
+        <!-- id="mapBox" ตั้งเป็นจุดอ้างอิง ให้กล่องข้อความที่ลอยตามเมาส์เกาะตำแหน่งได้ -->
+
+        <canvas id="heat" width="1024" height="1024"></canvas>
+        <!-- canvas = "ผ้าใบเปล่า" ให้ JavaScript วาดรูปลงไป
+             width/height ตรงนี้คือขนาด "ในผ้าใบ" (จำนวนพิกเซลที่วาดได้) ตั้งเท่าภาพเรดาร์จริง
+             ส่วนขนาดที่เห็นบนจอ CSS ย่อให้พอดีกล่องอีกที -->
+
+        <div class="tip hidden" id="tip"></div>
+        <!-- กล่องข้อความเล็ก ๆ ที่โผล่ตอนเอาเมาส์ชี้ช่อง — เริ่มต้นซ่อนไว้ด้วยคลาส hidden -->
+      </div>
+
+      <!-- แถบไล่สีบอกความหมายของความเข้ม -->
+      <div class="legend">
+        <span class="sub">น้อย</span>
+        <div class="legend-bar"></div>
+        <span class="sub">มาก</span>
+        <span class="sub" style="margin-left:auto" id="legendMax"></span>
+        <!-- margin-left:auto = ดันชิ้นนี้ไปขวาสุด -->
+      </div>
+
+      <div class="sub" style="margin-top:8px">
+        พื้นหลังคือภาพเรดาร์จริงของแมพ · แบ่งเป็นช่องเล็ก ๆ แล้วนับว่าแต่ละช่องมีคนตายกี่คน
+        <b style="color:var(--orange)">ช่องยิ่งเข้ม = ยิ่งมีคนตายตรงนั้นเยอะ</b> · เอาเมาส์ชี้ช่องเพื่อดูตัวเลข
+      </div>
+
+      <div class="sub" id="mapNote" style="margin-top:6px; color:#ff8b7a"></div>
+      <!-- ที่ว่างสำหรับข้อความเตือน กรณีแมพนั้นยังไม่มีค่าปรับเทียบใน radars.json -->
+    </div>
+
+    <!-- ---------- ฝั่งขวา: อันดับช่องที่อันตรายที่สุด ---------- -->
+    <div class="box">
+      <div class="eyebrow">Deadliest cells</div>
+      <h2>ช่องที่มีคนตายมากที่สุด</h2>
+      <div id="topCells"></div>
+      <div class="sub" style="margin-top:10px">
+        ชื่อตำแหน่ง = callout ที่พบบ่อยที่สุดในช่องนั้น
+      </div>
+    </div>
+  </div>
+
+  <div class="foot">CS2 Tactical Analysis · SP-404 Senior Project · UTCC STECH</div>
+</main>
+
+<script src="/static/common.js"></script>   <!-- 1) กล่องเครื่องมือกลาง ต้องมาก่อนเสมอ -->
+<script src="/static/map.js"></script>      <!-- 2) สมองของหน้านี้ -->
+</body>
+</html>
