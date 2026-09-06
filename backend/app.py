@@ -333,6 +333,17 @@ async def api_stats(
         {"AND" if where else "WHERE"} k.victim_place IS NOT NULL
         GROUP BY k.victim_place ORDER BY count DESC LIMIT 8""", *args)
 
+    # KPI ระดับรอบ/คน สำหรับการ์ดบนหน้า Dashboard — มาจาก view player_round_facts (ต้องมี player_rounds)
+    # avg_* = ค่าเฉลี่ยต่อคนต่อรอบทั้งชุดข้อมูล ไว้เป็นเส้นอ้างอิงเวลาเทียบนักแข่งคนเดียว
+    kpi = await conn.fetchrow(f"""
+        SELECT COUNT(DISTINCT f.round_id) FILTER (WHERE r.winner_side = 'ct')                         AS ct_rounds_won,
+               COUNT(DISTINCT f.round_id)                                                            AS rounds_with_facts,
+               ROUND(AVG(f.damage)::numeric, 1)                                                      AS avg_adr,
+               ROUND(100.0 * COUNT(*) FILTER (WHERE f.kast) / GREATEST(COUNT(*), 1), 1)              AS avg_kast
+        FROM player_round_facts f JOIN rounds r ON r.id = f.round_id JOIN matches m ON m.id = r.match_id
+        {where}""", *args)
+    avg_rating = await conn.fetchval("SELECT ROUND(AVG(rating)::numeric, 2) FROM player_stats WHERE rounds >= 20")
+
     total = totals["total_kills"]
     return {
         "map": map_name,
@@ -346,6 +357,11 @@ async def api_stats(
         "t_kills": totals["t_kills"],
         "top_weapons": rows(top_weapons),
         "top_places": rows(top_places),
+        # ใหม่ — เป็น 0/None ถ้ายังไม่ได้โหลด player_rounds (JSON schema_version < 3)
+        "ct_round_win_rate": round(100 * kpi["ct_rounds_won"] / kpi["rounds_with_facts"], 1) if kpi["rounds_with_facts"] else None,
+        "avg_adr": float(kpi["avg_adr"]) if kpi["avg_adr"] is not None else None,
+        "avg_kast": float(kpi["avg_kast"]) if kpi["avg_kast"] is not None else None,
+        "avg_rating": float(avg_rating) if avg_rating is not None else None,
     }
 
 
@@ -361,24 +377,37 @@ async def api_match(match_id: int, _: dict = Depends(require_login), conn: async
     match = await conn.fetchrow("SELECT * FROM match_summary WHERE id = $1", match_id)
     if not match:
         raise HTTPException(404, "ไม่พบแมตช์นี้")
+    # รายรอบ + เศรษฐกิจ (มูลค่าอุปกรณ์ทั้งทีมตอน freeze จบ และ buy type) จาก view round_economy
+    # LEFT JOIN เพื่อให้แมตช์ที่โหลดจาก JSON รุ่นเก่า (ไม่มี player_rounds) ยังตอบได้ แค่ช่องเศรษฐกิจว่าง
     rounds_ = await conn.fetch("""
         SELECT r.round_num, r.winner_side, r.end_reason,
                r.bomb_plant_tick IS NOT NULL AS bomb_planted,
-               COUNT(k.id) AS kills
-        FROM rounds r LEFT JOIN kills k ON k.round_id = r.id
+               COUNT(k.id) AS kills,
+               e.ct_equip, e.t_equip, e.ct_buy_type, e.t_buy_type
+        FROM rounds r
+        LEFT JOIN kills k ON k.round_id = r.id
+        LEFT JOIN round_economy e ON e.round_id = r.id
         WHERE r.match_id = $1
-        GROUP BY r.id ORDER BY r.round_num""", match_id)
+        GROUP BY r.id, e.ct_equip, e.t_equip, e.ct_buy_type, e.t_buy_type
+        ORDER BY r.round_num""", match_id)
+    # สกอร์บอร์ดจาก view match_scoreboard — มี ADR / KAST / rating / ฝั่งที่เริ่ม (= ทีม) มาให้ครบ
     scoreboard = await conn.fetch("""
-        WITH mk AS (SELECT k.* FROM kills k JOIN rounds r ON r.id = k.round_id WHERE r.match_id = $1),
-             ids AS (SELECT attacker_id AS steam_id FROM mk WHERE attacker_id IS NOT NULL
-                     UNION SELECT victim_id FROM mk)
-        SELECT p.steam_id::text AS steam_id, p.name,
-               (SELECT COUNT(*) FROM mk WHERE attacker_id = p.steam_id)              AS kills,
-               (SELECT COUNT(*) FROM mk WHERE victim_id   = p.steam_id)              AS deaths,
-               (SELECT COUNT(*) FROM mk WHERE assister_id = p.steam_id)              AS assists,
-               (SELECT COUNT(*) FROM mk WHERE attacker_id = p.steam_id AND headshot) AS headshots
-        FROM ids JOIN players p USING (steam_id)
-        ORDER BY kills DESC, deaths ASC""", match_id)
+        SELECT steam_id::text AS steam_id, name, start_side, rounds,
+               kills, deaths, assists, headshots, hs_rate, adr, kast, rating
+        FROM match_scoreboard WHERE match_id = $1
+        ORDER BY rating DESC, kills DESC""", match_id)
+    if not scoreboard:                        # แมตช์รุ่นเก่าที่ไม่มี player_rounds — ถอยไปนับจาก kills ตรง ๆ
+        scoreboard = await conn.fetch("""
+            WITH mk AS (SELECT k.* FROM kills k JOIN rounds r ON r.id = k.round_id WHERE r.match_id = $1),
+                 ids AS (SELECT attacker_id AS steam_id FROM mk WHERE attacker_id IS NOT NULL
+                         UNION SELECT victim_id FROM mk)
+            SELECT p.steam_id::text AS steam_id, p.name,
+                   (SELECT COUNT(*) FROM mk WHERE attacker_id = p.steam_id)              AS kills,
+                   (SELECT COUNT(*) FROM mk WHERE victim_id   = p.steam_id)              AS deaths,
+                   (SELECT COUNT(*) FROM mk WHERE assister_id = p.steam_id)              AS assists,
+                   (SELECT COUNT(*) FROM mk WHERE attacker_id = p.steam_id AND headshot) AS headshots
+            FROM ids JOIN players p USING (steam_id)
+            ORDER BY kills DESC, deaths ASC""", match_id)
     return {"match": dict(match), "rounds": rows(rounds_), "scoreboard": rows(scoreboard)}
 
 
@@ -391,7 +420,8 @@ async def api_players(
 ):
     """นักแข่งเรียงตามคิล (จาก view player_stats) — ?min_matches=3 กรองคนที่เล่นน้อยออก"""
     recs = await conn.fetch("""
-        SELECT steam_id::text AS steam_id, name, matches, kills, deaths, assists, headshots, kd, hs_rate
+        SELECT steam_id::text AS steam_id, name, matches, rounds, kills, deaths, assists, headshots, kd, hs_rate,
+               adr, kast, rating, win_rate, opening_rate, trade_rate, util_per_round
         FROM player_stats WHERE matches >= $1
         ORDER BY kills DESC LIMIT $2""", min_matches, limit)
     return rows(recs)
@@ -399,12 +429,32 @@ async def api_players(
 
 @app.get("/api/players/{steam_id}")
 async def api_player(steam_id: int, _: dict = Depends(require_login), conn: asyncpg.Connection = Depends(db)):
-    """นักแข่งคนเดียว: สถิติรวม + ปืนที่ใช้ + จุดที่ฆ่า/ตายบ่อย"""
+    """นักแข่งคนเดียว: สถิติรวม + เรดาร์ 6 แกน + ปืนที่ใช้ + จุดที่ฆ่า/ตายบ่อย"""
     p = await conn.fetchrow("""
-        SELECT steam_id::text AS steam_id, name, matches, kills, deaths, assists, headshots, kd, hs_rate
+        SELECT steam_id::text AS steam_id, name, matches, rounds, kills, deaths, assists, headshots, kd, hs_rate,
+               adr, kast, rating, win_rate, survival_rate, opening_kills, opening_deaths, opening_rate,
+               trade_kills, trade_rate, traded_rate, util_per_round, clutch_attempts, clutch_wins
         FROM player_stats WHERE steam_id = $1""", steam_id)
     if not p:
         raise HTTPException(404, "ไม่พบนักแข่งคนนี้")
+    # เรดาร์ 6 แกน = เปอร์เซ็นไทล์เทียบนักแข่งคนอื่นที่เล่น >= 20 รอบ (0 = ต่ำสุดในกลุ่ม, 100 = สูงสุด)
+    #   AIM = ยิงหัว%  ENTRY = เปิดรอบ%  TRD = เทรดคิล/รอบ  UTIL = ระเบิด/รอบ  CLUTCH = ชนะ clutch%  SURV = รอด%
+    #   ใช้เปอร์เซ็นไทล์แทนค่าดิบ เพราะแต่ละแกนหน่วยคนละอย่าง ค่าดิบวางบนเรดาร์เดียวกันไม่ได้
+    #   clutch ต้องมีอย่างน้อย 3 ครั้งถึงนับ ไม่งั้นคนที่ชนะ 1/1 จะได้ 100% ทันที
+    radar = await conn.fetchrow("""
+        WITH pool AS (SELECT * FROM player_stats WHERE rounds >= 20),
+        ranked AS (
+            SELECT steam_id,
+                   percent_rank() OVER (ORDER BY hs_rate)        AS aim,
+                   percent_rank() OVER (ORDER BY opening_rate)   AS entry,
+                   percent_rank() OVER (ORDER BY trade_rate)     AS trade,
+                   percent_rank() OVER (ORDER BY util_per_round) AS util,
+                   percent_rank() OVER (ORDER BY CASE WHEN clutch_attempts >= 3
+                                                     THEN clutch_wins::numeric / clutch_attempts ELSE 0 END) AS clutch,
+                   percent_rank() OVER (ORDER BY survival_rate)  AS surv,
+                   COUNT(*) OVER ()                              AS pool_size
+            FROM pool)
+        SELECT * FROM ranked WHERE steam_id = $1""", steam_id)
     weapons = await conn.fetch("""
         SELECT weapon AS name, COUNT(*) AS count FROM kills
         WHERE attacker_id = $1 GROUP BY weapon ORDER BY count DESC LIMIT 8""", steam_id)
@@ -416,7 +466,11 @@ async def api_player(steam_id: int, _: dict = Depends(require_login), conn: asyn
         SELECT victim_place AS name, COUNT(*) AS count FROM kills
         WHERE victim_id = $1 AND victim_place IS NOT NULL
         GROUP BY victim_place ORDER BY count DESC LIMIT 8""", steam_id)
-    return {"player": dict(p), "weapons": rows(weapons),
+    return {"player": dict(p),
+            # เรดาร์เป็น 0-100 ต่อแกน; None ถ้าคนนี้เล่นไม่ถึง 20 รอบ (ยังไม่อยู่ในกลุ่มเทียบ)
+            "radar": ({k: round(float(radar[k]) * 100) for k in ("aim", "entry", "trade", "util", "clutch", "surv")}
+                      | {"pool_size": radar["pool_size"], "min_rounds": 20}) if radar else None,
+            "weapons": rows(weapons),
             "kill_places": rows(kill_places), "death_places": rows(death_places)}
 
 

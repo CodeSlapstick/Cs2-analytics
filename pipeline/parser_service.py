@@ -13,12 +13,15 @@ parser_service.py — อ่านไฟล์ .dem หนึ่งไฟล์ 
 
 "normalized" แปลว่าอะไร
     ไม่ใช่ตารางแบน ๆ ที่ชื่อผู้เล่นซ้ำทุกแถวเหมือน all_kills.csv
-    แต่แยกเป็น 4 ก้อนตามตารางใน backend/schema.sql แล้วอ้างถึงกันด้วยคีย์:
-        match    1 ก้อน      ข้อมูลระดับแมตช์
-        players  n แถว       steam_id -> ชื่อ (เก็บครั้งเดียว)
-        rounds   n แถว       คีย์คือ round_num
-        kills    n แถว       อ้าง rounds ด้วย round_num, อ้าง players ด้วย steam_id
-    ETL loader (backend/) รับไฟล์นี้แล้ว INSERT ตามลำดับ players -> match -> rounds -> kills ได้เลย
+    แต่แยกเป็น 7 ก้อนตามตารางใน backend/schema.sql แล้วอ้างถึงกันด้วยคีย์:
+        match          1 ก้อน   ข้อมูลระดับแมตช์
+        players        n แถว    steam_id -> ชื่อ (เก็บครั้งเดียว)
+        rounds         n แถว    คีย์คือ round_num
+        kills          n แถว    อ้าง rounds ด้วย round_num, อ้าง players ด้วย steam_id
+        damages        n แถว    ทุกครั้งที่มีคนโดนดาเมจ ไม่ใช่แค่ครั้งที่ตาย — ADR ใช้ตัวนี้
+        player_rounds  n แถว    หนึ่งแถวต่อคนต่อรอบ: ฝั่ง / มูลค่าอุปกรณ์ / รอดถึงจบรอบไหม — KAST, win rate, เศรษฐกิจ ใช้ตัวนี้
+        grenades       n แถว    ระเบิดทุกลูกที่ขว้าง — utility per round ใช้ตัวนี้
+    ETL loader (backend/) รับไฟล์นี้แล้ว INSERT ตามลำดับ players -> match -> rounds -> kills -> damages -> player_rounds -> grenades ได้เลย
     ชื่อฟิลด์ตั้งให้ตรงกับคอลัมน์ใน schema.sql ทุกตัว จะได้ไม่ต้อง map ชื่ออีกรอบ
 
 หนึ่งเดโม = หนึ่งไฟล์ JSON
@@ -39,16 +42,17 @@ from pathlib import Path
 
 import polars as pl
 from awpy import Demo
-from awpy.parsers.rounds import create_round_df
+from awpy.parsers.rounds import apply_round_num, create_round_df
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))      # ให้รัน python pipeline/parser_service.py จากรากโปรเจกต์ได้
 from pipeline.demoparser import EVENTS, PLAYER_PROPS   # noqa: E402  ชุด event/prop เดียวกับตัวสร้าง all_kills.csv
+from pipeline.parse_grenades import GRENADE_TYPES      # noqa: E402  ตารางชื่อระเบิดชุดเดียวกับ grenades.parquet
 
 DEMO_DIR = ROOT / "demos"
 OUT_DIR = ROOT / "output" / "json"
 
-SCHEMA_VERSION = 1      # ขยับเมื่อโครง JSON เปลี่ยนแบบที่ ETL เดิมอ่านไม่ได้
+SCHEMA_VERSION = 3      # ขยับเมื่อโครง JSON เปลี่ยนแบบที่ ETL เดิมอ่านไม่ได้  (2 = damages, 3 = player_rounds + grenades)
 
 # ชื่อไฟล์เดโมจาก HLTV มีแบบแผน "ทีมA-vs-ทีมB-แมพ.dem" (regex เดียวกับ backend/load_kills.py)
 TEAMS_RE = re.compile(r"^(?P<a>.+?)-vs-(?P<b>.+?)-[^-]+\.dem$", re.IGNORECASE)
@@ -64,6 +68,21 @@ KILL_COLUMNS = {
     "attacker_X": "attacker_x", "attacker_Y": "attacker_y", "attacker_Z": "attacker_z", "attacker_place": "attacker_place",
     "victim_X": "victim_x", "victim_Y": "victim_y", "victim_Z": "victim_z", "victim_place": "victim_place",
 }
+
+# คอลัมน์จาก awpy -> ชื่อคอลัมน์ในตาราง damages ของ schema.sql
+#   ใน player_hurt "คนโดน" ใช้ prefix user_ ไม่ใช่ victim_ เหมือน player_death
+#   health_lost ไม่ได้มาจากเดโมตรง ๆ แต่คำนวณเองใน parse_demo (ดูคอมเมนต์ตรงนั้น)
+DAMAGE_COLUMNS = {
+    "tick": "tick",
+    "attacker_steamid": "attacker_id", "user_steamid": "victim_id",
+    "weapon": "weapon", "health_lost": "damage", "hitgroup": "hitgroup",
+}
+
+# สถานะผู้เล่นที่ต้องดู "ณ tick" (ไม่มีอีเวนต์ไหนบอก) — ขอแค่ 2 tick ต่อรอบ ไม่ใช่ทุก tick
+#   ทำไมใช้ current_equip_value ไม่ใช่ round_start_equip_value
+#   ตัวหลังในเดโม CS2 ค้างค่าเก่า (เห็น 200 ทั้งที่ถือ M4 อยู่) ส่วนตัวแรก ณ tick ที่ freeze จบ
+#   คือมูลค่าจริง ซึ่งตรงกับนิยาม "equipment value at freeze-time end" ของ HLTV พอดี
+TICK_PROPS = ["team_name", "is_alive", "current_equip_value", "balance"]
 
 for _s in (sys.stdout, sys.stderr):     # ให้คอนโซล Windows พิมพ์ไทยได้
     try:
@@ -85,7 +104,7 @@ def _clean(df: pl.DataFrame) -> pl.DataFrame:
 def parse_demo(path: Path) -> dict:
     """อ่านเดโมหนึ่งไฟล์ คืน dict โครง normalized พร้อม json.dumps"""
     dem = Demo(path)
-    dem.events = dem.parse_events(EVENTS, player_props=PLAYER_PROPS)
+    dem.events = dem.parse_events([*EVENTS, "player_hurt"], player_props=PLAYER_PROPS)
     dem.rounds = create_round_df(dem.events)
     tickrate = int(dem.tickrate)
 
@@ -114,12 +133,94 @@ def parse_demo(path: Path) -> dict:
                  .sort(["round_num", "tick"])
     )
 
+    # --- damages: player_hurt ไม่มีเลขรอบติดมา ต้องปะเองจากขอบเขต tick ของแต่ละรอบ ---
+    #   apply_round_num คือฟังก์ชันเดียวกับที่ awpy ใช้ปะเลขรอบให้ตาราง kills เกณฑ์จึงตรงกันแน่นอน
+    #   แถวที่ปะไม่ได้ (round_num ว่าง) คือดาเมจตอน warmup หรือระหว่างพักรอบ — ตัดทิ้ง
+    #   ส่วน user_steamid ว่างแปลว่าหาคนโดนไม่เจอ ซึ่ง damages.victim_id เป็น NOT NULL จึงตัดทิ้งเหมือนกัน
+    #
+    #   ทำไมไม่ใช้ dmg_health ที่เดโมให้มา
+    #   dmg_health คือ "ดาเมจดิบของกระสุน" — AWP เข้าตัวขึ้น 148 ทั้งที่คนโดนเหลือเลือดแค่ 7
+    #   เอาไปรวมแล้ว ADR จะพองเกินจริง (ทดลองแล้วได้ 148 ต่อรอบ ทั้งที่โปรระดับโลกอยู่ 70-100)
+    #   ADR ตามเกณฑ์ HLTV นับเฉพาะเลือดที่เสียจริง = เลือดก่อนโดน - เลือดหลังโดน
+    #   health ในอีเวนต์คือเลือด "หลังโดน" ส่วนเลือดก่อนโดนคือ health ของนัดก่อนหน้าของคนเดิมในรอบเดิม
+    #   (ไม่มีนัดก่อนหน้า = ยังไม่เคยโดนในรอบนี้ = 100)
+    damages = _clean(
+        apply_round_num(dem.events["player_hurt"], dem.rounds)
+        .drop_nulls(["round_num", "user_steamid"])
+        .sort(["round_num", "tick"])
+        .with_columns(
+            (pl.col("health").shift(1).over(["round_num", "user_steamid"]).fill_null(100) - pl.col("health"))
+            .clip(0, 100)
+            .alias("health_lost")
+        )
+        .select(["round_num", *DAMAGE_COLUMNS])
+        .rename(DAMAGE_COLUMNS)
+        .with_columns(
+            pl.col(["round_num", "tick", "damage"]).cast(pl.Int32),
+            pl.col(["attacker_id", "victim_id"]).cast(pl.Int64),
+        )
+        .sort(["round_num", "tick"])
+    )
+
+    # --- player_rounds: หนึ่งแถวต่อคนต่อรอบ — ฝั่ง / มูลค่าอุปกรณ์ / รอดถึงจบรอบไหม ---
+    #   tick "start" = freeze จบ (ฝั่ง + เงิน)   tick "end" = round_end (ใครยังรอด)
+    #   ใช้ end ไม่ใช่ official_end เพราะช่วงหลัง round_end ยังยิงกันได้ คนที่ตายตอนนั้นไม่นับว่าเสียรอบ
+    want: dict[int, tuple[int, str]] = {}
+    for r in dem.rounds.iter_rows(named=True):
+        fe = r["freeze_end"] or r["start"]
+        en = r["end"] or r["official_end"]
+        if fe is not None:
+            want[int(fe)] = (r["round_num"], "start")
+        if en is not None:
+            want[int(en)] = (r["round_num"], "end")
+    ticks = pl.from_pandas(dem.parser.parse_ticks(wanted_props=TICK_PROPS, ticks=sorted(want))).join(
+        pl.DataFrame({"tick": list(want), "round_num": [v[0] for v in want.values()], "at": [v[1] for v in want.values()]}),
+        on="tick",
+    )
+    # ตอน freeze จบ "ผู้เล่นจริง" ทุกคนต้องมีชีวิต — โค้ชอยู่ในทีมเดียวกัน (team_name เหมือนกัน) แต่ is_alive = False
+    # ถ้าไม่กรอง โค้ชจะโผล่เป็นผู้เล่นคนที่ 11-12 ของรอบ แล้วไปดึงค่าเฉลี่ย KAST/rating ของทั้งชุดลง
+    at_start = ticks.filter((pl.col("at") == "start") & pl.col("is_alive"))
+    at_end = ticks.filter(pl.col("at") == "end").select("round_num", "steamid", pl.col("is_alive").alias("survived"))
+    player_rounds = _clean(
+        at_start.join(at_end, on=["round_num", "steamid"], how="left")
+        .select(
+            pl.col("round_num").cast(pl.Int32),
+            pl.col("steamid").cast(pl.Int64).alias("steam_id"),
+            pl.when(pl.col("team_name") == "CT").then(pl.lit("ct")).otherwise(pl.lit("t")).alias("side"),
+            pl.col("current_equip_value").cast(pl.Int32).alias("equip_value"),
+            pl.col("balance").cast(pl.Int32),
+            pl.col("survived").fill_null(False),
+        )
+        .sort(["round_num", "steam_id"])
+    )
+
+    # --- grenades: ระเบิดทุกลูก จาก weapon_fire (grenade_thrown ไม่มีในเดโม 14 จาก 50 ไฟล์ — ดู parse_grenades.py) ---
+    fired = dem.parser.parse_event("weapon_fire", player=["team_name"])
+    if hasattr(fired, "columns") and len(fired):
+        grenades = (
+            apply_round_num(pl.from_pandas(fired).with_columns(pl.col("weapon").str.replace("^weapon_", "")), dem.rounds)
+            .filter(pl.col("weapon").is_in(list(GRENADE_TYPES)))
+            .drop_nulls(["round_num"])
+            .select(
+                pl.col("round_num").cast(pl.Int32),
+                pl.col("tick").cast(pl.Int32),
+                pl.col("user_steamid").cast(pl.Int64).alias("thrower_id"),
+                pl.when(pl.col("user_team_name") == "CT").then(pl.lit("ct")).otherwise(pl.lit("t")).alias("side"),
+                pl.col("weapon").replace_strict(GRENADE_TYPES, default="other").alias("type"),
+            )
+            .sort(["round_num", "tick"])
+        )
+    else:
+        grenades = pl.DataFrame(schema={"round_num": pl.Int32, "tick": pl.Int32, "thrower_id": pl.Int64, "side": pl.Utf8, "type": pl.Utf8})
+
     # --- players: ทุก steam_id ที่โผล่ ชื่อล่าสุดที่เห็นชนะ (เหมือน load_kills.py) ---
+    #   รวมคนจาก tick ด้วย จะได้ครบ 10 คนแม้บางคนไม่เคยฆ่าหรือตายเลย (FK ของ player_rounds/grenades ต้องการ)
     players = (
         pl.concat([
-            dem.kills.select(pl.col("attacker_steamid").alias("steam_id"), pl.col("attacker_name").alias("name")),
-            dem.kills.select(pl.col("victim_steamid").alias("steam_id"), pl.col("victim_name").alias("name")),
-            dem.kills.select(pl.col("assister_steamid").alias("steam_id"), pl.col("assister_name").alias("name")),
+            dem.kills.select(pl.col("attacker_steamid").cast(pl.Int64).alias("steam_id"), pl.col("attacker_name").alias("name")),
+            dem.kills.select(pl.col("victim_steamid").cast(pl.Int64).alias("steam_id"), pl.col("victim_name").alias("name")),
+            dem.kills.select(pl.col("assister_steamid").cast(pl.Int64).alias("steam_id"), pl.col("assister_name").alias("name")),
+            at_start.select(pl.col("steamid").cast(pl.Int64).alias("steam_id"), pl.col("name")),
         ])
         .drop_nulls("steam_id")
         .with_columns(pl.col("steam_id").cast(pl.Int64))
@@ -138,10 +239,14 @@ def parse_demo(path: Path) -> dict:
             "team_a": team_a,
             "team_b": team_b,
         },
-        "counts": {"players": len(players), "rounds": len(rounds), "kills": len(kills)},
+        "counts": {"players": len(players), "rounds": len(rounds), "kills": len(kills), "damages": len(damages),
+                   "player_rounds": len(player_rounds), "grenades": len(grenades)},
         "players": players.to_dicts(),
         "rounds": rounds.to_dicts(),
         "kills": kills.to_dicts(),
+        "damages": damages.to_dicts(),
+        "player_rounds": player_rounds.to_dicts(),
+        "grenades": grenades.to_dicts(),
     }
 
 
@@ -159,7 +264,7 @@ def main() -> None:
         sys.exit(f"ไม่เจอไฟล์ .dem ใน {DEMO_DIR}")
 
     args.out.mkdir(parents=True, exist_ok=True)
-    totals = {"players": 0, "rounds": 0, "kills": 0}
+    totals = {"players": 0, "rounds": 0, "kills": 0, "damages": 0, "player_rounds": 0, "grenades": 0}
     done = failed = skipped = 0
     for i, path in enumerate(demos, 1):
         target = args.out / f"{path.stem}.json"
@@ -185,12 +290,13 @@ def main() -> None:
             totals[k] += doc["counts"][k]
         done += 1
         c = doc["counts"]
-        print(f"[{i}/{len(demos)}] {path.name} — {c['rounds']} รอบ {c['kills']} คิล "
+        print(f"[{i}/{len(demos)}] {path.name} — {c['rounds']} รอบ {c['kills']} คิล {c['damages']} ดาเมจ {c['grenades']} ระเบิด "
               f"{target.stat().st_size / 1024:.0f} KB ({time.time() - t0:.1f}s)")
 
     print(f"\nเสร็จ {done} · ข้าม {skipped} · พัง {failed}  ->  {args.out}")
     if done:
-        print(f"รวมที่ parse รอบนี้: {totals['rounds']:,} รอบ {totals['kills']:,} คิล {totals['players']:,} นักแข่ง")
+        print(f"รวมที่ parse รอบนี้: {totals['rounds']:,} รอบ {totals['kills']:,} คิล "
+              f"{totals['damages']:,} ดาเมจ {totals['grenades']:,} ระเบิด {totals['players']:,} นักแข่ง")
 
 
 if __name__ == "__main__":

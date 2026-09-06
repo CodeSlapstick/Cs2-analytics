@@ -19,6 +19,8 @@ async def load_match_json(conn, json_path: Path, force: bool = False):
     rounds_data = data.get("rounds", [])
     kills_data = data.get("kills", [])
     damages_data = data.get("damages", [])
+    player_rounds_data = data.get("player_rounds", [])   # schema_version >= 3
+    grenades_data = data.get("grenades", [])              # schema_version >= 3
 
     demo_file = match_info.get("demo_file", json_path.stem + ".dem")
 
@@ -113,7 +115,34 @@ async def load_match_json(conn, json_path: Path, force: bool = False):
             """, rid, int(d["tick"]), int(d["attacker_id"]) if d.get("attacker_id") else None,
                int(d["victim_id"]), d.get("weapon"), int(d.get("damage", 0)), d.get("hitgroup"))
 
-    print(f"[SUCCESS] โหลดแมตช์ {demo_file} สำเร็จ (Match ID: {match_id}, Rounds: {len(rounds_data)}, Kills: {len(kills_data)})")
+        # 7. Insert player_rounds (ถ้ามีใน JSON — schema_version >= 3)
+        #    executemany ยิงทีเดียวทั้งก้อน เร็วกว่า execute ทีละแถวหลายสิบเท่า
+        pr_rows = [
+            (round_id_map[int(x["round_num"])], int(x["steam_id"]), x["side"],
+             x.get("equip_value"), x.get("balance"), bool(x.get("survived", False)))
+            for x in player_rounds_data if int(x["round_num"]) in round_id_map
+        ]
+        if pr_rows:
+            await conn.executemany("""
+                INSERT INTO player_rounds (round_id, steam_id, side, equip_value, balance, survived)
+                VALUES ($1, $2, $3, $4, $5, $6)
+                ON CONFLICT (round_id, steam_id) DO NOTHING;
+            """, pr_rows)
+
+        # 8. Insert grenades (ถ้ามีใน JSON — schema_version >= 3)
+        g_rows = [
+            (round_id_map[int(g["round_num"])], int(g["tick"]),
+             int(g["thrower_id"]) if g.get("thrower_id") else None, g.get("side"), g["type"])
+            for g in grenades_data if int(g["round_num"]) in round_id_map
+        ]
+        if g_rows:
+            await conn.executemany("""
+                INSERT INTO grenades (round_id, tick, thrower_id, side, type)
+                VALUES ($1, $2, $3, $4, $5);
+            """, g_rows)
+
+    print(f"[SUCCESS] โหลดแมตช์ {demo_file} สำเร็จ (Match ID: {match_id}, Rounds: {len(rounds_data)}, "
+          f"Kills: {len(kills_data)}, Damages: {len(damages_data)}, PlayerRounds: {len(player_rounds_data)}, Grenades: {len(grenades_data)})")
     return match_id
 
 async def main():
@@ -123,6 +152,13 @@ async def main():
     args = parser.parse_args()
 
     conn = await asyncpg.connect(DB_URL)
+
+    # สร้าง/อัปเดตตารางกับ view ตาม schema.sql ก่อนเสมอ — ปลอดภัยเพราะทุกคำสั่งเป็น IF NOT EXISTS
+    # หรือ DROP+CREATE VIEW ที่ไม่แตะข้อมูล ถ้าไม่ทำตรงนี้ ตารางใหม่ (player_rounds, grenades) จะไม่มีให้ INSERT
+    schema_sql = Path(__file__).resolve().parent / "schema.sql"
+    await conn.execute(schema_sql.read_text(encoding="utf-8"))
+    print(f"[SCHEMA] ใช้ {schema_sql.name} แล้ว")
+
     target = Path(args.path)
 
     if target.is_file():
