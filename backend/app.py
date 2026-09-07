@@ -112,6 +112,34 @@ app.mount("/assets", StaticFiles(directory=ASSETS_DIR), name="assets")  # URL �
 mimetypes.add_type("image/webp", ".webp")
 
 
+@app.middleware("http")
+async def no_stale_static(request: Request, call_next):
+    """บังคับให้เบราว์เซอร์ถามเซิร์ฟเวอร์ก่อนใช้ไฟล์ .css/.js/.html ที่แคชไว้
+
+    ทำไมต้องมี
+        FastAPI ส่ง etag กับ last-modified มาให้อยู่แล้ว แต่ "ไม่ส่ง" cache-control
+        พอไม่มี cache-control เบราว์เซอร์จะใช้ heuristic caching คือเดาอายุไฟล์เอง
+        จาก last-modified แล้วหยิบของในแคชมาใช้เลยโดยไม่ถามเซิร์ฟเวอร์ซ้ำ
+        ผลคือแก้ style.css แล้วรีเฟรชธรรมดาไม่เห็นการเปลี่ยนแปลง ต้อง Ctrl+Shift+R ทุกครั้ง
+        และอาการจะโผล่เฉพาะเครื่องที่เคยเปิดเว็บก่อนแก้ไฟล์ — เครื่องใหม่ดูปกติ หาสาเหตุยากมาก
+
+    no-cache ไม่ได้แปลว่า "ห้ามแคช"
+        แปลว่า "แคชได้ แต่ต้องถามก่อนใช้" ถ้าไฟล์ไม่เปลี่ยน etag จะตรงกัน
+        เซิร์ฟเวอร์ตอบ 304 Not Modified ตัวเปล่า ๆ ไม่ได้ส่งไฟล์ซ้ำ จึงแทบไม่เปลืองอะไร
+
+    รูปกับฟอนต์ไม่ต้องยุ่ง — พวกนั้นเปลี่ยนน้อย ปล่อยให้แคชยาว ๆ ได้เลย
+
+    ดูจาก content-type ไม่ใช่จากนามสกุลใน URL
+        เพราะหน้าเว็บของเราเป็น /overview /players /map ไม่มี .html ต่อท้ายสักอัน
+        ถ้าไล่เช็คนามสกุลจะหลุดทุกหน้าพอดี แต่ content-type บอกตรง ๆ ว่าไฟล์นี้คืออะไร
+    """
+    response = await call_next(request)
+    ctype = response.headers.get("content-type", "")
+    if ctype.startswith(("text/html", "text/css", "text/javascript", "application/javascript")):
+        response.headers["Cache-Control"] = "no-cache"
+    return response
+
+
 async def db(request: Request) -> asyncpg.Connection:
     """Dependency: ขอ connection จากบ่อหนึ่งเส้นให้ route นี้ใช้ แล้วคืนอัตโนมัติเมื่อจบ"""
     pool: asyncpg.Pool | None = request.app.state.pool
