@@ -244,7 +244,7 @@ async def steam_callback(request: Request, conn: asyncpg.Connection = Depends(db
     user = {"steamid": steamid, **profile, "mode": "steam"}
     await save_user(conn, user)
 
-    response = RedirectResponse("/main", status_code=303)
+    response = RedirectResponse("/overview", status_code=303)
     make_session_cookie(response, user)
     return response
 
