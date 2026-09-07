@@ -5,17 +5,16 @@ const msg = $("msg");   // กล่องข้อความแจ้งเ�
 /** แสดงข้อความให้ผู้ใช้เห็น
  *  text = ข้อความ, kind = "error" (แดง) หรือ "ok" (เขียว) */
 function say(text, kind = "error") {
-  msg.textContent = text;         // textContent = ใส่ข้อความล้วน (ปลอดภัยกว่า innerHTML เพราะแท็กแปลกปลอมจะไม่ทำงาน)
+  msg.textContent = text;         // textContent = ใส่ข้อความล้วน 
   msg.className = "msg " + kind;  // className = เปลี่ยนคลาส CSS ของกล่องนี้ -> สีเปลี่ยนตาม
 }
 
-// async = ฟังก์ชันที่ "รอผลได้" เพราะการคุยกับเซิร์ฟเวอร์ใช้เวลาสักครู่
 async function boot() {
   // fetch = ส่งคำขอไปหาเซิร์ฟเวอร์, await = รอจนกว่าคำตอบจะมาถึงค่อยทำบรรทัดถัดไป
   const me = await fetch("/api/me");
   if (me.ok) {                      // .ok = true เมื่อเซิร์ฟเวอร์ตอบสำเร็จ (สถานะ 200-299)
     location.href = "/main";        // location.href = "พาเบราว์เซอร์ไปหน้านี้" (เหมือนพิมพ์ URL เอง)
-    return;                         // return = จบฟังก์ชันตรงนี้ ไม่ต้องทำต่อ
+    return;                         อ
   }
 
   const cfg = await (await fetch("/api/config")).json();  // ขอค่าตั้งค่า แล้วแปลงคำตอบเป็น object ด้วย .json()
@@ -51,8 +50,4 @@ $("btnDev").addEventListener("click", async () => {
   location.href = "/main";
 });
 
-/**$("steamid").addEventListener("keydown", (e) => {   // e = ข้อมูลของเหตุการณ์ที่เกิด (กดปุ่มอะไร)
-  if (e.key === "Enter") $("btnDev").click();       // === = เท่ากันแบบเป๊ะ ๆ ทั้งค่าและชนิดข้อมูล
-});**/
-
-boot();   // เรียกฟังก์ชันเริ่มต้น ให้ทำงานทันทีที่โหลดไฟล์นี้เสร็จ
+boot();   

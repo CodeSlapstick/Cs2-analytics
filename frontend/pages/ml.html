@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>โมเดล ML · CS2 Analytics</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+
+<body>
+
+<header class="topbar" id="topbar"></header>
+
+<main class="wrap">
+
+  <div class="page-head">
+    <div>
+      <div class="eyebrow">ML insights</div>
+      <h1>โมเดลทำนาย</h1>
+    </div>
+  </div>
+
+  <!-- ================= โมเดลที่ 1 — โอกาสชนะรอบ ================= -->
+  <div class="box" style="margin-bottom:14px">
+    <div class="eyebrow">Round win model</div>
+    <h2>โอกาสชนะรอบ จากสถานะกลางรอบ</h2>
+
+    <div id="rwKpis" class="kpis" style="margin:12px 0 18px"></div>
+
+    <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:14px">
+      <select id="rwCt"></select>       <!-- CT เหลือกี่คน -->
+      <select id="rwT"></select>        <!-- T เหลือกี่คน -->
+      <select id="rwPlant">
+        <option value="0">ยังไม่ปักระเบิด</option>
+        <option value="1">ปักระเบิดแล้ว</option>
+      </select>
+      <select id="rwTime"></select>     
+    </div>
+
+    <div id="rwOut"></div>
+
+    <div class="eyebrow" style="margin-top:20px">ตารางเต็ม · แถว = CT เหลือ, คอลัมน์ = T เหลือ</div>
+    <div id="rwTable" style="margin-top:8px"></div>
+  </div>
+
+  <!-- ================= โมเดลที่ 2 — กริด ================= -->
+  <div class="box">
+    <div class="eyebrow">Grid model</div>
+    <h2>ช่องไหนบนแมพที่ฝั่งไหนได้เปรียบ</h2>
+    <div id="gridKpis" class="kpis" style="margin:12px 0 18px"></div>
+    <div id="gridTable"></div>
+  </div>
+
+  <div class="foot">CS2 Tactical Analysis · SP-404 Senior Project · UTCC STECH</div>
+</main>
+
+<script src="/static/common.js"></script>   
+<script src="/static/ml.js"></script>       
+</body>
+</html>

@@ -22,6 +22,8 @@ backend/app.py — "หลังบ้าน" (backend) ของเว็บ CS
 # ---------------------------------------------------------------------------
 # ส่วนที่ 0 — ขนเครื่องมือเข้ามาใช้
 # ---------------------------------------------------------------------------
+import json
+import mimetypes
 import os
 import re
 import secrets
@@ -46,6 +48,7 @@ ROOT = Path(__file__).resolve().parent.parent   # โฟลเดอร์โป
 FRONTEND = ROOT / "frontend"                    # โฟลเดอร์ของหน้าเว็บทั้งหมด
 PAGES_DIR = FRONTEND / "pages"                  # หน้า .html ที่ไฟล์นี้เสิร์ฟให้เบราว์เซอร์
 STATIC_DIR = FRONTEND / "static"                # ไฟล์นิ่ง ๆ (.css .js รูป)
+ASSETS_DIR = ROOT / "assets"                    # ภาพเรดาร์ของแต่ละแมพ + ค่าปรับเทียบพิกัด (radars.json)
 
 # คอนโซลของ Windows ดีฟอลต์เป็น cp1252 ซึ่งพิมพ์ภาษาไทยไม่ได้ ถ้าไม่ตั้งบรรทัดนี้
 # print() ที่มีข้อความไทยจะโยน UnicodeEncodeError ออกมากลางคัน ทำให้ทั้ง request พัง
@@ -102,6 +105,11 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="CS2 Analytics API", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")  # URL ที่ขึ้นต้นด้วย /static ให้ไปหยิบไฟล์จริงใน frontend/static/
+app.mount("/assets", StaticFiles(directory=ASSETS_DIR), name="assets")  # URL ที่ขึ้นต้นด้วย /assets ให้ไปหยิบไฟล์จริงใน assets/ (ภาพเรดาร์)
+
+# Windows บางเครื่องไม่รู้จักนามสกุล .webp ทำให้ส่งไฟล์ออกไปเป็น application/octet-stream
+# บอกชนิดไฟล์ให้ถูกต้องไว้ก่อน เบราว์เซอร์จะได้รู้แน่ ๆ ว่านี่คือรูปภาพ
+mimetypes.add_type("image/webp", ".webp")
 
 
 async def db(request: Request) -> asyncpg.Connection:
@@ -155,10 +163,49 @@ def page_login():
     return FileResponse(PAGES_DIR / "login.html")
 
 
+# แต่ละหน้าเป็นไฟล์ .html ของตัวเองใน frontend/pages/ (1 หน้า = 1 ไฟล์ html + 1 ไฟล์ js)
+# ตัว JS ในแต่ละหน้าจะเช็คเองว่าล็อกอินแล้วหรือยัง ถ้ายังจะเด้งกลับมาหน้า /
+
+@app.get("/overview")
+def page_overview():
+    """ภาพรวม — การ์ดตัวเลขสรุป + กราฟ + แมตช์ล่าสุด"""
+    return FileResponse(PAGES_DIR / "overview.html")
+
+
+@app.get("/matches")
+def page_matches():
+    """แมตช์ — ตารางแมตช์ + รายรอบ + สกอร์บอร์ด"""
+    return FileResponse(PAGES_DIR / "matches.html")
+
+
+@app.get("/players")
+def page_players():
+    """นักแข่ง — อันดับ + รายละเอียดรายคน"""
+    return FileResponse(PAGES_DIR / "players.html")
+
+
+@app.get("/map")
+def page_map():
+    """แผนที่ — heatmap จุดที่คนตาย"""
+    return FileResponse(PAGES_DIR / "map.html")
+
+
+@app.get("/tactical")
+def page_tactical():
+    """แท็คติก — การดวลแรกของรอบ / จังหวะปะทะ / ผลของการปักระเบิด"""
+    return FileResponse(PAGES_DIR / "tactical.html")
+
+
+@app.get("/ml")
+def page_ml():
+    """โมเดล ML — โอกาสชนะรอบ + โมเดลกริด"""
+    return FileResponse(PAGES_DIR / "ml.html")
+
+
 @app.get("/main")
 def page_main():
-    """หน้าหลักหลังล็อกอิน (ตัว JS ในหน้าจะเช็คเองว่าล็อกอินแล้วหรือยัง)"""
-    return FileResponse(PAGES_DIR / "main.html")
+    """ที่อยู่เดิมสมัยยังเป็นหน้าเดียว — ส่งต่อไปหน้าภาพรวม ลิงก์เก่าจะได้ไม่พัง"""
+    return RedirectResponse("/overview")
 
 
 # ---------------------------------------------------------------------------
@@ -486,8 +533,213 @@ async def api_heatmap(
     พิกัดเป็นระบบของเกม หน้าเว็บต้องแปลงด้วย assets/radars.json (pos_x, pos_y, scale) ก่อนวาด
     """
     recs = await conn.fetch("""
-        SELECT k.victim_x AS x, k.victim_y AS y, k.victim_side AS side, k.weapon, k.headshot
+        SELECT k.victim_x AS x, k.victim_y AS y, k.victim_side AS side,
+               k.weapon, k.headshot, k.victim_place AS place
         FROM kills k JOIN rounds r ON r.id = k.round_id JOIN matches m ON m.id = r.match_id
         WHERE m.map_name = $1 AND k.victim_x IS NOT NULL
           AND ($2::text IS NULL OR k.victim_side = $2)""", map_name, side)
     return {"map": map_name, "side": side, "count": len(recs), "points": rows(recs)}
+
+
+@app.get("/api/radar")
+def api_radar(
+    map_name: str = Query(..., alias="map", pattern=r"^de_[a-z0-9_]+$"),
+    _: dict = Depends(require_login),
+):
+    """ค่าปรับเทียบภาพเรดาร์ของแมพ — ไว้ให้หน้าเว็บแปลงพิกัดในเกมเป็นพิกเซลบนภาพ
+
+    ค่าทั้งหมดอ่านจาก assets/radars.json ซึ่งเป็นแหล่งความจริงแหล่งเดียวของทั้งระบบ
+    (สคริปต์ฝั่ง Python ก็อ่านไฟล์เดียวกันนี้ ตัวเลขสองฝั่งจึงไม่มีทางเพี้ยนจากกัน)
+
+    สูตรแปลงพิกัด — หน้าเว็บเอาไปใช้ตรง ๆ ได้เลย
+        pixel_x = (game_x - pos_x) / scale
+        pixel_y = (pos_y - game_y) / scale      <- แกน y กลับด้าน เพราะในเกม y เพิ่มขึ้นด้านบน
+                                                   แต่บนภาพ y เพิ่มลงด้านล่าง
+    """
+    data = json.loads((ASSETS_DIR / "radars.json").read_text(encoding="utf-8"))
+    cal = data.get(map_name)
+    if not cal:
+        raise HTTPException(404, f"ยังไม่มีค่าปรับเทียบเรดาร์ของ {map_name} ใน assets/radars.json")
+
+    return {
+        "map": map_name,
+        "image": "/assets" + cal["image"],   # cal["image"] เก็บเป็น "/maps/de_mirage.webp" -> เติม /assets ข้างหน้าให้เป็น URL จริง
+        "size": cal["size"],                 # ภาพเป็นจัตุรัส ด้านละกี่พิกเซล
+        "pos_x": cal["pos_x"],               # พิกัดเกมของมุมบนซ้ายของภาพ
+        "pos_y": cal["pos_y"],
+        "scale": cal["scale"],               # 1 พิกเซล = กี่หน่วยเกม
+    }
+
+
+# ===========================================================================
+# ส่วนที่ 6 — วิเคราะห์แท็คติก (Tactical Analysis)
+#
+# ทุกตัวเลขในนี้คำนวณสด ๆ จากฐานข้อมูล ไม่มีค่าที่พิมพ์ทิ้งไว้เอง
+# แนวคิดหลักคือ "การดวลแรกของรอบ" (opening duel) = คิลแรกสุดของรอบนั้น
+# เพราะใครชนะการดวลแรก มักลากยาวไปชนะทั้งรอบ
+# ===========================================================================
+
+# SQL ก้อนนี้ถูกเอาไปแปะหน้าคำถามทุกข้อในหน้านี้ จึงเขียนไว้ที่เดียว
+# DISTINCT ON (k.round_id) + ORDER BY k.round_id, k.tick
+#   = "ของแต่ละรอบ เอาแถวเดียว คือแถวที่ tick น้อยที่สุด" -> ได้คิลแรกของรอบ
+FIRST_KILL_CTE = """
+WITH fk AS (
+    SELECT DISTINCT ON (k.round_id)
+           k.round_id,
+           k.attacker_side,
+           k.attacker_place,
+           k.victim_place,
+           k.tick,
+           r.start_tick,
+           r.winner_side,
+           r.end_reason,
+           r.bomb_plant_tick,
+           m.tickrate
+    FROM kills k
+    JOIN rounds  r ON r.id = k.round_id
+    JOIN matches m ON m.id = r.match_id
+    WHERE m.map_name = $1
+    ORDER BY k.round_id, k.tick
+)
+"""
+
+
+@app.get("/api/tactical")
+async def api_tactical(
+    map_name: str = Query(..., alias="map", pattern=r"^de_[a-z0-9_]+$"),
+    side: str = Query("t", pattern=r"^(ct|t)$"),        # มองจากมุมของฝั่งไหน
+    _: dict = Depends(require_login),
+    conn: asyncpg.Connection = Depends(db),
+):
+    """สรุปแท็คติกของแมพหนึ่ง มองจากมุมฝั่งที่เลือก (ct หรือ t)
+
+    ตอบกลับ 5 ก้อน
+      summary  ภาพรวม: กี่รอบ ชนะกี่รอบ ปักระเบิดกี่รอบ เวลาปะทะแรกเฉลี่ย
+      opening  การดวลแรกของรอบ แยกตามตำแหน่งที่ยืน
+      timing   ปะทะแรกเกิดตอนวินาทีที่เท่าไร แล้วรอบนั้นชนะไหม
+      endings  รอบจบด้วยสาเหตุอะไรบ้าง
+      bomb     ปักระเบิดแล้วชนะบ่อยกว่าไม่ปักไหม
+    """
+    # ---- 1) ภาพรวม -------------------------------------------------------
+    summary = await conn.fetchrow(f"""
+        {FIRST_KILL_CTE}
+        SELECT COUNT(*)                                              AS rounds,
+               COUNT(*) FILTER (WHERE winner_side = $2)              AS wins,
+               COUNT(*) FILTER (WHERE bomb_plant_tick IS NOT NULL)   AS planted,
+               ROUND(AVG((tick - start_tick)::numeric / tickrate), 1) AS avg_first_contact
+        FROM fk
+        WHERE start_tick IS NOT NULL""", map_name, side)
+    # (tick - start_tick) / tickrate = จำนวน tick ตั้งแต่เริ่มรอบ หารด้วย tick ต่อวินาที = วินาที
+    # FILTER (WHERE ...) = "นับเฉพาะแถวที่เข้าเงื่อนไข" เขียนสั้นกว่าใช้ CASE WHEN
+
+    if not summary or not summary["rounds"]:
+        raise HTTPException(404, f"ไม่มีข้อมูลรอบของแมพ {map_name}")
+
+    # ---- 2) การดวลแรก แยกตามตำแหน่ง --------------------------------------
+    # ถ้าฝั่งเราเป็นคนยิง -> ตำแหน่งของเราคือ attacker_place
+    # ถ้าฝั่งเราเป็นคนโดนยิง -> ตำแหน่งของเราคือ victim_place
+    opening = await conn.fetch(f"""
+        {FIRST_KILL_CTE}
+        SELECT COALESCE(CASE WHEN attacker_side = $2 THEN attacker_place
+                             ELSE victim_place END, '(ไม่ทราบ)')     AS place,
+               COUNT(*)                                              AS duels,
+               COUNT(*) FILTER (WHERE attacker_side = $2)            AS won,
+               COUNT(*) FILTER (WHERE winner_side  = $2)             AS round_wins
+        FROM fk
+        GROUP BY 1
+        HAVING COUNT(*) >= 5
+        ORDER BY duels DESC
+        LIMIT 8""", map_name, side)
+    # COALESCE(ก, ข) = ถ้า ก เป็น NULL ให้ใช้ ข แทน
+    # HAVING COUNT(*) >= 5 = ตัดตำแหน่งที่เจอไม่ถึง 5 ครั้งทิ้ง เพราะเปอร์เซ็นต์จากข้อมูล 1-2 ครั้งเชื่อไม่ได้
+
+    # ---- 3) ปะทะแรกเกิดตอนวินาทีที่เท่าไร ---------------------------------
+    timing = await conn.fetch(f"""
+        {FIRST_KILL_CTE}
+        SELECT CASE WHEN sec < 20 THEN '0-20 วิ'
+                    WHEN sec < 40 THEN '20-40 วิ'
+                    WHEN sec < 60 THEN '40-60 วิ'
+                    ELSE '60 วิ ขึ้นไป' END                          AS bucket,
+               COUNT(*)                                              AS rounds,
+               COUNT(*) FILTER (WHERE winner_side = $2)              AS wins
+        FROM (SELECT (tick - start_tick)::numeric / tickrate AS sec, winner_side
+              FROM fk WHERE start_tick IS NOT NULL) q
+        GROUP BY 1
+        ORDER BY MIN(sec)""", map_name, side)
+    # ORDER BY MIN(sec) = เรียงกลุ่มตามวินาทีที่น้อยที่สุดในกลุ่มนั้น (ไม่งั้นจะเรียงตามตัวอักษรไทยมั่ว)
+
+    # ---- 4) รอบจบด้วยอะไร -------------------------------------------------
+    endings = await conn.fetch("""
+        SELECT COALESCE(r.end_reason, '(ไม่ทราบ)')      AS reason,
+               COUNT(*)                                 AS rounds,
+               COUNT(*) FILTER (WHERE r.winner_side = $2) AS wins
+        FROM rounds r JOIN matches m ON m.id = r.match_id
+        WHERE m.map_name = $1
+        GROUP BY 1 ORDER BY rounds DESC""", map_name, side)
+
+    # ---- 5) ปักระเบิดแล้วต่างกันไหม ---------------------------------------
+    bomb = await conn.fetch("""
+        SELECT CASE WHEN r.bomb_plant_tick IS NOT NULL THEN 'ปักระเบิดแล้ว'
+                    ELSE 'ไม่ได้ปัก' END                 AS state,
+               COUNT(*)                                 AS rounds,
+               COUNT(*) FILTER (WHERE r.winner_side = $2) AS wins
+        FROM rounds r JOIN matches m ON m.id = r.match_id
+        WHERE m.map_name = $1
+        GROUP BY 1 ORDER BY rounds DESC""", map_name, side)
+
+    return {
+        "map": map_name,
+        "side": side,
+        "summary": {
+            "rounds": summary["rounds"],
+            "wins": summary["wins"],
+            "planted": summary["planted"],
+            "avg_first_contact": float(summary["avg_first_contact"] or 0),
+        },
+        "opening": rows(opening),
+        "timing": rows(timing),
+        "endings": rows(endings),
+        "bomb": rows(bomb),
+    }
+
+
+# ===========================================================================
+# ส่วนที่ 7 — ผลจากโมเดล ML
+#
+# เราไม่เทรนโมเดลในเซิร์ฟเวอร์นี้ (ช้าและกินแรม) สคริปต์ใน pipeline/ เทรนเสร็จ
+# แล้วเขียนคำตอบทั้งหมดลงไฟล์ json ไว้ให้ เซิร์ฟเวอร์แค่หยิบไฟล์นั้นส่งต่อ
+#     python pipeline/round_win.py   ->  output/round_win.json
+#     python pipeline/grid_ml.py     ->  output/grid_ml.json
+# ===========================================================================
+
+def read_output_json(filename: str, how_to_make: str) -> dict:
+    """อ่านไฟล์ json ในโฟลเดอร์ output/ — ถ้ายังไม่มี บอกวิธีสร้างไปเลย"""
+    f = ROOT / "output" / filename
+    if not f.exists():
+        raise HTTPException(404, f"ยังไม่มีไฟล์ output/{filename} — สร้างด้วย: {how_to_make}")
+    return json.loads(f.read_text(encoding="utf-8"))   # loads = แปลงข้อความ json ให้เป็น dict
+
+
+@app.get("/api/ml/round-win")
+def api_ml_round_win(_: dict = Depends(require_login)):
+    """โมเดลโอกาสชนะรอบ — ตารางเปิดค่า P(CT ชนะ) ของทุกสถานะที่เป็นไปได้
+
+    คีย์ในตารางหน้าตาแบบ "3v2|0|20-40s" = CT เหลือ 3, T เหลือ 2, ยังไม่ปักระเบิด, วินาทีที่ 20-40
+    """
+    return read_output_json("round_win.json", "python pipeline/round_win.py")
+
+
+@app.get("/api/ml/grid")
+def api_ml_grid(_: dict = Depends(require_login)):
+    """โมเดลกริด — แบ่งแมพเป็นช่อง ๆ แล้วทายว่าการดวลในช่องนั้นฝั่งไหนได้เปรียบ
+
+    ตัดฟิลด์หนัก ๆ ออกก่อนส่ง (ภาพ mask กับจุดตายดิบ 7 พันจุด) เพราะหน้าเว็บไม่ได้ใช้
+    เหลือแต่คะแนนโมเดลกับค่ารายช่อง ไฟล์จะได้เล็กลงจาก 160 KB เหลือ ~40 KB
+    """
+    d = read_output_json("grid_ml.json", "python pipeline/grid_ml.py")
+    for heavy in ("play_mask", "kills"):
+        d.pop(heavy, None)          # .pop(คีย์, None) = ลบคีย์นี้ทิ้ง ถ้าไม่มีก็ไม่ต้องพัง
+    d["cells"] = sorted(d["cells"], key=lambda c: -c["kills"])[:40]
+    # sorted(..., key=lambda c: -c["kills"]) = เรียงจากช่องที่มีคนตายเยอะสุดไปน้อยสุด (ติดลบ = กลับด้าน)
+    # [:40] = เอาแค่ 40 ช่องแรก พอสำหรับโชว์ตาราง
+    return d

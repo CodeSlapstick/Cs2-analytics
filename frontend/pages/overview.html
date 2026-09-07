@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ภาพรวม · CS2 Analytics</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+
+<body>
+
+<header class="topbar" id="topbar"></header>
+
+<main class="wrap">
+
+  <div class="page-head">
+    <div>
+      <div class="eyebrow">Dashboard</div>  
+      <h1>ภาพรวม</h1>                        
+    </div>
+    <select id="mapFilter"></select>
+  </div>
+
+  <div class="kpis" id="kpis"></div>
+
+  <div class="cols">
+    <div class="box">
+      <div class="eyebrow">Weapons</div>
+      <h2>อาวุธที่ใช้ฆ่ามากที่สุด</h2>
+      <div id="wpBars"></div>              
+    </div>
+    <div class="box">
+      <div class="eyebrow">Hot zones</div>
+      <h2>จุดที่มีคนตายบ่อยที่สุด</h2>
+      <div id="plBars"></div>
+    </div>
+  </div>
+
+  <div class="box">
+    <div class="eyebrow">Recent</div>
+    <h2>แมตช์ล่าสุด 5 นัด</h2>
+    <div id="recent"></div>
+  </div>
+
+  <div class="foot">CS2 Tactical Analysis · SP-404 Senior Project · UTCC STECH</div>
+</main>
+
+<script src="/static/common.js"></script>
+<script src="/static/overview.js"></script>
+</body>
+</html>
