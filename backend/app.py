@@ -228,6 +228,12 @@ def page_rounds(match_id: int):
     return FileResponse(PAGES_DIR / "rounds.html")
 
 
+@app.get("/review/{match_id}")
+def page_review(match_id: int):
+    """รีวิวจุดพลาดรายคนของแมตช์เดียว — JS อ่านเลขแมตช์จาก URL เอง"""
+    return FileResponse(PAGES_DIR / "review.html")
+
+
 @app.get("/players")
 def page_players():
     """นักแข่ง — อันดับ + รายละเอียดรายคน"""
@@ -514,22 +520,41 @@ async def api_match(match_id: int, _: dict = Depends(require_login), conn: async
     return {"match": dict(match), "rounds": rows(rounds_), "scoreboard": rows(scoreboard)}
 
 
-@app.get("/api/matches/{match_id}/rounds")
-async def api_match_rounds(match_id: int, _: dict = Depends(require_login), conn: asyncpg.Connection = Depends(db)):
-    """ไทม์ไลน์รายรอบ — เอาโมเดลโอกาสชนะรอบมา "อ่าน" แมตช์นี้ทีละคิล
+# ---------------------------------------------------------------------------
+# ส่วนที่ 5.5 — โมเดลโอกาสชนะรอบ "อ่าน" แมตช์เดียว
+#
+# ตรรกะกลางใช้ร่วมกันสอง endpoint
+#   /api/matches/{id}/rounds   ไทม์ไลน์รายรอบ: P(CT ชนะ) หลังทุกคิล + จังหวะตัดสินรอบ
+#   /api/matches/{id}/review   จุดพลาดรายคน: การตายที่แพงที่สุด / ตายฟรี / ดวลในจุดเสียเปรียบ
+#
+# ทิศทางกลับกับการเทรน: เทรน = เดโมหลายสิบไฟล์ -> ตาราง P(CT ชนะ)
+# ที่นี่ = ตาราง -> เดโมไฟล์เดียว จึงใช้กับแมตช์ที่เพิ่งอัปโหลดได้ทันที ไม่ต้องเทรนใหม่
+# ---------------------------------------------------------------------------
+ROUND_KILLS_SQL = """
+    SELECT r.round_num, r.winner_side, r.end_reason, r.start_tick, r.bomb_plant_tick, m.tickrate,
+           k.tick, k.attacker_side, k.victim_side, k.weapon, k.headshot, k.attacker_place, k.victim_place,
+           k.attacker_id::text AS attacker_id, k.victim_id::text AS victim_id,
+           k.victim_x, k.victim_y,
+           pa.name AS attacker, pv.name AS victim
+    FROM rounds r
+    JOIN matches m ON m.id = r.match_id
+    LEFT JOIN kills k    ON k.round_id = r.id          -- LEFT ทั้งสาย: รอบที่ไม่มีคิลเลย (หมดเวลา) ต้องยังโผล่
+    LEFT JOIN players pa ON pa.steam_id = k.attacker_id
+    LEFT JOIN players pv ON pv.steam_id = k.victim_id
+    WHERE r.match_id = $1
+    ORDER BY r.round_num, k.tick, k.id"""
 
-    ทิศทางกลับกับการเทรน: เทรน = เดโมหลายสิบไฟล์ -> ตาราง P(CT ชนะ)
-    ที่นี่ = ตาราง -> เดโมไฟล์เดียว จึงใช้กับแมตช์ที่เพิ่งอัปโหลดได้ทันที ไม่ต้องเทรนใหม่
 
-    ทุกคิลตอบ: สถานะ "ก่อน" คิล (ใครเหลือกี่คน ระเบิดลงยัง วินาทีที่เท่าไร)
-    P(CT ชนะ) ก่อนและหลัง และ delta = หลัง - ก่อน
+def load_round_win_model() -> dict:
+    """ตาราง P(CT ชนะรอบ) ที่ round_win.py เขียนไว้ — ไม่มีก็บอกวิธีสร้าง"""
+    return read_output_json("round_win.json", "python pipeline/round_win.py")
+
+
+def annotate_rounds(rows_, model: dict) -> list[dict]:
+    """ไล่คิลทีละแถว ติดสถานะ "ก่อน" คิล (ใครเหลือกี่คน ระเบิดลงยัง วินาทีที่เท่าไร)
+    แล้วเปิดตาราง -> P(CT ชนะ) ก่อนและหลัง  delta = หลัง - ก่อน (มุมมอง CT)
     คิลที่ |delta| มากที่สุดในรอบ = จังหวะที่ตัดสินรอบ
     """
-    match = await conn.fetchrow("SELECT * FROM match_summary WHERE id = $1", match_id)
-    if not match:
-        raise HTTPException(404, "ไม่พบแมตช์นี้")
-
-    model = read_output_json("round_win.json", "python pipeline/round_win.py")
     table, edges, names = model["table"], model["time_edges"], model["time_names"]
 
     def time_bucket(sec: float) -> str:
@@ -544,18 +569,6 @@ async def api_match_rounds(match_id: int, _: dict = Depends(require_login), conn
         if sec is None or not (1 <= ct <= 5 and 1 <= t <= 5):
             return None
         return table.get(f"{ct}v{t}|{planted}|{time_bucket(sec)}")
-
-    rows_ = await conn.fetch("""
-        SELECT r.round_num, r.winner_side, r.end_reason, r.start_tick, r.bomb_plant_tick, m.tickrate,
-               k.tick, k.attacker_side, k.victim_side, k.weapon, k.headshot, k.attacker_place, k.victim_place,
-               pa.name AS attacker, pv.name AS victim
-        FROM rounds r
-        JOIN matches m ON m.id = r.match_id
-        LEFT JOIN kills k    ON k.round_id = r.id          -- LEFT ทั้งสาย: รอบที่ไม่มีคิลเลย (หมดเวลา) ต้องยังโผล่
-        LEFT JOIN players pa ON pa.steam_id = k.attacker_id
-        LEFT JOIN players pv ON pv.steam_id = k.victim_id
-        WHERE r.match_id = $1
-        ORDER BY r.round_num, k.tick, k.id""", match_id)
 
     rounds_out: list[dict] = []
     cur: dict | None = None
@@ -600,6 +613,8 @@ async def api_match_rounds(match_id: int, _: dict = Depends(require_login), conn
             "sec": sec,
             "attacker": row["attacker"], "attacker_side": row["attacker_side"], "attacker_place": row["attacker_place"],
             "victim": row["victim"], "victim_side": row["victim_side"], "victim_place": row["victim_place"],
+            "attacker_id": row["attacker_id"], "victim_id": row["victim_id"],
+            "victim_x": row["victim_x"], "victim_y": row["victim_y"],
             "weapon": row["weapon"], "headshot": row["headshot"],
             "before": f"{ct_before}v{t_before}", "after": f"{ct_after}v{t_after}",
             "planted": planted,
@@ -612,17 +627,160 @@ async def api_match_rounds(match_id: int, _: dict = Depends(require_login), conn
         measurable = [i for i, k in enumerate(ks) if k["delta"] is not None]
         r["deciding"] = max(measurable, key=lambda i: abs(ks[i]["delta"])) if measurable else None
         r["p_final"] = next((k["p_after"] for k in reversed(ks) if k["p_after"] is not None), None)
+    return rounds_out
+
+
+def model_info(model: dict, map_name: str) -> dict:
+    """ข้อมูลกำกับโมเดลที่หน้าเว็บต้องรู้ — โดยเฉพาะว่าเทรนจากแมพเดียวกับแมตช์นี้ไหม"""
+    return {
+        "map": model["map"],
+        "trained_matches": model["metrics"]["matches"],
+        "trained_at": model.get("trained_at"),
+        "same_map": model["map"] == map_name,       # ฟีเจอร์คือคนเหลือ/ระเบิด/เวลา ใช้ข้ามแมพได้ แต่ต้องบอกผู้ใช้
+        "p_start": model["table"].get(f"5v5|0|{model['time_names'][0]}"),
+    }
+
+
+@app.get("/api/matches/{match_id}/rounds")
+async def api_match_rounds(match_id: int, _: dict = Depends(require_login), conn: asyncpg.Connection = Depends(db)):
+    """ไทม์ไลน์รายรอบ — P(CT ชนะ) หลังทุกคิล และคิลที่ตัดสินรอบ"""
+    match = await conn.fetchrow("SELECT * FROM match_summary WHERE id = $1", match_id)
+    if not match:
+        raise HTTPException(404, "ไม่พบแมตช์นี้")
+    model = load_round_win_model()
+    rows_ = await conn.fetch(ROUND_KILLS_SQL, match_id)
+    return {"match": dict(match), "model": model_info(model, match["map_name"]), "rounds": annotate_rounds(rows_, model)}
+
+
+# ---- กริด: ช่องไหนบนแมพที่ฝั่งไหนชนะดวล (ใช้ได้เฉพาะแมพที่ grid_ml.py เทรนไว้) ----------
+BAD_CELL_P = 0.40      # ถ้าฝั่งเราชนะดวลในช่องนั้นน้อยกว่านี้ = "ดวลในจุดเสียเปรียบ"
+
+
+def load_grid(map_name: str) -> dict | None:
+    """โหลด grid_ml.json + ค่าปรับเทียบเรดาร์ ถ้าโมเดลกริดเป็นของแมพนี้ — ไม่ใช่ก็คืน None (ไม่พัง)"""
+    f = ROOT / "output" / "grid_ml.json"
+    if not f.exists():
+        return None
+    g = json.loads(f.read_text(encoding="utf-8"))
+    if g.get("map") != map_name:
+        return None
+    radar = json.loads((ASSETS_DIR / "radars.json").read_text(encoding="utf-8")).get(map_name)
+    if not radar:
+        return None
+    # เรขาคณิตชุดเดียวกับ grid_ml.py: ขอบกริดเอาจากภาพเรดาร์ ไม่ใช่จากข้อมูล
+    span = radar["size"] * radar["scale"]
+    n = g["grid_n"]
+    return {
+        "n": n, "cell": span / n,
+        "x_left": radar["pos_x"], "y_bottom": radar["pos_y"] - span,
+        "cells": {(c["cx"], c["cy"]): c for c in g["cells"]},
+        "matches": g["metrics"]["matches"],
+    }
+
+
+def grid_cell(grid: dict | None, x, y) -> dict | None:
+    """พิกัดเกม -> ช่องกริด -> ค่าที่โมเดลรู้ (None ถ้าช่องนั้นมีดวลน้อยเกินจะสรุป)"""
+    if grid is None or x is None or y is None:
+        return None
+    cx = int(min(max((x - grid["x_left"]) // grid["cell"], 0), grid["n"] - 1))
+    cy = int(min(max((y - grid["y_bottom"]) // grid["cell"], 0), grid["n"] - 1))
+    return grid["cells"].get((cx, cy))
+
+
+@app.get("/api/matches/{match_id}/review")
+async def api_match_review(match_id: int, _: dict = Depends(require_login), conn: asyncpg.Connection = Depends(db)):
+    """รีวิวรายคน: เราพลาดตรงไหน — สามคำถามที่ข้อมูลตอบได้จริง
+
+    A  การตายที่แพงที่สุด   ทุกครั้งที่ตาย โอกาสชนะรอบของทีมหายไปกี่ % (จากตาราง round_win)
+    B  ดวลในจุดเสียเปรียบ   ตายในช่องที่โมเดลกริดบอกว่าฝั่งเราชนะน้อยกว่า 40% (เฉพาะแมพที่มีกริด)
+    C  ตายฟรี              opening death ที่เพื่อนไม่เทรดคืนใน 5 วิ / ตายแล้วไม่ถูกเทรด (จาก player_round_facts)
+
+    สิ่งที่ตั้งใจ "ไม่" ตอบ: ทำไมถึงแพ้ดวล (เล็ง/ปืน) — โมเดลไม่ใช้ headshot/weapon ตั้งแต่ต้น
+    """
+    match = await conn.fetchrow("SELECT * FROM match_summary WHERE id = $1", match_id)
+    if not match:
+        raise HTTPException(404, "ไม่พบแมตช์นี้")
+    model = load_round_win_model()
+    rows_ = await conn.fetch(ROUND_KILLS_SQL, match_id)
+    rounds_ = annotate_rounds(rows_, model)
+    grid = load_grid(match["map_name"])
+
+    # ---- รายชื่อผู้เล่น: จาก scoreboard ถ้ามี (เดโมที่อัปผ่านเว็บ) ไม่มีก็ประกอบจากคิล (แมตช์จาก csv) ----
+    players: dict[str, dict] = {}
+    for sb in await conn.fetch(
+            "SELECT steam_id::text AS steam_id, name, start_side, kills, deaths FROM match_scoreboard WHERE match_id = $1", match_id):
+        players[sb["steam_id"]] = {**dict(sb), "side": sb["start_side"]}
+    for r in rounds_:
+        for k in r["kills"]:
+            for pid, name, side in ((k["victim_id"], k["victim"], k["victim_side"]),
+                                    (k["attacker_id"], k["attacker"], k["attacker_side"])):
+                if pid and pid not in players:
+                    players[pid] = {"steam_id": pid, "name": name, "start_side": None, "side": side, "kills": 0, "deaths": 0}
+    if not players:
+        raise HTTPException(404, "แมตช์นี้ไม่มีคิลให้รีวิว")
+
+    for p in players.values():
+        p.update({"cost_total": 0.0, "costly_deaths": [], "bad_cell_deaths": [], "deaths_seen": 0})
+
+    # ---- A + B: ไล่ทุกการตาย ----------------------------------------------------------------
+    for r in rounds_:
+        for k in r["kills"]:
+            p = players.get(k["victim_id"])
+            if not p:
+                continue
+            p["deaths_seen"] += 1
+            side = k["victim_side"]
+            # delta เป็นมุมมอง CT — แปลงเป็น "ทีมของคนตายเสียไปเท่าไร" (บวก = เสีย)
+            cost = None if k["delta"] is None else (-k["delta"] if side == "ct" else k["delta"])
+            cell = grid_cell(grid, k["victim_x"], k["victim_y"])
+            own_p = None
+            if cell is not None and side in ("ct", "t"):
+                own_p = cell["pred"] if side == "ct" else 1 - cell["pred"]
+            death = {
+                "round_num": r["round_num"], "sec": k["sec"], "before": k["before"], "after": k["after"],
+                "planted": k["planted"], "killer": k["attacker"], "weapon": k["weapon"],
+                "place": k["victim_place"], "cost": None if cost is None else round(cost, 4),
+                "cell_place": cell["place"] if cell else None,
+                "cell_own_p": None if own_p is None else round(own_p, 3),
+                "cell_kills": cell["kills"] if cell else None,
+                "round_won": (r["winner_side"] == side) if r["winner_side"] else None,
+            }
+            if cost is not None:
+                p["cost_total"] += cost
+                p["costly_deaths"].append(death)
+            if own_p is not None and own_p < BAD_CELL_P:
+                p["bad_cell_deaths"].append(death)
+
+    # ---- C: จาก view player_round_facts (มีเฉพาะเดโมที่อัปผ่านเว็บ — จาก csv ไม่มี player_rounds) ----
+    facts = await conn.fetch("""
+        SELECT steam_id::text AS steam_id,
+               COUNT(*)                                                AS rounds,
+               COUNT(*) FILTER (WHERE opening_death)                   AS opening_deaths,
+               COUNT(*) FILTER (WHERE opening_death AND was_traded)    AS opening_traded,
+               COUNT(*) FILTER (WHERE deaths > 0)                      AS deaths,
+               COUNT(*) FILTER (WHERE deaths > 0 AND NOT was_traded)   AS untraded_deaths,
+               COUNT(*) FILTER (WHERE survived)                        AS survived,
+               COUNT(*) FILTER (WHERE kast)                            AS kast_rounds,
+               COUNT(*) FILTER (WHERE opening_kill)                    AS opening_kills
+        FROM player_round_facts WHERE match_id = $1 GROUP BY steam_id""", match_id)
+    facts_by = {f["steam_id"]: dict(f) for f in facts}
+
+    out = []
+    for p in players.values():
+        p["costly_deaths"].sort(key=lambda d: -d["cost"])
+        p["costly_deaths"] = p["costly_deaths"][:5]
+        p["bad_cell_deaths"].sort(key=lambda d: d["cell_own_p"])
+        p["cost_total"] = round(p["cost_total"], 3)
+        p["facts"] = facts_by.get(p["steam_id"])
+        out.append(p)
+    out.sort(key=lambda p: -p["cost_total"])
 
     return {
         "match": dict(match),
-        "model": {
-            "map": model["map"],
-            "trained_matches": model["metrics"]["matches"],
-            "trained_at": model.get("trained_at"),
-            "same_map": model["map"] == match["map_name"],   # โมเดลเทรนจากแมพเดียว ใช้กับแมพอื่นได้แต่ต้องบอกผู้ใช้
-            "p_start": table.get(f"5v5|0|{names[0]}"),
-        },
-        "rounds": rounds_out,
+        "model": model_info(model, match["map_name"]),
+        "grid": None if grid is None else {"map": match["map_name"], "matches": grid["matches"], "bad_cell_p": BAD_CELL_P},
+        "facts_available": bool(facts_by),
+        "players": out,
     }
 
 

@@ -635,3 +635,7 @@ a.btn-mini { text-decoration: none; display: inline-block; }   /* ลิงก�
   .rw-round { grid-template-columns: 34px minmax(0, 1fr); }
   .rw-dec { grid-column: 2; }
 }
+
+/* ---------- หน้ารีวิวจุดพลาด (/review/{id}) ---------- */
+.rv-panel { display: flex; flex-direction: column; gap: 14px; }   /* กล่อง A / C / B ซ้อนกันลงมาในคอลัมน์ขวา */
+.rv-panel .box h2 { margin-bottom: 4px; }

@@ -42,7 +42,8 @@ async function load() {
       <h1>${esc(m.team_a || "?")} vs ${esc(m.team_b || "?")}</h1>
       <div class="sub" style="margin-top:6px">
         <span class="tag ct">CT ${m.ct_rounds}</span> <span class="tag t">T ${m.t_rounds}</span>
-        · ${d.rounds.length} รอบ · ${fmt(m.kills)} คิล · <a href="/matches">← กลับหน้าแมตช์</a>
+        · ${d.rounds.length} รอบ · ${fmt(m.kills)} คิล
+        · <a href="/review/${m.id}">รีวิวจุดพลาดรายคน →</a> · <a href="/matches">← กลับหน้าแมตช์</a>
       </div>
     </div>`;
 
