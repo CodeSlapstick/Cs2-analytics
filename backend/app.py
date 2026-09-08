@@ -613,7 +613,7 @@ def api_radar(
 
     return {
         "map": map_name,
-        "image": "/assets" + cal["image"],   # cal["image"] เก็บเป็น "/maps/de_mirage.webp" -> เติม /assets ข้างหน้าให้เป็น URL จริง
+        "image": "/assets" + cal["image"],   # cal["image"] เก็บเป็น "/maps/de_mirage.png" -> เติม /assets ข้างหน้าให้เป็น URL จริง
         "size": cal["size"],                 # ภาพเป็นจัตุรัส ด้านละกี่พิกเซล
         "pos_x": cal["pos_x"],               # พิกัดเกมของมุมบนซ้ายของภาพ
         "pos_y": cal["pos_y"],
