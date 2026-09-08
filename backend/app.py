@@ -210,8 +210,8 @@ def page_upload():
     return FileResponse(PAGES_DIR / "upload.html")
 
 
-@app.get("/overview")
-def page_overview():
+@app.get("/upload")
+def page_upload():
     """ที่อยู่เดิมของหน้าภาพรวม — หน้านั้นถูกแทนที่ด้วยหน้าอัปโหลด ลิงก์เก่าและบุ๊กมาร์กจะได้ไม่พัง"""
     return RedirectResponse("/upload")
 
