@@ -222,6 +222,12 @@ def page_matches():
     return FileResponse(PAGES_DIR / "matches.html")
 
 
+@app.get("/rounds/{match_id}")
+def page_rounds(match_id: int):
+    """ไทม์ไลน์รายรอบของแมตช์เดียว — JS อ่านเลขแมตช์จาก URL เอง ไฟล์ html เดียวจึงใช้ได้ทุกแมตช์"""
+    return FileResponse(PAGES_DIR / "rounds.html")
+
+
 @app.get("/players")
 def page_players():
     """นักแข่ง — อันดับ + รายละเอียดรายคน"""
@@ -506,6 +512,118 @@ async def api_match(match_id: int, _: dict = Depends(require_login), conn: async
             FROM ids JOIN players p USING (steam_id)
             ORDER BY kills DESC, deaths ASC""", match_id)
     return {"match": dict(match), "rounds": rows(rounds_), "scoreboard": rows(scoreboard)}
+
+
+@app.get("/api/matches/{match_id}/rounds")
+async def api_match_rounds(match_id: int, _: dict = Depends(require_login), conn: asyncpg.Connection = Depends(db)):
+    """ไทม์ไลน์รายรอบ — เอาโมเดลโอกาสชนะรอบมา "อ่าน" แมตช์นี้ทีละคิล
+
+    ทิศทางกลับกับการเทรน: เทรน = เดโมหลายสิบไฟล์ -> ตาราง P(CT ชนะ)
+    ที่นี่ = ตาราง -> เดโมไฟล์เดียว จึงใช้กับแมตช์ที่เพิ่งอัปโหลดได้ทันที ไม่ต้องเทรนใหม่
+
+    ทุกคิลตอบ: สถานะ "ก่อน" คิล (ใครเหลือกี่คน ระเบิดลงยัง วินาทีที่เท่าไร)
+    P(CT ชนะ) ก่อนและหลัง และ delta = หลัง - ก่อน
+    คิลที่ |delta| มากที่สุดในรอบ = จังหวะที่ตัดสินรอบ
+    """
+    match = await conn.fetchrow("SELECT * FROM match_summary WHERE id = $1", match_id)
+    if not match:
+        raise HTTPException(404, "ไม่พบแมตช์นี้")
+
+    model = read_output_json("round_win.json", "python pipeline/round_win.py")
+    table, edges, names = model["table"], model["time_edges"], model["time_names"]
+
+    def time_bucket(sec: float) -> str:
+        # ใช้ <= ให้ตรงกับ pd.cut (ช่วงปิดขวา) ที่ round_win.py ใช้ตอนเทรน ไม่งั้นวินาทีที่ 20 พอดีจะตกคนละถัง
+        for edge, name in zip(edges, names):
+            if sec <= edge:
+                return name
+        return names[-1]
+
+    def p_ct(ct: int, t: int, planted: int, sec: float | None):
+        """P(CT ชนะ) จากตาราง — None ถ้าสถานะนี้ไม่มีในตาราง (นอกช่วง 1-5 หรือไม่รู้เวลาเริ่มรอบ)"""
+        if sec is None or not (1 <= ct <= 5 and 1 <= t <= 5):
+            return None
+        return table.get(f"{ct}v{t}|{planted}|{time_bucket(sec)}")
+
+    rows_ = await conn.fetch("""
+        SELECT r.round_num, r.winner_side, r.end_reason, r.start_tick, r.bomb_plant_tick, m.tickrate,
+               k.tick, k.attacker_side, k.victim_side, k.weapon, k.headshot, k.attacker_place, k.victim_place,
+               pa.name AS attacker, pv.name AS victim
+        FROM rounds r
+        JOIN matches m ON m.id = r.match_id
+        LEFT JOIN kills k    ON k.round_id = r.id          -- LEFT ทั้งสาย: รอบที่ไม่มีคิลเลย (หมดเวลา) ต้องยังโผล่
+        LEFT JOIN players pa ON pa.steam_id = k.attacker_id
+        LEFT JOIN players pv ON pv.steam_id = k.victim_id
+        WHERE r.match_id = $1
+        ORDER BY r.round_num, k.tick, k.id""", match_id)
+
+    rounds_out: list[dict] = []
+    cur: dict | None = None
+    for row in rows_:
+        rate = row["tickrate"] or 128
+        start = row["start_tick"]
+        if cur is None or cur["round_num"] != row["round_num"]:
+            plant = row["bomb_plant_tick"]
+            cur = {
+                "round_num": row["round_num"],
+                "winner_side": row["winner_side"],
+                "end_reason": row["end_reason"],
+                "bomb_plant_sec": round((plant - start) / rate, 1) if plant is not None and start is not None else None,
+                "kills": [],
+                "_dead_ct": 0, "_dead_t": 0,
+            }
+            rounds_out.append(cur)
+        if row["tick"] is None:
+            continue
+
+        sec = round((row["tick"] - start) / rate, 1) if start is not None else None
+        planted = int(row["bomb_plant_tick"] is not None and row["tick"] >= row["bomb_plant_tick"])
+
+        # สถานะ "ก่อน" คิลนี้ — นับคนตายจากทุกสาเหตุ (C4 / ตกที่สูง / ทีมคิล) เหมือน round_win.py
+        ct_before, t_before = 5 - cur["_dead_ct"], 5 - cur["_dead_t"]
+        if row["victim_side"] == "ct":
+            cur["_dead_ct"] += 1
+        elif row["victim_side"] == "t":
+            cur["_dead_t"] += 1
+        ct_after, t_after = 5 - cur["_dead_ct"], 5 - cur["_dead_t"]
+
+        p_before = p_ct(ct_before, t_before, planted, sec)
+        if ct_after <= 0:
+            p_after = 0.0                       # CT หมด = T ชนะแน่
+        elif t_after <= 0:
+            p_after = None if planted else 1.0  # T หมดแต่ระเบิดลงแล้ว CT ยังต้องกู้ให้ทัน ตารางไม่มีสถานะนี้ ไม่เดา
+        else:
+            p_after = p_ct(ct_after, t_after, planted, sec)
+        delta = round(p_after - p_before, 4) if p_after is not None and p_before is not None else None
+
+        cur["kills"].append({
+            "sec": sec,
+            "attacker": row["attacker"], "attacker_side": row["attacker_side"], "attacker_place": row["attacker_place"],
+            "victim": row["victim"], "victim_side": row["victim_side"], "victim_place": row["victim_place"],
+            "weapon": row["weapon"], "headshot": row["headshot"],
+            "before": f"{ct_before}v{t_before}", "after": f"{ct_after}v{t_after}",
+            "planted": planted,
+            "p_before": p_before, "p_after": p_after, "delta": delta,
+        })
+
+    for r in rounds_out:
+        del r["_dead_ct"], r["_dead_t"]
+        ks = r["kills"]
+        measurable = [i for i, k in enumerate(ks) if k["delta"] is not None]
+        r["deciding"] = max(measurable, key=lambda i: abs(ks[i]["delta"])) if measurable else None
+        r["p_final"] = next((k["p_after"] for k in reversed(ks) if k["p_after"] is not None), None)
+
+    return {
+        "match": dict(match),
+        "model": {
+            "map": model["map"],
+            "trained_matches": model["metrics"]["matches"],
+            "trained_at": model.get("trained_at"),
+            "same_map": model["map"] == match["map_name"],   # โมเดลเทรนจากแมพเดียว ใช้กับแมพอื่นได้แต่ต้องบอกผู้ใช้
+            "p_start": table.get(f"5v5|0|{names[0]}"),
+        },
+        "rounds": rounds_out,
+    }
 
 
 @app.get("/api/players")
@@ -946,3 +1064,56 @@ async def api_upload_demo(
         "counts": counts,
         "summary": dict(row) if row else None,
     }
+
+
+# ---------------------------------------------------------------------------
+# ส่วนที่ 9 — สั่งเทรนโมเดลใหม่จากหน้าเว็บ
+#
+# โมเดลทั้งสองเป็นสคริปต์ที่รันจบในตัว (pipeline/round_win.py, pipeline/grid_ml.py)
+# จึงเรียกเป็นโปรเซสลูกด้วย interpreter ตัวเดียวกับเซิร์ฟเวอร์ ไม่ import เข้ามา เพราะ
+#   - สคริปต์พวกนั้นมีโค้ดระดับบนสุด import แล้วรันทันที
+#   - ใช้ matplotlib / sklearn หนัก แยกโปรเซสแล้วเสร็จก็คืนแรมทั้งหมด พังก็ไม่ลากเซิร์ฟเวอร์ล้ม
+#
+# --source=db บังคับให้อ่านจาก PostgreSQL = ทุกแมตช์ที่อัปโหลดเข้ามาถูกนับด้วย
+# เสร็จแล้วเขียนทับ output/*.json ซึ่ง /api/ml/* อ่านทุกครั้งที่ถูกเรียก หน้าเว็บจึงเห็นผลใหม่ทันที
+#
+# กันกดซ้ำด้วย lock ตัวเดียว — เทรนพร้อมกันสองรอบจะแย่งกันเขียนไฟล์ผลลัพธ์
+# ---------------------------------------------------------------------------
+import subprocess
+import threading
+
+RETRAIN_LOCK = threading.Lock()
+RETRAIN_SCRIPTS = ("pipeline/round_win.py", "pipeline/grid_ml.py")
+
+
+def run_training() -> list[dict]:
+    """รันสคริปต์โมเดลทีละตัวจากฐานข้อมูล คืน log ท้าย ๆ ของแต่ละตัว หยุดทันทีที่ตัวไหนล้ม"""
+    results = []
+    for script in RETRAIN_SCRIPTS:
+        proc = subprocess.run(
+            [sys.executable, script, "--source=db"],
+            cwd=ROOT, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=600,
+        )
+        results.append({"script": script, "ok": proc.returncode == 0,
+                        "log": (proc.stdout + proc.stderr)[-1500:]})
+        if proc.returncode != 0:
+            break
+    return results
+
+
+@app.post("/api/ml/retrain")
+async def api_ml_retrain(_: dict = Depends(require_login)):
+    """เทรนโมเดลทั้งสองใหม่จากทุกแมตช์ในฐานข้อมูล แล้วเขียนทับ output/*.json"""
+    if not RETRAIN_LOCK.acquire(blocking=False):
+        raise HTTPException(409, "กำลังเทรนอยู่ — รอให้รอบก่อนหน้าเสร็จก่อน")
+    try:
+        results = await run_in_threadpool(run_training)
+    finally:
+        RETRAIN_LOCK.release()
+
+    failed = next((r for r in results if not r["ok"]), None)
+    if failed:
+        log(f"[RETRAIN] {failed['script']} ล้มเหลว:\n{failed['log']}")
+        raise HTTPException(500, f"{failed['script']} ล้มเหลว — {failed['log'][-400:]}")
+    log(f"[RETRAIN] เทรนใหม่สำเร็จ: {', '.join(r['script'] for r in results)}")
+    return {"ok": True, "results": results}

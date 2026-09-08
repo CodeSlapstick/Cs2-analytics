@@ -25,6 +25,7 @@ import base64
 import io
 import json
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 import numpy as np
@@ -49,8 +50,15 @@ MIN_KILLS = 5      # ช่องที่มีดวลน้อยกว่�
 C_PENALTY = 0.3    # ยิ่งต่ำยิ่งดึงช่องที่ข้อมูลน้อยกลับเข้าหาค่าเฉลี่ย ไม่ให้สวิงไป 0 หรือ 1
 
 ROOT = Path(__file__).resolve().parent.parent
-CSV = ROOT / "data" / "all_kills.csv"     # สร้างด้วย python pipeline/demoparser.py
+CSV = ROOT / "data" / "all_kills.csv"     # สร้างด้วย python pipeline/demoparser.py (ทางถอยเมื่อไม่มี DB)
 OUT = ROOT / "output"
+
+# แหล่งข้อมูล: auto = ลอง PostgreSQL ก่อน (เดโมที่อัปโหลดผ่านเว็บอยู่ที่นั่น) ต่อไม่ได้ค่อยถอยไป csv
+#   python pipeline/grid_ml.py --source=db     บังคับ DB
+#   python pipeline/grid_ml.py --source=csv    บังคับ csv (Docker ที่ไม่มี DB)
+SOURCE = next((a.split("=", 1)[1] for a in sys.argv[1:] if a.startswith("--source=")), "auto")
+sys.path.insert(0, str(ROOT))                   # ให้ import pipeline.datasource ได้เมื่อรันเป็นสคริปต์
+from pipeline.datasource import load_kills     # noqa: E402
 
 for _s in (sys.stdout, sys.stderr):     # ให้คอนโซล Windows พิมพ์ไทยได้
     try:
@@ -62,15 +70,14 @@ for _s in (sys.stdout, sys.stderr):     # ให้คอนโซล Windows �
 # ===========================================================================
 # STEP 1 — โหลดข้อมูล
 # ===========================================================================
-df = pd.read_csv(CSV)
-n_raw = len(df)
-
-# กรองให้เหลือแมพเดียว เพราะกริดผูกกับภาพเรดาร์ของแมพนั้น
+# กรองให้เหลือแมพเดียว (load_kills ทำให้) เพราะกริดผูกกับภาพเรดาร์ของแมพนั้น
 # เอาพิกัดจากคนละแมพมาปนกันคือหย่อนจุดลงตารางที่ไม่ใช่ของมัน ผลจะมั่วโดยไม่มี error
-if "map_name" in df.columns:
-    df = df[df["map_name"] == MAP]
-    if df.empty:
-        sys.exit(f"ไม่มีข้อมูลแมพ {MAP} ใน {CSV.name} — มีแต่ {sorted(pd.read_csv(CSV)['map_name'].unique())}")
+df = load_kills(MAP, source=SOURCE)
+SOURCE_DESC = df.attrs.get("source", SOURCE)
+n_raw = len(df)
+if df.empty:
+    sys.exit(f"ไม่มีข้อมูลแมพ {MAP} ใน {SOURCE_DESC}")
+print(f"แหล่งข้อมูล: {SOURCE_DESC}")
 
 
 # ===========================================================================
@@ -348,6 +355,8 @@ print(f"\nหน้ากากพื้นที่: {MASK_PX}x{MASK_PX} คร
 payload = {
     "map": MAP,
     "grid_n": GRID_N,
+    "trained_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),   # หน้าเว็บใช้บอกว่าผลเก่าแค่ไหน
+    "source": SOURCE_DESC,                                                     # เทรนจาก DB หรือ csv
     "min_kills": MIN_KILLS,
     # ส่งค่าปรับเทียบไปด้วย หน้าเว็บจะได้แปลงพิกัดในเกม -> พิกเซลบนภาพเรดาร์ได้เอง
     "radar": {k: radar[k] for k in ("image", "size", "pos_x", "pos_y", "scale")},

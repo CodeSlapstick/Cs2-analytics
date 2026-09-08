@@ -18,6 +18,10 @@
       <div class="eyebrow">ML insights</div>
       <h1>โมเดลทำนาย</h1>
     </div>
+    <!-- เทรนใหม่จากทุกแมตช์ในฐานข้อมูล (รวมที่อัปโหลดเข้ามา) — ml.js ผูกปุ่มนี้กับ POST /api/ml/retrain -->
+    <button class="btn-mini" id="btnRetrain" title="รัน round_win.py และ grid_ml.py จากฐานข้อมูล ใช้เวลาราว 10-30 วินาที">
+      เทรนใหม่จากฐานข้อมูล
+    </button>
   </div>
 
   <!-- ================= โมเดลที่ 1 — โอกาสชนะรอบ ================= -->
@@ -25,7 +29,9 @@
     <div class="eyebrow">Round win model</div>
     <h2>โอกาสชนะรอบ จากสถานะกลางรอบ</h2>
 
-    <div id="rwKpis" class="kpis" style="margin:12px 0 18px"></div>
+    <div id="rwKpis" class="kpis" style="margin:12px 0 8px"></div>
+    <!-- โมเดลเทรนเมื่อไร จากแหล่งไหน — ไม่มีบรรทัดนี้ ผู้ใช้จะไม่รู้ว่าอัปเดโมไปแล้วผลเปลี่ยนหรือยัง -->
+    <div class="sub" id="rwTrained" style="margin-bottom:16px"></div>
 
     <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:14px">
       <select id="rwCt"></select>       <!-- CT เหลือกี่คน -->

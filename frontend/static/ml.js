@@ -3,6 +3,7 @@ let rwData = null;    // เก็บตารางโมเดลไว้ จ
 async function load() {
   await loadRoundWin();
   await loadGrid();
+  bindRetrain();
 }
 
 // --------------------------------------------------------------------------
@@ -19,6 +20,8 @@ async function loadRoundWin() {
     { k: "ข้อมูลที่ใช้เทรน", v: fmt(M.rounds),                             s: `${fmt(M.rows)} จุดตัดสินใจ · ${M.matches} แมตช์` },
     { k: "CT ชนะโดยรวม",   v: pct(M.ct_win_overall * 100, 100),          s: "ค่าตั้งต้นก่อนดูอะไรเลย" },
   ]);
+
+  $("rwTrained").innerHTML = trainedLine(rwData);
 
   // เติมตัวเลือก 1-5 คน ให้ช่อง "CT เหลือ" กับ "T เหลือ"
   const opts = (label) => [1, 2, 3, 4, 5].map((n) => `<option value="${n}">${label} ${n} คน</option>`).join("");
@@ -100,6 +103,42 @@ async function loadGrid() {
       { n: `<span class="tag ${c.ct_win >= .5 ? "ct" : "t"}">${Math.round(c.ct_win * 100)}%</span>` },
       { n: `${Math.round(c.pred * 100)}%` },
     ]));
+}
+
+// --------------------------------------------------------------------------
+// เทรนใหม่จากฐานข้อมูล
+// --------------------------------------------------------------------------
+
+/** บรรทัดบอกว่าโมเดลนี้เทรนเมื่อไร จากแหล่งไหน กี่แมตช์ — ไว้ให้รู้ว่าอัปเดโมไปแล้วผลเปลี่ยนหรือยัง */
+function trainedLine(d) {
+  const when = d.trained_at ? new Date(d.trained_at).toLocaleString("th-TH") : "ไม่ทราบเวลา";
+  const src = (d.source || "csv").split(" ")[0];          // "PostgreSQL postgresql://..." -> "PostgreSQL"
+  return `เทรนเมื่อ ${esc(when)} · จาก ${esc(src)} · ${fmt(d.metrics.matches)} แมตช์ · แมพ ${esc(d.map)}`;
+}
+
+/** ปุ่ม "เทรนใหม่จากฐานข้อมูล" — ยิง POST แล้วโหลดผลทั้งสองโมเดลใหม่ */
+function bindRetrain() {
+  const btn = $("btnRetrain");
+  const idle = btn.textContent.trim();
+
+  btn.addEventListener("click", async () => {
+    btn.disabled = true;
+    btn.textContent = "กำลังเทรน… (ราว 10-30 วินาที)";
+    try {
+      const res = await fetch("/api/ml/retrain", { method: "POST" });
+      const body = await res.json().catch(() => ({}));       // ตอบกลับไม่ใช่ JSON (เช่น proxy พัง) ก็ไม่ให้ throw ซ้อน
+      if (res.status === 401) { location.href = "/"; return; }
+      if (!res.ok) throw new Error(body.detail || `เซิร์ฟเวอร์ตอบ ${res.status}`);
+      await loadRoundWin();
+      await loadGrid();
+      btn.textContent = "เทรนเสร็จแล้ว ✓";
+    } catch (e) {
+      btn.textContent = "เทรนไม่สำเร็จ — " + e.message;
+    } finally {
+      btn.disabled = false;
+      setTimeout(() => { btn.textContent = idle; }, 5000);   // คืนข้อความเดิมหลัง 5 วินาที
+    }
+  });
 }
 
 start(load);

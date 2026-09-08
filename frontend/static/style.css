@@ -603,3 +603,35 @@ select:focus { outline: none; border-color: var(--orange); }   /* คลิก�
   .drop { padding: 30px 14px; }
   .drop-opt { margin-bottom: 18px; }
 }
+
+/* ---------- หน้าไทม์ไลน์รายรอบ (/rounds/{id}) ---------- */
+/* หนึ่งรอบ = หนึ่งแถว: เลขรอบ | กราฟเส้น+คำอธิบาย | จังหวะตัดสิน  แล้วรายการคิลพับอยู่ใต้แถวเต็มความกว้าง */
+.rw-round {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) minmax(200px, 300px);
+  gap: 8px 16px;
+  align-items: center;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line);
+}
+.rw-round:last-child { border-bottom: none; }
+.rw-round svg { display: block; max-width: 100%; height: auto; color: var(--text); }
+.rw-dec { font-size: 13px; line-height: 1.7; }
+.rw-dec .eyebrow { margin-bottom: 2px; }
+.rw-kills { grid-column: 1 / -1; }                       /* กินเต็มแถว */
+.rw-kills summary { cursor: pointer; font-size: 12px; color: var(--muted); list-style: none; }
+.rw-kills summary::before { content: "▸ "; }
+.rw-kills[open] summary::before { content: "▾ "; }
+.rw-kills table { margin-top: 8px; }
+
+/* ป้าย Δ ของโอกาสชนะ — สีบอกฝั่งที่ได้เปรียบขึ้น ใช้กติกาเดียวกับทั้งเว็บ */
+.delta { font-weight: 700; font-variant-numeric: tabular-nums; }
+.delta.ct { color: var(--ct); }
+.delta.t  { color: var(--t); }
+
+a.btn-mini { text-decoration: none; display: inline-block; }   /* ลิงก์ที่หน้าตาเหมือนปุ่มเล็ก */
+
+@media (max-width: 760px) {
+  .rw-round { grid-template-columns: 34px minmax(0, 1fr); }
+  .rw-dec { grid-column: 2; }
+}

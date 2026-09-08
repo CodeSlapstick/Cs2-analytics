@@ -48,7 +48,8 @@ async function openMatch(id) {
       · ${d.rounds.length} รอบ · ${fmt(d.match.kills)} คิล
     </div>
     <div class="eyebrow">Round timeline</div>
-    <div class="timeline" style="margin:8px 0 18px">${timeline}</div>
+    <div class="timeline" style="margin:8px 0 10px">${timeline}</div>
+    <a class="btn-mini" href="/rounds/${d.match.id}" style="margin-bottom:18px">ไทม์ไลน์รายรอบ + จังหวะตัดสิน →</a>
     <div class="eyebrow">Scoreboard</div>
     ${sb}`;
 }
