@@ -188,21 +188,27 @@ function resultLine(r) {
   const c = r.counts || {};
   const teams = r.team_a && r.team_b ? `${esc(r.team_a)} vs ${esc(r.team_b)} · ` : "";
   return `${teams}${esc(r.map_name)} · ${fmt(c.rounds)} รอบ · ${fmt(c.kills)} คิล · ${fmt(c.players)} คน` +
-         (r.replaced ? " · เขียนทับของเดิม" : "");
+         (r.replaced ? " · เขียนทับของเดิม" : "") +
+         ` · <a href="/ml?match=${r.match_id}">ดูว่า ML เห็นอะไรในแมตช์นี้ →</a>`;
 }
 
-/** ตารางแมตช์ที่อยู่ในฐานข้อมูลแล้ว — ใหม่สุดอยู่บน */
+/** ตารางแมตช์ที่อยู่ในฐานข้อมูลแล้ว — ใหม่สุดอยู่บน คลิกแถวเพื่อให้โมเดลอ่านแมตช์นั้น */
 async function drawMatches() {
   const ms = await api("/api/matches");
   const rows = [...ms].reverse();      // [...ms] = ก๊อปมาก่อน เพราะ .reverse() แก้ array ตัวเดิม
 
   $("matches").innerHTML = tableHTML(
-    ["แมพ", "ทีม", "รอบ", "CT", "T", "คิล"],
+    ["#", "แมพ", "ทีม", "รอบ", "CT", "T", "คิล", ""],
     rows.map((m) => [
+      String(m.id),
       esc(m.map_name),
       esc(m.team_a || "-") + " vs " + esc(m.team_b || "-"),
       { n: m.rounds }, { n: m.ct_rounds }, { n: m.t_rounds }, { n: fmt(m.kills) },
-    ]));
+      { n: `<a class="btn-mini" href="/ml?match=${m.id}">ดูผล ML →</a>` },
+    ]),
+    { rowAttr: (i) => `class="click" data-i="${i}"` });   // ทุกแถวกดได้ + จำไว้ว่าเป็นแถวที่เท่าไร
+
+  bindRows("matches", (i) => { location.href = `/ml?match=${rows[i].id}`; });   // bindRows อยู่ใน common.js
 }
 
 start(load);

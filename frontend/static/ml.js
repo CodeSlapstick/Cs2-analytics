@@ -1,9 +1,97 @@
 let rwData = null;    // เก็บตารางโมเดลไว้ จะได้ไม่ต้องขอใหม่ทุกครั้งที่เปลี่ยนช่องเลือก
 
 async function load() {
+  await fillMatchSelect();        // ช่องเลือกแมตช์ + อ่าน ?match= จาก URL (หน้า /upload ลิงก์มาแบบนี้)
   await loadRoundWin();
   await loadGrid();
-  bindRetrain();
+  await renderInsight();          // โมเดลอ่านแมตช์ที่เลือก — ส่วนที่ผู้ใช้อัปเดโมมาเพื่อดู
+}
+
+
+// --------------------------------------------------------------------------
+// แมตช์ที่เลือก — โมเดล "อ่าน" เดโมของผู้ใช้
+//
+// ผู้ใช้ไม่ได้อัปเดโมมาช่วยเทรน โมเดลเทรนไว้แล้วจากคลังของทีม
+// ผู้ใช้อัปมาเพื่อให้โมเดลบอกว่า "แมตช์ของฉันมีอะไรสำคัญ" — ส่วนนี้คือคำตอบนั้น
+// ตัวเลขทั้งหมดมาจาก /api/matches/{id}/rounds และ /review ซึ่งเปิดตารางโมเดลอ่าน ไม่ได้เทรนอะไรใหม่
+// --------------------------------------------------------------------------
+
+/** เติมรายการแมตช์ (ใหม่สุดบน) แล้วเลือกตาม ?match= ถ้ามี ไม่มีก็เลือกแมตช์ล่าสุด */
+async function fillMatchSelect() {
+  const ms = await api("/api/matches");
+  const list = [...ms].reverse();
+  const sel = $("mlMatch");
+  sel.innerHTML = list.map((m) =>
+    `<option value="${m.id}">#${m.id} · ${esc(m.team_a || "?")} vs ${esc(m.team_b || "?")} · ${esc(m.map_name)}</option>`
+  ).join("");
+
+  const wanted = new URLSearchParams(location.search).get("match");   // "/ml?match=51" -> "51"
+  if (wanted && list.some((m) => String(m.id) === wanted)) sel.value = wanted;
+
+  sel.addEventListener("change", () => {
+    history.replaceState(null, "", `/ml?match=${sel.value}`);         // ให้ URL แชร์ต่อได้โดยไม่รีโหลดหน้า
+    renderInsight();
+  });
+}
+
+async function renderInsight() {
+  const id = $("mlMatch").value;
+  if (!id) {
+    $("insightNote").textContent = "ยังไม่มีแมตช์ในระบบ — อัปโหลดเดโมที่หน้า อัปโหลด ก่อน";
+    return;
+  }
+  $("insightRounds").innerHTML = '<div class="empty">กำลังอ่านแมตช์…</div>';
+
+  // ขอสองอย่างพร้อมกัน: ไทม์ไลน์รายรอบ (จังหวะตัดสิน) และรีวิวรายคน (ใครเสียโอกาสมากสุด)
+  const [tl, rv] = await Promise.all([api(`/api/matches/${id}/rounds`), api(`/api/matches/${id}/review`)]);
+  const m = tl.match;
+
+  $("insightTitle").textContent = `#${m.id} · ${m.team_a || "?"} vs ${m.team_b || "?"} · ${m.map_name}`;
+  $("insightNote").innerHTML = tl.model.same_map
+    ? `โมเดลอ่านแมตช์นี้จากตาราง P(CT ชนะรอบ) ที่เทรนจาก ${tl.model.trained_matches} แมตช์บน ${esc(tl.model.map)}`
+    : `<b>ระวัง:</b> โมเดลเทรนจาก ${esc(tl.model.map)} แต่แมตช์นี้เป็น ${esc(m.map_name)} — ตัวเลขดูแค่คนเหลือ/ระเบิด/เวลา ไม่รู้จักแมพนี้`;
+
+  // --- คิลที่พลิกเกมแรงที่สุดทั้งแมตช์ ---
+  let best = null;
+  tl.rounds.forEach((r) => {
+    if (r.deciding == null) return;
+    const k = r.kills[r.deciding];
+    if (!best || Math.abs(k.delta) > Math.abs(best.k.delta)) best = { r, k };
+  });
+  const top = rv.players[0];                                            // เรียงจากคนที่การตายแพงที่สุดมาแล้ว
+  const freeDeaths = rv.facts_available
+    ? rv.players.reduce((s, p) => s + (p.facts ? p.facts.untraded_deaths : 0), 0) : null;
+
+  drawKpis("insightKpis", [
+    { k: "รอบทั้งหมด", v: fmt(tl.rounds.length), s: `CT ${m.ct_rounds} · T ${m.t_rounds}` },
+    { k: "คิลที่พลิกเกมแรงสุด", v: best ? `${Math.round(Math.abs(best.k.delta) * 100)}<small>%</small>` : "—",
+      s: best ? `รอบ ${best.r.round_num} · ${best.k.attacker || "?"} ฆ่า ${best.k.victim || "?"} (${best.k.before} → ${best.k.after})` : "" },
+    { k: "เสียโอกาสมากสุด", v: top ? esc(top.name) : "—",
+      s: top ? `การตาย ${top.deaths_seen} ครั้ง = ${top.cost_total.toFixed(2)} รอบ` : "" },
+    { k: "ตายฟรีรวมทั้งแมตช์", v: freeDeaths == null ? "—" : fmt(freeDeaths),
+      s: freeDeaths == null ? "แมตช์นี้ไม่มีข้อมูลรายรอบ" : "ตายแล้วไม่มีใครเทรดคืนใน 5 วิ" },
+  ]);
+
+  $("insightLinks").innerHTML = `
+    <a class="btn-mini" href="/rounds/${m.id}">ไทม์ไลน์รายรอบเต็ม →</a>
+    <a class="btn-mini" href="/review/${m.id}">รีวิวจุดพลาดรายคน →</a>`;
+
+  // --- ตารางย่อ: รอบ | ใครชนะ | จังหวะตัดสิน | Δ ---
+  $("insightRounds").innerHTML = tableHTML(
+    ["รอบ", "ผล", "จังหวะตัดสิน", "สถานะ", "วินาที", "Δ P(CT)"],
+    tl.rounds.map((r) => {
+      const k = r.deciding != null ? r.kills[r.deciding] : null;
+      const win = r.winner_side ? `<span class="tag ${r.winner_side}">${r.winner_side.toUpperCase()}</span>` : "—";
+      if (!k) return [String(r.round_num), win, '<span class="sub">ไม่มีคิลที่วัดได้</span>', "—", "—", { n: "—" }];
+      const d = k.delta, side = d >= 0 ? "ct" : "t";
+      return [
+        String(r.round_num), win,
+        `${esc(k.attacker || "(ไม่มีคนยิง)")} ฆ่า ${esc(k.victim || "?")}`,
+        `${esc(k.before)} → ${esc(k.after)}${k.planted ? ' <span class="tag weak">C4</span>' : ""}`,
+        String(k.sec ?? "—"),
+        { n: `<span class="delta ${side}">${d >= 0 ? "+" : ""}${Math.round(d * 100)}%</span>` },
+      ];
+    }));
 }
 
 // --------------------------------------------------------------------------
@@ -116,29 +204,7 @@ function trainedLine(d) {
   return `เทรนเมื่อ ${esc(when)} · จาก ${esc(src)} · ${fmt(d.metrics.matches)} แมตช์ · แมพ ${esc(d.map)}`;
 }
 
-/** ปุ่ม "เทรนใหม่จากฐานข้อมูล" — ยิง POST แล้วโหลดผลทั้งสองโมเดลใหม่ */
-function bindRetrain() {
-  const btn = $("btnRetrain");
-  const idle = btn.textContent.trim();
-
-  btn.addEventListener("click", async () => {
-    btn.disabled = true;
-    btn.textContent = "กำลังเทรน… (ราว 10-30 วินาที)";
-    try {
-      const res = await fetch("/api/ml/retrain", { method: "POST" });
-      const body = await res.json().catch(() => ({}));       // ตอบกลับไม่ใช่ JSON (เช่น proxy พัง) ก็ไม่ให้ throw ซ้อน
-      if (res.status === 401) { location.href = "/"; return; }
-      if (!res.ok) throw new Error(body.detail || `เซิร์ฟเวอร์ตอบ ${res.status}`);
-      await loadRoundWin();
-      await loadGrid();
-      btn.textContent = "เทรนเสร็จแล้ว ✓";
-    } catch (e) {
-      btn.textContent = "เทรนไม่สำเร็จ — " + e.message;
-    } finally {
-      btn.disabled = false;
-      setTimeout(() => { btn.textContent = idle; }, 5000);   // คืนข้อความเดิมหลัง 5 วินาที
-    }
-  });
-}
+// การเทรนใหม่เป็นงานของทีม ไม่ใช่ของผู้ใช้ — จึงไม่มีปุ่มบนหน้านี้
+// ทีมรันได้จาก CLI (python pipeline/round_win.py --source=db) หรือ POST /api/ml/retrain ผ่าน /docs
 
 start(load);
