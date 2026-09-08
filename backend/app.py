@@ -22,6 +22,8 @@ backend/app.py — "หลังบ้าน" (backend) ของเว็บ CS
 # ---------------------------------------------------------------------------
 # ส่วนที่ 0 — ขนเครื่องมือเข้ามาใช้
 # ---------------------------------------------------------------------------
+import json
+import mimetypes
 import os
 import re
 import secrets
@@ -32,12 +34,14 @@ from pathlib import Path
 
 import asyncpg
 import httpx                   # httpx = โทรศัพท์ ใช้ "โทร" ไปถามเว็บอื่น (ที่นี่คือเซิร์ฟเวอร์ Steam)
-from fastapi import Depends, FastAPI, HTTPException, Query, Request
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, Request, UploadFile
+from fastapi.concurrency import run_in_threadpool   # เอางานหนักที่ไม่ใช่ async ไปรันในเธรดแยก ไม่ให้เซิร์ฟเวอร์ค้าง
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from itsdangerous import BadSignature, URLSafeSerializer   # เครื่อง "เซ็นชื่อ" ข้อมูลในคุกกี้ กันคนปลอมแปลง
 
 from backend.db import DATABASE_URL, apply_schema, create_pool, redacted_url  # noqa: F401  (load_dotenv ทำงานตอน import)
+from backend.etl_loader import load_match_json   # ตัวเดียวกับที่ CLI ใช้ — เดโมที่อัปโหลดจึงเข้าฐานข้อมูลด้วยเส้นทางเดิมเป๊ะ
 
 # ---------------------------------------------------------------------------
 # ส่วนที่ 1 — ค่าตั้งต้น (CONFIG) อยากแก้อะไรแก้ตรงนี้ที่เดียว
@@ -46,6 +50,14 @@ ROOT = Path(__file__).resolve().parent.parent   # โฟลเดอร์โป
 FRONTEND = ROOT / "frontend"                    # โฟลเดอร์ของหน้าเว็บทั้งหมด
 PAGES_DIR = FRONTEND / "pages"                  # หน้า .html ที่ไฟล์นี้เสิร์ฟให้เบราว์เซอร์
 STATIC_DIR = FRONTEND / "static"                # ไฟล์นิ่ง ๆ (.css .js รูป)
+ASSETS_DIR = ROOT / "assets"                    # ภาพเรดาร์ของแต่ละแมพ + ค่าปรับเทียบพิกัด (radars.json)
+DEMOS_DIR = ROOT / "demos"                      # ไฟล์ .dem ที่ผู้ใช้อัปโหลดเข้ามา (ไม่ถูก commit — ดู .gitignore)
+JSON_DIR = ROOT / "output" / "json"             # ผลจาก parser ก่อนเข้าฐานข้อมูล เก็บไว้ตรวจย้อนหลังได้
+
+MAX_DEMO_MB = int(os.environ.get("MAX_DEMO_MB", "600"))   # เพดานขนาดไฟล์ที่ยอมรับ กันคนอัปของใหญ่จนดิสก์เต็ม
+# ชื่อไฟล์ที่ยอมรับ — อนุญาตเฉพาะตัวอักษร ตัวเลข และ . _ - ( ) เท่านั้น
+# สำคัญกว่าที่คิด: ถ้าปล่อยให้มี / หรือ .. ในชื่อ คนอัปจะเขียนไฟล์ทับที่ไหนก็ได้ในเครื่อง (path traversal)
+DEMO_NAME_RE = re.compile(r"^[A-Za-z0-9._()-]{1,120}\.dem$", re.IGNORECASE)
 
 # คอนโซลของ Windows ดีฟอลต์เป็น cp1252 ซึ่งพิมพ์ภาษาไทยไม่ได้ ถ้าไม่ตั้งบรรทัดนี้
 # print() ที่มีข้อความไทยจะโยน UnicodeEncodeError ออกมากลางคัน ทำให้ทั้ง request พัง
@@ -102,6 +114,39 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="CS2 Analytics API", lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")  # URL ที่ขึ้นต้นด้วย /static ให้ไปหยิบไฟล์จริงใน frontend/static/
+app.mount("/assets", StaticFiles(directory=ASSETS_DIR), name="assets")  # URL ที่ขึ้นต้นด้วย /assets ให้ไปหยิบไฟล์จริงใน assets/ (ภาพเรดาร์)
+
+# Windows บางเครื่องไม่รู้จักนามสกุล .webp ทำให้ส่งไฟล์ออกไปเป็น application/octet-stream
+# บอกชนิดไฟล์ให้ถูกต้องไว้ก่อน เบราว์เซอร์จะได้รู้แน่ ๆ ว่านี่คือรูปภาพ
+mimetypes.add_type("image/webp", ".webp")
+
+
+@app.middleware("http")
+async def no_stale_static(request: Request, call_next):
+    """บังคับให้เบราว์เซอร์ถามเซิร์ฟเวอร์ก่อนใช้ไฟล์ .css/.js/.html ที่แคชไว้
+
+    ทำไมต้องมี
+        FastAPI ส่ง etag กับ last-modified มาให้อยู่แล้ว แต่ "ไม่ส่ง" cache-control
+        พอไม่มี cache-control เบราว์เซอร์จะใช้ heuristic caching คือเดาอายุไฟล์เอง
+        จาก last-modified แล้วหยิบของในแคชมาใช้เลยโดยไม่ถามเซิร์ฟเวอร์ซ้ำ
+        ผลคือแก้ style.css แล้วรีเฟรชธรรมดาไม่เห็นการเปลี่ยนแปลง ต้อง Ctrl+Shift+R ทุกครั้ง
+        และอาการจะโผล่เฉพาะเครื่องที่เคยเปิดเว็บก่อนแก้ไฟล์ — เครื่องใหม่ดูปกติ หาสาเหตุยากมาก
+
+    no-cache ไม่ได้แปลว่า "ห้ามแคช"
+        แปลว่า "แคชได้ แต่ต้องถามก่อนใช้" ถ้าไฟล์ไม่เปลี่ยน etag จะตรงกัน
+        เซิร์ฟเวอร์ตอบ 304 Not Modified ตัวเปล่า ๆ ไม่ได้ส่งไฟล์ซ้ำ จึงแทบไม่เปลืองอะไร
+
+    รูปกับฟอนต์ไม่ต้องยุ่ง — พวกนั้นเปลี่ยนน้อย ปล่อยให้แคชยาว ๆ ได้เลย
+
+    ดูจาก content-type ไม่ใช่จากนามสกุลใน URL
+        เพราะหน้าเว็บของเราเป็น /overview /players /map ไม่มี .html ต่อท้ายสักอัน
+        ถ้าไล่เช็คนามสกุลจะหลุดทุกหน้าพอดี แต่ content-type บอกตรง ๆ ว่าไฟล์นี้คืออะไร
+    """
+    response = await call_next(request)
+    ctype = response.headers.get("content-type", "")
+    if ctype.startswith(("text/html", "text/css", "text/javascript", "application/javascript")):
+        response.headers["Cache-Control"] = "no-cache"
+    return response
 
 
 async def db(request: Request) -> asyncpg.Connection:
@@ -155,10 +200,55 @@ def page_login():
     return FileResponse(PAGES_DIR / "login.html")
 
 
+# แต่ละหน้าเป็นไฟล์ .html ของตัวเองใน frontend/pages/ (1 หน้า = 1 ไฟล์ html + 1 ไฟล์ js)
+# ตัว JS ในแต่ละหน้าจะเช็คเองว่าล็อกอินแล้วหรือยัง ถ้ายังจะเด้งกลับมาหน้า /
+
+@app.get("/upload")
+def page_upload():
+    """อัปโหลดเดโม — ลากไฟล์ .dem เข้ามา ระบบ parse แล้วโหลดเข้าฐานข้อมูลให้ในคำขอเดียว"""
+    return FileResponse(PAGES_DIR / "upload.html")
+
+
+@app.get("/overview")
+def page_overview():
+    """ที่อยู่เดิมของหน้าภาพรวม — หน้านั้นถูกแทนที่ด้วยหน้าอัปโหลด ลิงก์เก่าจะได้ไม่พัง"""
+    return RedirectResponse("/upload")
+
+
+@app.get("/matches")
+def page_matches():
+    """แมตช์ — ตารางแมตช์ + รายรอบ + สกอร์บอร์ด"""
+    return FileResponse(PAGES_DIR / "matches.html")
+
+
+@app.get("/players")
+def page_players():
+    """นักแข่ง — อันดับ + รายละเอียดรายคน"""
+    return FileResponse(PAGES_DIR / "players.html")
+
+
+@app.get("/map")
+def page_map():
+    """แผนที่ — heatmap จุดที่คนตาย"""
+    return FileResponse(PAGES_DIR / "map.html")
+
+
+@app.get("/tactical")
+def page_tactical():
+    """แท็คติก — การดวลแรกของรอบ / จังหวะปะทะ / ผลของการปักระเบิด"""
+    return FileResponse(PAGES_DIR / "tactical.html")
+
+
+@app.get("/ml")
+def page_ml():
+    """โมเดล ML — โอกาสชนะรอบ + โมเดลกริด"""
+    return FileResponse(PAGES_DIR / "ml.html")
+
+
 @app.get("/main")
 def page_main():
-    """หน้าหลักหลังล็อกอิน (ตัว JS ในหน้าจะเช็คเองว่าล็อกอินแล้วหรือยัง)"""
-    return FileResponse(PAGES_DIR / "main.html")
+    """ที่อยู่เดิมสมัยยังเป็นหน้าเดียว — ส่งต่อไปหน้าแรกปัจจุบัน ลิงก์เก่าจะได้ไม่พัง"""
+    return RedirectResponse("/upload")
 
 
 # ---------------------------------------------------------------------------
@@ -197,7 +287,7 @@ async def steam_callback(request: Request, conn: asyncpg.Connection = Depends(db
     user = {"steamid": steamid, **profile, "mode": "steam"}
     await save_user(conn, user)
 
-    response = RedirectResponse("/main", status_code=303)
+    response = RedirectResponse("/overview", status_code=303)
     make_session_cookie(response, user)
     return response
 
@@ -298,8 +388,12 @@ def api_me(user: dict = Depends(require_login)):
 
 @app.get("/api/config")
 def api_config():
-    """บอกหน้าเว็บว่าเซิร์ฟเวอร์ตั้งค่าไว้ยังไง (เช่น ต้องซ่อนกล่องโหมดทดสอบไหม)"""
-    return {"allow_dev_login": ALLOW_DEV_LOGIN, "has_steam_key": bool(STEAM_API_KEY)}
+    """บอกหน้าเว็บว่าเซิร์ฟเวอร์ตั้งค่าไว้ยังไง (เช่น ต้องซ่อนกล่องโหมดทดสอบไหม เพดานไฟล์เท่าไร)"""
+    return {
+        "allow_dev_login": ALLOW_DEV_LOGIN,
+        "has_steam_key": bool(STEAM_API_KEY),
+        "max_demo_mb": MAX_DEMO_MB,     # หน้าอัปโหลดใช้บอกผู้ใช้ และกันไฟล์ใหญ่ตั้งแต่ยังไม่ส่ง
+    }
 
 
 @app.get("/api/stats")
@@ -486,8 +580,331 @@ async def api_heatmap(
     พิกัดเป็นระบบของเกม หน้าเว็บต้องแปลงด้วย assets/radars.json (pos_x, pos_y, scale) ก่อนวาด
     """
     recs = await conn.fetch("""
-        SELECT k.victim_x AS x, k.victim_y AS y, k.victim_side AS side, k.weapon, k.headshot
+        SELECT k.victim_x AS x, k.victim_y AS y, k.victim_side AS side,
+               k.weapon, k.headshot, k.victim_place AS place
         FROM kills k JOIN rounds r ON r.id = k.round_id JOIN matches m ON m.id = r.match_id
         WHERE m.map_name = $1 AND k.victim_x IS NOT NULL
           AND ($2::text IS NULL OR k.victim_side = $2)""", map_name, side)
     return {"map": map_name, "side": side, "count": len(recs), "points": rows(recs)}
+
+
+@app.get("/api/radar")
+def api_radar(
+    map_name: str = Query(..., alias="map", pattern=r"^de_[a-z0-9_]+$"),
+    _: dict = Depends(require_login),
+):
+    """ค่าปรับเทียบภาพเรดาร์ของแมพ — ไว้ให้หน้าเว็บแปลงพิกัดในเกมเป็นพิกเซลบนภาพ
+
+    ค่าทั้งหมดอ่านจาก assets/radars.json ซึ่งเป็นแหล่งความจริงแหล่งเดียวของทั้งระบบ
+    (สคริปต์ฝั่ง Python ก็อ่านไฟล์เดียวกันนี้ ตัวเลขสองฝั่งจึงไม่มีทางเพี้ยนจากกัน)
+
+    สูตรแปลงพิกัด — หน้าเว็บเอาไปใช้ตรง ๆ ได้เลย
+        pixel_x = (game_x - pos_x) / scale
+        pixel_y = (pos_y - game_y) / scale      <- แกน y กลับด้าน เพราะในเกม y เพิ่มขึ้นด้านบน
+                                                   แต่บนภาพ y เพิ่มลงด้านล่าง
+    """
+    data = json.loads((ASSETS_DIR / "radars.json").read_text(encoding="utf-8"))
+    cal = data.get(map_name)
+    if not cal:
+        raise HTTPException(404, f"ยังไม่มีค่าปรับเทียบเรดาร์ของ {map_name} ใน assets/radars.json")
+
+    return {
+        "map": map_name,
+        "image": "/assets" + cal["image"],   # cal["image"] เก็บเป็น "/maps/de_mirage.webp" -> เติม /assets ข้างหน้าให้เป็น URL จริง
+        "size": cal["size"],                 # ภาพเป็นจัตุรัส ด้านละกี่พิกเซล
+        "pos_x": cal["pos_x"],               # พิกัดเกมของมุมบนซ้ายของภาพ
+        "pos_y": cal["pos_y"],
+        "scale": cal["scale"],               # 1 พิกเซล = กี่หน่วยเกม
+    }
+
+
+# ===========================================================================
+# ส่วนที่ 6 — วิเคราะห์แท็คติก (Tactical Analysis)
+#
+# ทุกตัวเลขในนี้คำนวณสด ๆ จากฐานข้อมูล ไม่มีค่าที่พิมพ์ทิ้งไว้เอง
+# แนวคิดหลักคือ "การดวลแรกของรอบ" (opening duel) = คิลแรกสุดของรอบนั้น
+# เพราะใครชนะการดวลแรก มักลากยาวไปชนะทั้งรอบ
+# ===========================================================================
+
+# SQL ก้อนนี้ถูกเอาไปแปะหน้าคำถามทุกข้อในหน้านี้ จึงเขียนไว้ที่เดียว
+# DISTINCT ON (k.round_id) + ORDER BY k.round_id, k.tick
+#   = "ของแต่ละรอบ เอาแถวเดียว คือแถวที่ tick น้อยที่สุด" -> ได้คิลแรกของรอบ
+FIRST_KILL_CTE = """
+WITH fk AS (
+    SELECT DISTINCT ON (k.round_id)
+           k.round_id,
+           k.attacker_side,
+           k.attacker_place,
+           k.victim_place,
+           k.tick,
+           r.start_tick,
+           r.winner_side,
+           r.end_reason,
+           r.bomb_plant_tick,
+           m.tickrate
+    FROM kills k
+    JOIN rounds  r ON r.id = k.round_id
+    JOIN matches m ON m.id = r.match_id
+    WHERE m.map_name = $1
+    ORDER BY k.round_id, k.tick
+)
+"""
+
+
+@app.get("/api/tactical")
+async def api_tactical(
+    map_name: str = Query(..., alias="map", pattern=r"^de_[a-z0-9_]+$"),
+    side: str = Query("t", pattern=r"^(ct|t)$"),        # มองจากมุมของฝั่งไหน
+    _: dict = Depends(require_login),
+    conn: asyncpg.Connection = Depends(db),
+):
+    """สรุปแท็คติกของแมพหนึ่ง มองจากมุมฝั่งที่เลือก (ct หรือ t)
+
+    ตอบกลับ 5 ก้อน
+      summary  ภาพรวม: กี่รอบ ชนะกี่รอบ ปักระเบิดกี่รอบ เวลาปะทะแรกเฉลี่ย
+      opening  การดวลแรกของรอบ แยกตามตำแหน่งที่ยืน
+      timing   ปะทะแรกเกิดตอนวินาทีที่เท่าไร แล้วรอบนั้นชนะไหม
+      endings  รอบจบด้วยสาเหตุอะไรบ้าง
+      bomb     ปักระเบิดแล้วชนะบ่อยกว่าไม่ปักไหม
+    """
+    # ---- 1) ภาพรวม -------------------------------------------------------
+    summary = await conn.fetchrow(f"""
+        {FIRST_KILL_CTE}
+        SELECT COUNT(*)                                              AS rounds,
+               COUNT(*) FILTER (WHERE winner_side = $2)              AS wins,
+               COUNT(*) FILTER (WHERE bomb_plant_tick IS NOT NULL)   AS planted,
+               ROUND(AVG((tick - start_tick)::numeric / tickrate), 1) AS avg_first_contact
+        FROM fk
+        WHERE start_tick IS NOT NULL""", map_name, side)
+    # (tick - start_tick) / tickrate = จำนวน tick ตั้งแต่เริ่มรอบ หารด้วย tick ต่อวินาที = วินาที
+    # FILTER (WHERE ...) = "นับเฉพาะแถวที่เข้าเงื่อนไข" เขียนสั้นกว่าใช้ CASE WHEN
+
+    if not summary or not summary["rounds"]:
+        raise HTTPException(404, f"ไม่มีข้อมูลรอบของแมพ {map_name}")
+
+    # ---- 2) การดวลแรก แยกตามตำแหน่ง --------------------------------------
+    # ถ้าฝั่งเราเป็นคนยิง -> ตำแหน่งของเราคือ attacker_place
+    # ถ้าฝั่งเราเป็นคนโดนยิง -> ตำแหน่งของเราคือ victim_place
+    opening = await conn.fetch(f"""
+        {FIRST_KILL_CTE}
+        SELECT COALESCE(CASE WHEN attacker_side = $2 THEN attacker_place
+                             ELSE victim_place END, '(ไม่ทราบ)')     AS place,
+               COUNT(*)                                              AS duels,
+               COUNT(*) FILTER (WHERE attacker_side = $2)            AS won,
+               COUNT(*) FILTER (WHERE winner_side  = $2)             AS round_wins
+        FROM fk
+        GROUP BY 1
+        HAVING COUNT(*) >= 5
+        ORDER BY duels DESC
+        LIMIT 8""", map_name, side)
+    # COALESCE(ก, ข) = ถ้า ก เป็น NULL ให้ใช้ ข แทน
+    # HAVING COUNT(*) >= 5 = ตัดตำแหน่งที่เจอไม่ถึง 5 ครั้งทิ้ง เพราะเปอร์เซ็นต์จากข้อมูล 1-2 ครั้งเชื่อไม่ได้
+
+    # ---- 3) ปะทะแรกเกิดตอนวินาทีที่เท่าไร ---------------------------------
+    timing = await conn.fetch(f"""
+        {FIRST_KILL_CTE}
+        SELECT CASE WHEN sec < 20 THEN '0-20 วิ'
+                    WHEN sec < 40 THEN '20-40 วิ'
+                    WHEN sec < 60 THEN '40-60 วิ'
+                    ELSE '60 วิ ขึ้นไป' END                          AS bucket,
+               COUNT(*)                                              AS rounds,
+               COUNT(*) FILTER (WHERE winner_side = $2)              AS wins
+        FROM (SELECT (tick - start_tick)::numeric / tickrate AS sec, winner_side
+              FROM fk WHERE start_tick IS NOT NULL) q
+        GROUP BY 1
+        ORDER BY MIN(sec)""", map_name, side)
+    # ORDER BY MIN(sec) = เรียงกลุ่มตามวินาทีที่น้อยที่สุดในกลุ่มนั้น (ไม่งั้นจะเรียงตามตัวอักษรไทยมั่ว)
+
+    # ---- 4) รอบจบด้วยอะไร -------------------------------------------------
+    endings = await conn.fetch("""
+        SELECT COALESCE(r.end_reason, '(ไม่ทราบ)')      AS reason,
+               COUNT(*)                                 AS rounds,
+               COUNT(*) FILTER (WHERE r.winner_side = $2) AS wins
+        FROM rounds r JOIN matches m ON m.id = r.match_id
+        WHERE m.map_name = $1
+        GROUP BY 1 ORDER BY rounds DESC""", map_name, side)
+
+    # ---- 5) ปักระเบิดแล้วต่างกันไหม ---------------------------------------
+    bomb = await conn.fetch("""
+        SELECT CASE WHEN r.bomb_plant_tick IS NOT NULL THEN 'ปักระเบิดแล้ว'
+                    ELSE 'ไม่ได้ปัก' END                 AS state,
+               COUNT(*)                                 AS rounds,
+               COUNT(*) FILTER (WHERE r.winner_side = $2) AS wins
+        FROM rounds r JOIN matches m ON m.id = r.match_id
+        WHERE m.map_name = $1
+        GROUP BY 1 ORDER BY rounds DESC""", map_name, side)
+
+    return {
+        "map": map_name,
+        "side": side,
+        "summary": {
+            "rounds": summary["rounds"],
+            "wins": summary["wins"],
+            "planted": summary["planted"],
+            "avg_first_contact": float(summary["avg_first_contact"] or 0),
+        },
+        "opening": rows(opening),
+        "timing": rows(timing),
+        "endings": rows(endings),
+        "bomb": rows(bomb),
+    }
+
+
+# ===========================================================================
+# ส่วนที่ 7 — ผลจากโมเดล ML
+#
+# เราไม่เทรนโมเดลในเซิร์ฟเวอร์นี้ (ช้าและกินแรม) สคริปต์ใน pipeline/ เทรนเสร็จ
+# แล้วเขียนคำตอบทั้งหมดลงไฟล์ json ไว้ให้ เซิร์ฟเวอร์แค่หยิบไฟล์นั้นส่งต่อ
+#     python pipeline/round_win.py   ->  output/round_win.json
+#     python pipeline/grid_ml.py     ->  output/grid_ml.json
+# ===========================================================================
+
+def read_output_json(filename: str, how_to_make: str) -> dict:
+    """อ่านไฟล์ json ในโฟลเดอร์ output/ — ถ้ายังไม่มี บอกวิธีสร้างไปเลย"""
+    f = ROOT / "output" / filename
+    if not f.exists():
+        raise HTTPException(404, f"ยังไม่มีไฟล์ output/{filename} — สร้างด้วย: {how_to_make}")
+    return json.loads(f.read_text(encoding="utf-8"))   # loads = แปลงข้อความ json ให้เป็น dict
+
+
+@app.get("/api/ml/round-win")
+def api_ml_round_win(_: dict = Depends(require_login)):
+    """โมเดลโอกาสชนะรอบ — ตารางเปิดค่า P(CT ชนะ) ของทุกสถานะที่เป็นไปได้
+
+    คีย์ในตารางหน้าตาแบบ "3v2|0|20-40s" = CT เหลือ 3, T เหลือ 2, ยังไม่ปักระเบิด, วินาทีที่ 20-40
+    """
+    return read_output_json("round_win.json", "python pipeline/round_win.py")
+
+
+@app.get("/api/ml/grid")
+def api_ml_grid(_: dict = Depends(require_login)):
+    """โมเดลกริด — แบ่งแมพเป็นช่อง ๆ แล้วทายว่าการดวลในช่องนั้นฝั่งไหนได้เปรียบ
+
+    ตัดฟิลด์หนัก ๆ ออกก่อนส่ง (ภาพ mask กับจุดตายดิบ 7 พันจุด) เพราะหน้าเว็บไม่ได้ใช้
+    เหลือแต่คะแนนโมเดลกับค่ารายช่อง ไฟล์จะได้เล็กลงจาก 160 KB เหลือ ~40 KB
+    """
+    d = read_output_json("grid_ml.json", "python pipeline/grid_ml.py")
+    for heavy in ("play_mask", "kills"):
+        d.pop(heavy, None)          # .pop(คีย์, None) = ลบคีย์นี้ทิ้ง ถ้าไม่มีก็ไม่ต้องพัง
+    d["cells"] = sorted(d["cells"], key=lambda c: -c["kills"])[:40]
+    # sorted(..., key=lambda c: -c["kills"]) = เรียงจากช่องที่มีคนตายเยอะสุดไปน้อยสุด (ติดลบ = กลับด้าน)
+    # [:40] = เอาแค่ 40 ช่องแรก พอสำหรับโชว์ตาราง
+    return d
+
+
+# ---------------------------------------------------------------------------
+# ส่วนที่ 8 — รับไฟล์เดโมจากผู้ใช้
+#
+# ทางเดินของไฟล์หนึ่งไฟล์ ทำครบจบในคำขอเดียว ไม่มีคิวงานเบื้องหลัง
+#     อัปโหลด -> demos/X.dem -> parse_demo() -> output/json/X.json -> INSERT -> ตอบสรุปกลับ
+#
+# ทำไมถึงทำแบบซิงโครนัส (รอจนเสร็จในคำขอเดียว)
+#     parse ใช้เวลาไม่กี่วินาทีต่อไฟล์ และหน้าเว็บส่งทีละไฟล์อยู่แล้ว
+#     การใส่คิวงาน (Celery / RQ / Redis) จะเพิ่มบริการที่ต้องดูแลอีกตัวโดยที่ยังไม่จำเป็น
+#     ถ้าวันหนึ่งเดโมใหญ่จนคำขอ timeout ให้ย้ายแค่สองบรรทัด parse + load ไปไว้ใน worker
+#     ส่วนที่เหลือของ endpoint นี้ไม่ต้องแก้เลย
+#
+# เส้นทางนี้ใช้ฟังก์ชันตัวเดียวกับ CLI ทั้งคู่ (parse_demo, load_match_json)
+# เดโมที่อัปผ่านเว็บกับที่โหลดด้วยมือจึงได้ข้อมูลเหมือนกันเป๊ะ ไม่มีทางเพี้ยนคนละทาง
+# ---------------------------------------------------------------------------
+def save_upload(file: UploadFile, dest: Path) -> int:
+    """เขียนไฟล์ที่อัปโหลดลงดิสก์ทีละก้อน คืนขนาดเป็นไบต์
+
+    อ่านทีละ 1 MB ไม่ใช่ทีเดียวทั้งไฟล์ เพราะเดโมใหญ่หลายร้อยเมกะไบต์
+    ถ้าอ่านรวดเดียวจะกินแรมเท่าขนาดไฟล์ อัปพร้อมกันสองคนก็เริ่มเสี่ยงแล้ว
+
+    เขียนลงชื่อ .part ก่อนแล้วค่อยเปลี่ยนชื่อตอนจบ ไฟล์ที่อัปไม่สำเร็จ
+    จึงไม่มีทางถูกเข้าใจผิดว่าเป็นเดโมที่สมบูรณ์
+    """
+    limit = MAX_DEMO_MB * 1024 * 1024
+    part = dest.with_suffix(dest.suffix + ".part")
+    size = 0
+    try:
+        with open(part, "wb") as out:
+            while chunk := file.file.read(1024 * 1024):
+                size += len(chunk)
+                if size > limit:
+                    raise HTTPException(413, f"ไฟล์ใหญ่เกิน {MAX_DEMO_MB} MB")
+                out.write(chunk)
+        if size == 0:
+            raise HTTPException(400, "ไฟล์ว่าง")
+        part.replace(dest)          # .replace() = เปลี่ยนชื่อทับของเดิมได้ และเป็น atomic บนดิสก์เดียวกัน
+        return size
+    finally:
+        part.unlink(missing_ok=True)   # เหลือ .part ค้างอยู่ = อัปไม่สำเร็จ เก็บกวาดทิ้ง
+
+
+@app.post("/api/demos")
+async def api_upload_demo(
+    file: UploadFile = File(..., description="ไฟล์ .dem หนึ่งไฟล์"),
+    force: str = Form("0"),                     # "1" = แมตช์นี้เคยโหลดแล้วให้ลบของเดิมทิ้งแล้วโหลดใหม่
+    _: dict = Depends(require_login),
+    conn: asyncpg.Connection = Depends(db),
+):
+    """รับเดโมหนึ่งไฟล์ แกะ แล้วโหลดเข้าฐานข้อมูล ตอบกลับเป็นสรุปของแมตช์นั้น
+
+    ส่งทีละไฟล์ หน้าเว็บเป็นคนวนส่งเองถ้าผู้ใช้ลากมาหลายไฟล์
+    ทำแบบนี้เพื่อให้แต่ละไฟล์มีสถานะของตัวเอง ไฟล์หนึ่งพังก็ไม่ลากไฟล์อื่นล้มไปด้วย
+    """
+    replace = force == "1"
+
+    # ---- 1) ตรวจชื่อไฟล์ก่อนแตะดิสก์ ------------------------------------
+    # Path(...).name = ตัดพาธที่ติดมากับชื่อไฟล์ทิ้งให้เหลือแต่ชื่อจริง
+    # เบราว์เซอร์ปกติไม่ส่งพาธมาอยู่แล้ว แต่คนที่ยิง API ตรง ๆ ส่งอะไรมาก็ได้
+    name = Path(file.filename or "").name
+    if not DEMO_NAME_RE.match(name):
+        raise HTTPException(400, "รับเฉพาะไฟล์ .dem และชื่อไฟล์ใช้ได้แค่ตัวอักษร ตัวเลข . _ - ( )")
+
+    # ---- 2) เคยโหลดแมตช์นี้ไปแล้วหรือยัง --------------------------------
+    # เช็กก่อน parse เพราะ parse แพงกว่าการถามฐานข้อมูลหลายพันเท่า
+    existing = await conn.fetchrow("SELECT id FROM matches WHERE demo_file = $1;", name)
+    if existing and not replace:
+        raise HTTPException(409, f"แมตช์ {name} มีอยู่ในระบบแล้ว (Match ID: {existing['id']}) — ติ๊ก \"โหลดทับของเดิม\" ถ้าต้องการโหลดใหม่")
+
+    # ---- 3) เขียนไฟล์ลงดิสก์ --------------------------------------------
+    DEMOS_DIR.mkdir(parents=True, exist_ok=True)
+    JSON_DIR.mkdir(parents=True, exist_ok=True)
+    dem_path = DEMOS_DIR / name
+    size = await run_in_threadpool(save_upload, file, dem_path)
+
+    # ---- 4) แกะไฟล์ -----------------------------------------------------
+    # import ตรงนี้ไม่ใช่บนหัวไฟล์ เพราะ awpy หนักและใช้เฉพาะตอนอัปโหลด
+    # ถ้าเครื่องไหนยังไม่ได้ลง awpy เซิร์ฟเวอร์จะยังสตาร์ตได้ปกติ แค่หน้าอัปโหลดใช้ไม่ได้
+    try:
+        from pipeline.parser_service import parse_demo
+    except ImportError as e:
+        dem_path.unlink(missing_ok=True)
+        raise HTTPException(503, f"เซิร์ฟเวอร์นี้ยังแกะไฟล์ .dem ไม่ได้ (ไม่พบ {e.name}) — ติดตั้งด้วย pip install -r requirements.txt")
+
+    try:
+        doc = await run_in_threadpool(parse_demo, dem_path)
+    except Exception as e:
+        dem_path.unlink(missing_ok=True)
+        log(f"[UPLOAD] แกะ {name} ไม่สำเร็จ: {type(e).__name__}: {e}")
+        raise HTTPException(422, f"แกะไฟล์ไม่สำเร็จ — ไฟล์อาจไม่ใช่เดโม CS2 หรือเสียหาย ({type(e).__name__})")
+
+    json_path = JSON_DIR / (dem_path.stem + ".json")
+    json_path.write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")
+
+    # ---- 5) เข้าฐานข้อมูล -----------------------------------------------
+    try:
+        match_id = await load_match_json(conn, json_path, force=replace)
+    except Exception as e:
+        log(f"[UPLOAD] โหลด {name} เข้าฐานข้อมูลไม่สำเร็จ: {type(e).__name__}: {e}")
+        raise HTTPException(500, f"โหลดเข้าฐานข้อมูลไม่สำเร็จ ({type(e).__name__}) — ไฟล์ที่แกะแล้วยังอยู่ที่ output/json/{json_path.name}")
+
+    # ---- 6) ตอบกลับด้วยสรุปที่หน้าเว็บเอาไปโชว์ได้เลย ---------------------
+    row = await conn.fetchrow("SELECT * FROM match_summary WHERE id = $1;", match_id)
+    counts = doc.get("counts", {})
+    return {
+        "match_id": match_id,
+        "demo_file": name,
+        "size_mb": round(size / 1024 / 1024, 1),
+        "replaced": bool(existing),
+        "map_name": doc["match"]["map_name"],
+        "team_a": doc["match"]["team_a"],
+        "team_b": doc["match"]["team_b"],
+        "tickrate": doc["match"]["tickrate"],
+        "counts": counts,
+        "summary": dict(row) if row else None,
+    }
