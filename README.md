@@ -162,11 +162,16 @@ frontend/         หน้าเว็บทั้งหมด
   build.py              ยัดข้อมูล+ภาพเรดาร์เข้าเทมเพลต -> output/*.html ไฟล์เดียวจบ
   pages/                หน้าที่ app.py เสิร์ฟตอนรันเซิร์ฟเวอร์
     login.html            หน้าล็อกอิน
-    main.html             หน้าหลักหลังล็อกอิน
+    overview.html         ภาพรวม — การ์ดตัวเลขสรุป + กราฟ + แมตช์ล่าสุด
+    matches.html          แมตช์ — ตารางแมตช์ + รายรอบ + สกอร์บอร์ด
+    players.html          นักแข่ง — อันดับ + รายละเอียดรายคน
+    map.html              แผนที่ — heatmap จุดที่คนตาย
+    tactical.html         แท็คติก — การดวลแรกของรอบ / จังหวะปะทะ / ผลของการปักระเบิด
+    ml.html               โมเดล ML — โอกาสชนะรอบ + โมเดลกริด
   templates/            เทมเพลตของ build.py (ยังไม่มีข้อมูล เปิดตรง ๆ ไม่ได้)
     map.html              หน้าแผนที่รวมทุกแมตช์  -> output/index.html
     rounds.html           หน้ารีวิวรายรอบ        -> output/rounds.html
-  static/               style.css, login.js, main.js, hero.png
+  static/               style.css, common.js, hero.png + js ของแต่ละหน้า (overview.js, matches.js, ...)
 
 data/             all_kills.csv — ชุดคิล 7,270 แถวจาก 50 demo (อยู่ใน git ให้ผลซ้ำได้)
 assets/           ภาพเรดาร์ + ค่าปรับเทียบพิกัด (radars.json คือแหล่งความจริงแหล่งเดียว)
