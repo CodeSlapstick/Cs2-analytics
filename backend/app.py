@@ -22,6 +22,7 @@ backend/app.py — "หลังบ้าน" (backend) ของเว็บ CS
 # ---------------------------------------------------------------------------
 # ส่วนที่ 0 — ขนเครื่องมือเข้ามาใช้
 # ---------------------------------------------------------------------------
+import asyncio
 import json
 import mimetypes
 import os
@@ -139,7 +140,7 @@ async def no_stale_static(request: Request, call_next):
     รูปกับฟอนต์ไม่ต้องยุ่ง — พวกนั้นเปลี่ยนน้อย ปล่อยให้แคชยาว ๆ ได้เลย
 
     ดูจาก content-type ไม่ใช่จากนามสกุลใน URL
-        เพราะหน้าเว็บของเราเป็น /overview /players /map ไม่มี .html ต่อท้ายสักอัน
+        เพราะหน้าเว็บของเราเป็น /upload /players /map ไม่มี .html ต่อท้ายสักอัน
         ถ้าไล่เช็คนามสกุลจะหลุดทุกหน้าพอดี แต่ content-type บอกตรง ๆ ว่าไฟล์นี้คืออะไร
     """
     response = await call_next(request)
@@ -211,7 +212,7 @@ def page_upload():
 
 @app.get("/overview")
 def page_overview():
-    """ที่อยู่เดิมของหน้าภาพรวม — หน้านั้นถูกแทนที่ด้วยหน้าอัปโหลด ลิงก์เก่าจะได้ไม่พัง"""
+    """ที่อยู่เดิมของหน้าภาพรวม — หน้านั้นถูกแทนที่ด้วยหน้าอัปโหลด ลิงก์เก่าและบุ๊กมาร์กจะได้ไม่พัง"""
     return RedirectResponse("/upload")
 
 
@@ -287,9 +288,11 @@ async def steam_callback(request: Request, conn: asyncpg.Connection = Depends(db
     user = {"steamid": steamid, **profile, "mode": "steam"}
     await save_user(conn, user)
 
-    response = RedirectResponse("/overview", status_code=303)
-    make_session_cookie(response, user)
-    return response
+    # 303 See Other = "ล็อกอินเสร็จแล้ว ไปเปิดหน้านี้ต่อด้วย GET"
+    # ถ้าไม่ระบุ RedirectResponse จะใช้ 307 ซึ่งแปลว่า "ใช้ method เดิมยิงซ้ำ" — ผิดความหมายของจังหวะนี้
+    response = RedirectResponse("/upload", status_code=303)   # ล็อกอินเสร็จแล้วพาไปหน้าอัปโหลด
+    make_session_cookie(response, user)     # ติดคุกกี้ไปกับ response ตัวเดียวกับที่พาไปหน้าถัดไป
+    return response                         # ขาดบรรทัดนี้เมื่อไร = ล็อกอินไม่ติดเลย เพราะเบราว์เซอร์ไม่เคยได้คุกกี้
 
 
 @app.post("/auth/dev-login")
@@ -807,6 +810,46 @@ def api_ml_grid(_: dict = Depends(require_login)):
 # เส้นทางนี้ใช้ฟังก์ชันตัวเดียวกับ CLI ทั้งคู่ (parse_demo, load_match_json)
 # เดโมที่อัปผ่านเว็บกับที่โหลดด้วยมือจึงได้ข้อมูลเหมือนกันเป๊ะ ไม่มีทางเพี้ยนคนละทาง
 # ---------------------------------------------------------------------------
+class DemoParseError(Exception):
+    """แกะเดโมไม่สำเร็จ — ไฟล์ไม่ใช่เดโม CS2 หรือเสียหาย"""
+
+
+class DemoParserMissing(Exception):
+    """เครื่องนี้ยังไม่ได้ติดตั้ง awpy / demoparser2"""
+
+
+def parse_demo_isolated(path: Path) -> dict:
+    """เรียก parse_demo แล้วห่อความผิดพลาด "ทุกชนิด" ให้กลายเป็น Exception ธรรมดา
+
+    ทำไมต้องห่อในฟังก์ชันนี้ ไม่ใช่ห่อด้วย try ที่ endpoint
+        demoparser2 ข้างใน awpy เขียนด้วย Rust เจอไฟล์ที่ไม่ใช่เดโมเมื่อไรมันจะ panic
+        PyO3 แปลง panic นั้นเป็น pyo3_runtime.PanicException ซึ่งสืบทอดจาก
+        BaseException "ตรง ๆ" ไม่ผ่าน Exception  (mro: PanicException -> BaseException -> object)
+
+        ตัวฟังก์ชันนี้ถูกเรียกผ่าน run_in_threadpool คือรันอยู่คนละเธรดกับ event loop
+        พอ BaseException ที่ไม่ใช่ Exception ข้ามเธรดกลับมา anyio จะไม่ส่งต่อให้
+        โค้ดที่ await อยู่ แต่ยกขึ้นไปเป็น BaseExceptionGroup เหนือ endpoint ขึ้นไปอีกชั้น
+        เขียน except BaseException คร่อม await ไว้ก็ไม่มีทางเห็นมัน — กลายเป็น 500 ทุกครั้ง
+        และไฟล์ขยะค้างในดิสก์เพราะโค้ดเก็บกวาดไม่ได้ทำงาน
+
+        ดักตั้งแต่ยังอยู่ในเธรดเดียวกันกับที่ panic เกิด จึงเป็นที่เดียวที่ดักได้จริง
+
+    เคสจริงที่เจอ: ไฟล์ขนาด 15 ไบต์ -> PanicException: range end index 16 out of range
+    for slice of length 15  (Rust อ่าน header 16 ไบต์จากไฟล์ที่สั้นกว่านั้น)
+    """
+    try:
+        from pipeline.parser_service import parse_demo
+    except ImportError as e:
+        raise DemoParserMissing(f"ไม่พบ {e.name}") from None
+
+    try:
+        return parse_demo(path)
+    except (KeyboardInterrupt, SystemExit):     # สัญญาณสั่งปิดโปรแกรม ต้องปล่อยผ่าน ห้ามกลืน
+        raise
+    except BaseException as e:
+        raise DemoParseError(f"{type(e).__name__}: {e}") from None
+
+
 def save_upload(file: UploadFile, dest: Path) -> int:
     """เขียนไฟล์ที่อัปโหลดลงดิสก์ทีละก้อน คืนขนาดเป็นไบต์
 
@@ -868,20 +911,15 @@ async def api_upload_demo(
     size = await run_in_threadpool(save_upload, file, dem_path)
 
     # ---- 4) แกะไฟล์ -----------------------------------------------------
-    # import ตรงนี้ไม่ใช่บนหัวไฟล์ เพราะ awpy หนักและใช้เฉพาะตอนอัปโหลด
-    # ถ้าเครื่องไหนยังไม่ได้ลง awpy เซิร์ฟเวอร์จะยังสตาร์ตได้ปกติ แค่หน้าอัปโหลดใช้ไม่ได้
     try:
-        from pipeline.parser_service import parse_demo
-    except ImportError as e:
+        doc = await run_in_threadpool(parse_demo_isolated, dem_path)
+    except DemoParserMissing as e:
         dem_path.unlink(missing_ok=True)
-        raise HTTPException(503, f"เซิร์ฟเวอร์นี้ยังแกะไฟล์ .dem ไม่ได้ (ไม่พบ {e.name}) — ติดตั้งด้วย pip install -r requirements.txt")
-
-    try:
-        doc = await run_in_threadpool(parse_demo, dem_path)
-    except Exception as e:
+        raise HTTPException(503, f"เซิร์ฟเวอร์นี้ยังแกะไฟล์ .dem ไม่ได้ ({e}) — ติดตั้งด้วย pip install -r requirements.txt")
+    except DemoParseError as e:
         dem_path.unlink(missing_ok=True)
-        log(f"[UPLOAD] แกะ {name} ไม่สำเร็จ: {type(e).__name__}: {e}")
-        raise HTTPException(422, f"แกะไฟล์ไม่สำเร็จ — ไฟล์อาจไม่ใช่เดโม CS2 หรือเสียหาย ({type(e).__name__})")
+        log(f"[UPLOAD] แกะ {name} ไม่สำเร็จ: {e}")
+        raise HTTPException(422, f"แกะไฟล์ไม่สำเร็จ — ไฟล์อาจไม่ใช่เดโม CS2 หรือเสียหาย ({e})")
 
     json_path = JSON_DIR / (dem_path.stem + ".json")
     json_path.write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")
