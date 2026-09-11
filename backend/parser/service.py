@@ -59,7 +59,7 @@ OUT_DIR = ROOT / "output" / "json"
 
 SCHEMA_VERSION = 5      # ขยับเมื่อโครง JSON เปลี่ยนแบบที่ ETL เดิมอ่านไม่ได้  (2 = damages, 3 = player_rounds + grenades, 4 = positions 1 Hz, 5 = team_clan + จุดวางบอมบ์)
 
-# ชื่อไฟล์เดโมจาก HLTV มีแบบแผน "ทีมA-vs-ทีมB-แมพ.dem" (regex เดียวกับ backend/load_kills.py)
+# ชื่อไฟล์เดโมจาก HLTV มีแบบแผน "ทีมA-vs-ทีมB-แมพ.dem" -> แกะชื่อทีมจากชื่อไฟล์
 TEAMS_RE = re.compile(r"^(?P<a>.+?)-vs-(?P<b>.+?)-[^-]+\.dem$", re.IGNORECASE)
 
 # คอลัมน์จาก awpy -> ชื่อคอลัมน์ในตาราง kills ของ backend/models.py
@@ -259,7 +259,7 @@ def parse_demo(path: Path) -> dict:
     else:
         grenades = pl.DataFrame(schema={"round_num": pl.Int32, "tick": pl.Int32, "thrower_id": pl.Int64, "side": pl.Utf8, "type": pl.Utf8})
 
-    # --- players: ทุก steam_id ที่โผล่ ชื่อล่าสุดที่เห็นชนะ (เหมือน load_kills.py) ---
+    # --- players: ทุก steam_id ที่โผล่ ชื่อล่าสุดที่เห็นชนะ ---
     #   รวมคนจาก tick ด้วย จะได้ครบ 10 คนแม้บางคนไม่เคยฆ่าหรือตายเลย (FK ของ player_rounds/grenades ต้องการ)
     players = (
         pl.concat([
