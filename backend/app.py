@@ -7,12 +7,12 @@ backend/app.py — "หลังบ้าน" (backend) ของเว็บ CS
   - ไฟล์นี้ = พนักงานที่คอยรับคำสั่ง ไปหยิบของจากคลัง (PostgreSQL) แล้วส่งกลับไปให้
 
 หน้าที่ของไฟล์นี้มี 4 อย่าง
-  1) ส่งหน้าเว็บ (ไฟล์ .html ใน frontend/pages/) ให้เบราว์เซอร์
+  1) ส่งหน้าเว็บ (ไฟล์ .html ใน backend/web/pages/) ให้เบราว์เซอร์
   2) พาผู้ใช้ไปล็อกอินที่ Steam แล้วรับผลกลับมา
   3) จำว่า "ใครล็อกอินอยู่" ด้วยคุกกี้ (cookie = บัตรคิวที่ติดตัวลูกค้าไว้)
   4) ตอบ /api/* — ดึงสถิติจากฐานข้อมูลแล้วส่งเป็น JSON ให้หน้าเว็บเอาไปวาด
 
-ข้อมูลอยู่ใน PostgreSQL (โครงอยู่ที่ backend/schema.sql โหลดด้วย backend/load_kills.py)
+ข้อมูลอยู่ใน PostgreSQL (ตาราง: backend/models.py + Alembic, view: backend/views.sql, โหลดผ่าน /api/demos หรือ backend/etl_loader.py)
 ไฟล์นี้ไม่อ่าน csv เองแล้ว — อ่านผ่าน SQL อย่างเดียว จะได้ filter/รวมข้อมูลได้เร็วโดยไม่ต้องโหลดทั้งตารางเข้าแรม
 
 รัน:  python -m uvicorn backend.app:app --reload
@@ -22,33 +22,42 @@ backend/app.py — "หลังบ้าน" (backend) ของเว็บ CS
 # ---------------------------------------------------------------------------
 # ส่วนที่ 0 — ขนเครื่องมือเข้ามาใช้
 # ---------------------------------------------------------------------------
-import asyncio
 import json
 import mimetypes
 import os
 import re
 import secrets
+import subprocess
 import sys
+import threading
 import urllib.parse
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 import asyncpg
-import httpx                   # httpx = โทรศัพท์ ใช้ "โทร" ไปถามเว็บอื่น (ที่นี่คือเซิร์ฟเวอร์ Steam)
+import httpx  # httpx = โทรศัพท์ ใช้ "โทร" ไปถามเว็บอื่น (ที่นี่คือเซิร์ฟเวอร์ Steam)
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, Request, UploadFile
-from fastapi.concurrency import run_in_threadpool   # เอางานหนักที่ไม่ใช่ async ไปรันในเธรดแยก ไม่ให้เซิร์ฟเวอร์ค้าง
+from fastapi.concurrency import run_in_threadpool  # เอางานหนักที่ไม่ใช่ async ไปรันในเธรดแยก ไม่ให้เซิร์ฟเวอร์ค้าง
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
-from itsdangerous import BadSignature, URLSafeSerializer   # เครื่อง "เซ็นชื่อ" ข้อมูลในคุกกี้ กันคนปลอมแปลง
+from itsdangerous import BadSignature, URLSafeSerializer  # เครื่อง "เซ็นชื่อ" ข้อมูลในคุกกี้ กันคนปลอมแปลง
 
-from backend.db import DATABASE_URL, apply_schema, create_pool, redacted_url  # noqa: F401  (load_dotenv ทำงานตอน import)
-from backend.etl_loader import load_match_json   # ตัวเดียวกับที่ CLI ใช้ — เดโมที่อัปโหลดจึงเข้าฐานข้อมูลด้วยเส้นทางเดิมเป๊ะ
+from backend.db import (  # noqa: F401  (load_dotenv ทำงานตอน import)
+    DATABASE_URL,
+    apply_schema,
+    create_pool,
+    redacted_url,
+)
+from backend.features.teams import assign_teams  # ผูกคนกับทีม (Round Review)
+from backend.geo import radar_frame
+from backend.jobqueue import QueueUnavailable, enqueue_parse, job_state, queue_health  # คิวงาน parse (Sprint 2)
+from backend.review import build_round_detail, build_round_list, grid_overlay, load_grid_model
 
 # ---------------------------------------------------------------------------
 # ส่วนที่ 1 — ค่าตั้งต้น (CONFIG) อยากแก้อะไรแก้ตรงนี้ที่เดียว
 # ---------------------------------------------------------------------------
 ROOT = Path(__file__).resolve().parent.parent   # โฟลเดอร์โปรเจกต์
-FRONTEND = ROOT / "frontend"                    # โฟลเดอร์ของหน้าเว็บทั้งหมด
+FRONTEND = ROOT / "backend" / "web"                    # โฟลเดอร์ของหน้าเว็บทั้งหมด
 PAGES_DIR = FRONTEND / "pages"                  # หน้า .html ที่ไฟล์นี้เสิร์ฟให้เบราว์เซอร์
 STATIC_DIR = FRONTEND / "static"                # ไฟล์นิ่ง ๆ (.css .js รูป)
 ASSETS_DIR = ROOT / "assets"                    # ภาพเรดาร์ของแต่ละแมพ + ค่าปรับเทียบพิกัด (radars.json)
@@ -114,7 +123,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="CS2 Analytics API", lifespan=lifespan)
-app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")  # URL ที่ขึ้นต้นด้วย /static ให้ไปหยิบไฟล์จริงใน frontend/static/
+app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")  # URL ที่ขึ้นต้นด้วย /static ให้ไปหยิบไฟล์จริงใน backend/web/static/
 app.mount("/assets", StaticFiles(directory=ASSETS_DIR), name="assets")  # URL ที่ขึ้นต้นด้วย /assets ให้ไปหยิบไฟล์จริงใน assets/ (ภาพเรดาร์)
 
 # Windows บางเครื่องไม่รู้จักนามสกุล .webp ทำให้ส่งไฟล์ออกไปเป็น application/octet-stream
@@ -201,7 +210,7 @@ def page_login():
     return FileResponse(PAGES_DIR / "login.html")
 
 
-# แต่ละหน้าเป็นไฟล์ .html ของตัวเองใน frontend/pages/ (1 หน้า = 1 ไฟล์ html + 1 ไฟล์ js)
+# แต่ละหน้าเป็นไฟล์ .html ของตัวเองใน backend/web/pages/ (1 หน้า = 1 ไฟล์ html + 1 ไฟล์ js)
 # ตัว JS ในแต่ละหน้าจะเช็คเองว่าล็อกอินแล้วหรือยัง ถ้ายังจะเด้งกลับมาหน้า /
 
 @app.get("/upload")
@@ -390,7 +399,7 @@ async def api_health(request: Request):
         async with pool.acquire() as conn:
             n = await conn.fetchrow(
                 "SELECT (SELECT COUNT(*) FROM matches) AS matches, (SELECT COUNT(*) FROM kills) AS kills")
-        return {"ok": True, "db": "ต่อได้", "matches": n["matches"], "kills": n["kills"]}
+        return {"queue": await run_in_threadpool(queue_health), "ok": True, "db": "ต่อได้", "matches": n["matches"], "kills": n["kills"]}
     except Exception as e:
         return JSONResponse({"ok": False, "db": str(e)}, status_code=503)
 
@@ -517,7 +526,25 @@ async def api_match(match_id: int, _: dict = Depends(require_login), conn: async
                    (SELECT COUNT(*) FROM mk WHERE attacker_id = p.steam_id AND headshot) AS headshots
             FROM ids JOIN players p USING (steam_id)
             ORDER BY kills DESC, deaths ASC""", match_id)
-    return {"match": dict(match), "rounds": rows(rounds_), "scoreboard": rows(scoreboard)}
+    # ฟีเจอร์ต่อคน (backend/features — คำนวณตอนโหลด เก็บใน player_rounds): opening / trade / clutch / buy type
+    feats = await conn.fetch("""
+        SELECT pr.steam_id::text AS steam_id,
+               COUNT(*) FILTER (WHERE pr.opening_kill)       AS opening_kills,
+               COUNT(*) FILTER (WHERE pr.opening_death)      AS opening_deaths,
+               COALESCE(SUM(pr.trade_kills), 0)              AS trade_kills,
+               COUNT(*) FILTER (WHERE pr.was_traded)         AS traded_deaths,
+               COUNT(*) FILTER (WHERE pr.clutch_vs > 0)      AS clutch_attempts,
+               COUNT(*) FILTER (WHERE pr.clutch_won)         AS clutch_wins,
+               COUNT(*) FILTER (WHERE pr.buy_type = 'full')  AS full_buys,
+               COUNT(*) FILTER (WHERE pr.buy_type = 'force') AS force_buys,
+               COUNT(*) FILTER (WHERE pr.buy_type = 'eco')   AS eco_buys,
+               MAX(pr.features_version)                      AS features_version
+        FROM player_rounds pr JOIN rounds r ON r.id = pr.round_id
+        WHERE r.match_id = $1
+        GROUP BY pr.steam_id""", match_id)
+    # features_version 0 = แถวจากยุคก่อนมีฟีเจอร์ (ยังไม่ backfill) — ไม่ส่งค่าศูนย์หลอก ๆ ไปให้หน้าเว็บ
+    features = {f["steam_id"]: dict(f) for f in feats if f["features_version"]}
+    return {"match": dict(match), "rounds": rows(rounds_), "scoreboard": rows(scoreboard), "features": features}
 
 
 # ---------------------------------------------------------------------------
@@ -547,7 +574,7 @@ ROUND_KILLS_SQL = """
 
 def load_round_win_model() -> dict:
     """ตาราง P(CT ชนะรอบ) ที่ round_win.py เขียนไว้ — ไม่มีก็บอกวิธีสร้าง"""
-    return read_output_json("round_win.json", "python pipeline/round_win.py")
+    return read_output_json("round_win.json", "python research/round_win.py")
 
 
 def annotate_rounds(rows_, model: dict) -> list[dict]:
@@ -639,6 +666,25 @@ def model_info(model: dict, map_name: str) -> dict:
         "same_map": model["map"] == map_name,       # ฟีเจอร์คือคนเหลือ/ระเบิด/เวลา ใช้ข้ามแมพได้ แต่ต้องบอกผู้ใช้
         "p_start": model["table"].get(f"5v5|0|{model['time_names'][0]}"),
     }
+
+
+@app.get("/api/matches/{match_id}/status")
+async def api_match_status(match_id: int, _: dict = Depends(require_login), conn: asyncpg.Connection = Depends(db)):
+    """สถานะงานแกะเดโมของแมตช์ — หน้าเว็บ poll ตัวนี้จนกว่าจะ done หรือ error
+
+    status        queued -> parsing -> done | error   (worker เป็นคนขยับ)
+    error_message สาเหตุตอน error (ทุก error ใน worker ลงที่นี่)
+    job           สถานะฝั่งคิว RQ ถ้าถามได้ (queued/started/finished/failed) ไว้ดูว่า worker หยิบไปหรือยัง
+    """
+    row = await conn.fetchrow("""
+        SELECT id, demo_file, status, error_message, job_id, imported_at, started_at, finished_at
+        FROM matches WHERE id = $1;
+    """, match_id)
+    if not row:
+        raise HTTPException(404, "ไม่พบแมตช์นี้")
+    d = dict(row)
+    d["job"] = await run_in_threadpool(job_state, d["job_id"])
+    return d
 
 
 @app.get("/api/matches/{match_id}/rounds")
@@ -1032,10 +1078,10 @@ async def api_tactical(
 # ===========================================================================
 # ส่วนที่ 7 — ผลจากโมเดล ML
 #
-# เราไม่เทรนโมเดลในเซิร์ฟเวอร์นี้ (ช้าและกินแรม) สคริปต์ใน pipeline/ เทรนเสร็จ
+# เราไม่เทรนโมเดลในเซิร์ฟเวอร์นี้ (ช้าและกินแรม) สคริปต์ใน research/ เทรนเสร็จ
 # แล้วเขียนคำตอบทั้งหมดลงไฟล์ json ไว้ให้ เซิร์ฟเวอร์แค่หยิบไฟล์นั้นส่งต่อ
-#     python pipeline/round_win.py   ->  output/round_win.json
-#     python pipeline/grid_ml.py     ->  output/grid_ml.json
+#     python research/round_win.py   ->  output/round_win.json
+#     python research/grid_ml.py     ->  output/grid_ml.json
 # ===========================================================================
 
 def read_output_json(filename: str, how_to_make: str) -> dict:
@@ -1052,7 +1098,7 @@ def api_ml_round_win(_: dict = Depends(require_login)):
 
     คีย์ในตารางหน้าตาแบบ "3v2|0|20-40s" = CT เหลือ 3, T เหลือ 2, ยังไม่ปักระเบิด, วินาทีที่ 20-40
     """
-    return read_output_json("round_win.json", "python pipeline/round_win.py")
+    return read_output_json("round_win.json", "python research/round_win.py")
 
 
 @app.get("/api/ml/grid")
@@ -1062,7 +1108,7 @@ def api_ml_grid(_: dict = Depends(require_login)):
     ตัดฟิลด์หนัก ๆ ออกก่อนส่ง (ภาพ mask กับจุดตายดิบ 7 พันจุด) เพราะหน้าเว็บไม่ได้ใช้
     เหลือแต่คะแนนโมเดลกับค่ารายช่อง ไฟล์จะได้เล็กลงจาก 160 KB เหลือ ~40 KB
     """
-    d = read_output_json("grid_ml.json", "python pipeline/grid_ml.py")
+    d = read_output_json("grid_ml.json", "python research/grid_ml.py")
     for heavy in ("play_mask", "kills"):
         d.pop(heavy, None)          # .pop(คีย์, None) = ลบคีย์นี้ทิ้ง ถ้าไม่มีก็ไม่ต้องพัง
     d["cells"] = sorted(d["cells"], key=lambda c: -c["kills"])[:40]
@@ -1114,7 +1160,7 @@ def parse_demo_isolated(path: Path) -> dict:
     for slice of length 15  (Rust อ่าน header 16 ไบต์จากไฟล์ที่สั้นกว่านั้น)
     """
     try:
-        from pipeline.parser_service import parse_demo
+        from backend.parser.service import parse_demo
     except ImportError as e:
         raise DemoParserMissing(f"ไม่พบ {e.name}") from None
 
@@ -1147,7 +1193,10 @@ def save_upload(file: UploadFile, dest: Path) -> int:
                 out.write(chunk)
         if size == 0:
             raise HTTPException(400, "ไฟล์ว่าง")
-        part.replace(dest)          # .replace() = เปลี่ยนชื่อทับของเดิมได้ และเป็น atomic บนดิสก์เดียวกัน
+        try:
+            part.replace(dest)      # .replace() = เปลี่ยนชื่อทับของเดิมได้ และเป็น atomic บนดิสก์เดียวกัน
+        except PermissionError:     # Windows: ไฟล์ปลายทางถูกเปิดอยู่ (เช่น worker กำลังแกะไฟล์เดิม) — ไม่ใช่ 500
+            raise HTTPException(409, "ไฟล์ชื่อนี้กำลังถูกใช้งานอยู่ (อาจกำลังถูกแกะ) — รอให้เสร็จแล้วลองใหม่")
         return size
     finally:
         part.unlink(missing_ok=True)   # เหลือ .part ค้างอยู่ = อัปไม่สำเร็จ เก็บกวาดทิ้ง
@@ -1160,7 +1209,7 @@ async def api_upload_demo(
     _: dict = Depends(require_login),
     conn: asyncpg.Connection = Depends(db),
 ):
-    """รับเดโมหนึ่งไฟล์ แกะ แล้วโหลดเข้าฐานข้อมูล ตอบกลับเป็นสรุปของแมตช์นั้น
+    """รับเดโมหนึ่งไฟล์ เก็บลงดิสก์ แล้วส่งงานแกะเข้าคิว — ตอบ 202 ทันที ไม่รอแกะ
 
     ส่งทีละไฟล์ หน้าเว็บเป็นคนวนส่งเองถ้าผู้ใช้ลากมาหลายไฟล์
     ทำแบบนี้เพื่อให้แต่ละไฟล์มีสถานะของตัวเอง ไฟล์หนึ่งพังก็ไม่ลากไฟล์อื่นล้มไปด้วย
@@ -1175,59 +1224,56 @@ async def api_upload_demo(
         raise HTTPException(400, "รับเฉพาะไฟล์ .dem และชื่อไฟล์ใช้ได้แค่ตัวอักษร ตัวเลข . _ - ( )")
 
     # ---- 2) เคยโหลดแมตช์นี้ไปแล้วหรือยัง --------------------------------
-    # เช็กก่อน parse เพราะ parse แพงกว่าการถามฐานข้อมูลหลายพันเท่า
-    existing = await conn.fetchrow("SELECT id FROM matches WHERE demo_file = $1;", name)
-    if existing and not replace:
-        raise HTTPException(409, f"แมตช์ {name} มีอยู่ในระบบแล้ว (Match ID: {existing['id']}) — ติ๊ก \"โหลดทับของเดิม\" ถ้าต้องการโหลดใหม่")
+    # เช็กก่อนแตะดิสก์ — แมตช์ที่เคยพัง (error) ยอมให้ส่งใหม่ได้เลยโดยไม่ต้องติ๊ก "โหลดทับ"
+    existing = await conn.fetchrow("SELECT id, status FROM matches WHERE demo_file = $1;", name)
+    if existing and not replace and existing["status"] != "error":
+        raise HTTPException(409, f"แมตช์ {name} มีอยู่ในระบบแล้ว (Match ID: {existing['id']}, สถานะ {existing['status']}) "
+                                 "— ติ๊ก \"โหลดทับของเดิม\" ถ้าต้องการโหลดใหม่")
 
     # ---- 3) เขียนไฟล์ลงดิสก์ --------------------------------------------
     DEMOS_DIR.mkdir(parents=True, exist_ok=True)
-    JSON_DIR.mkdir(parents=True, exist_ok=True)
     dem_path = DEMOS_DIR / name
     size = await run_in_threadpool(save_upload, file, dem_path)
 
-    # ---- 4) แกะไฟล์ -----------------------------------------------------
+    # ---- 4) สร้าง/รีเซ็ตแถว matches เป็น queued แล้วส่งงานเข้าคิว ------------
+    # ตัวเซิร์ฟเวอร์ไม่แกะเดโมเองอีกแล้ว (เดโมใหญ่แกะเป็นนาที request จะค้าง)
+    # worker (python -m backend.worker) หยิบงานไปทำ แล้วหน้าเว็บ poll ที่ /api/matches/{id}/status
+    if existing:
+        match_id = existing["id"]     # เก็บ id เดิมไว้ ลิงก์/บุ๊กมาร์กเก่าจะได้ไม่พัง
+        await conn.execute("""
+            UPDATE matches SET status = 'queued', error_message = NULL, job_id = NULL,
+                               started_at = NULL, finished_at = NULL
+            WHERE id = $1;
+        """, match_id)
+    else:
+        match_id = await conn.fetchval(
+            "INSERT INTO matches (demo_file, status) VALUES ($1, 'queued') RETURNING id;", name)
+
     try:
-        doc = await run_in_threadpool(parse_demo_isolated, dem_path)
-    except DemoParserMissing as e:
-        dem_path.unlink(missing_ok=True)
-        raise HTTPException(503, f"เซิร์ฟเวอร์นี้ยังแกะไฟล์ .dem ไม่ได้ ({e}) — ติดตั้งด้วย pip install -r requirements.txt")
-    except DemoParseError as e:
-        dem_path.unlink(missing_ok=True)
-        log(f"[UPLOAD] แกะ {name} ไม่สำเร็จ: {e}")
-        raise HTTPException(422, f"แกะไฟล์ไม่สำเร็จ — ไฟล์อาจไม่ใช่เดโม CS2 หรือเสียหาย ({e})")
+        job_id = await run_in_threadpool(enqueue_parse, match_id)
+    except QueueUnavailable as e:
+        await conn.execute("UPDATE matches SET status = 'error', error_message = $2 WHERE id = $1;", match_id, str(e))
+        log(f"[UPLOAD] {name}: {e}")
+        raise HTTPException(503, f"รับไฟล์แล้วแต่ส่งงานเข้าคิวไม่ได้ — เปิด Redis ด้วย docker compose up -d redis ({e})")
+    await conn.execute("UPDATE matches SET job_id = $2 WHERE id = $1;", match_id, job_id)
+    log(f"[UPLOAD] {name} ({size / 1024 / 1024:.1f} MB) -> match {match_id} เข้าคิว job {job_id}")
 
-    json_path = JSON_DIR / (dem_path.stem + ".json")
-    json_path.write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")
-
-    # ---- 5) เข้าฐานข้อมูล -----------------------------------------------
-    try:
-        match_id = await load_match_json(conn, json_path, force=replace)
-    except Exception as e:
-        log(f"[UPLOAD] โหลด {name} เข้าฐานข้อมูลไม่สำเร็จ: {type(e).__name__}: {e}")
-        raise HTTPException(500, f"โหลดเข้าฐานข้อมูลไม่สำเร็จ ({type(e).__name__}) — ไฟล์ที่แกะแล้วยังอยู่ที่ output/json/{json_path.name}")
-
-    # ---- 6) ตอบกลับด้วยสรุปที่หน้าเว็บเอาไปโชว์ได้เลย ---------------------
-    row = await conn.fetchrow("SELECT * FROM match_summary WHERE id = $1;", match_id)
-    counts = doc.get("counts", {})
-    return {
+    # 202 Accepted = รับเรื่องแล้ว แต่ยังทำไม่เสร็จ ไปถามต่อที่ status_url
+    return JSONResponse(status_code=202, content={
         "match_id": match_id,
         "demo_file": name,
         "size_mb": round(size / 1024 / 1024, 1),
         "replaced": bool(existing),
-        "map_name": doc["match"]["map_name"],
-        "team_a": doc["match"]["team_a"],
-        "team_b": doc["match"]["team_b"],
-        "tickrate": doc["match"]["tickrate"],
-        "counts": counts,
-        "summary": dict(row) if row else None,
-    }
+        "status": "queued",
+        "job_id": job_id,
+        "status_url": f"/api/matches/{match_id}/status",
+    })
 
 
 # ---------------------------------------------------------------------------
 # ส่วนที่ 9 — สั่งเทรนโมเดลใหม่จากหน้าเว็บ
 #
-# โมเดลทั้งสองเป็นสคริปต์ที่รันจบในตัว (pipeline/round_win.py, pipeline/grid_ml.py)
+# โมเดลทั้งสองเป็นสคริปต์ที่รันจบในตัว (research/round_win.py, research/grid_ml.py)
 # จึงเรียกเป็นโปรเซสลูกด้วย interpreter ตัวเดียวกับเซิร์ฟเวอร์ ไม่ import เข้ามา เพราะ
 #   - สคริปต์พวกนั้นมีโค้ดระดับบนสุด import แล้วรันทันที
 #   - ใช้ matplotlib / sklearn หนัก แยกโปรเซสแล้วเสร็จก็คืนแรมทั้งหมด พังก็ไม่ลากเซิร์ฟเวอร์ล้ม
@@ -1237,11 +1283,8 @@ async def api_upload_demo(
 #
 # กันกดซ้ำด้วย lock ตัวเดียว — เทรนพร้อมกันสองรอบจะแย่งกันเขียนไฟล์ผลลัพธ์
 # ---------------------------------------------------------------------------
-import subprocess
-import threading
-
 RETRAIN_LOCK = threading.Lock()
-RETRAIN_SCRIPTS = ("pipeline/round_win.py", "pipeline/grid_ml.py")
+RETRAIN_SCRIPTS = ("research/round_win.py", "research/grid_ml.py")
 
 
 def run_training() -> list[dict]:
@@ -1275,3 +1318,82 @@ async def api_ml_retrain(_: dict = Depends(require_login)):
         raise HTTPException(500, f"{failed['script']} ล้มเหลว — {failed['log'][-400:]}")
     log(f"[RETRAIN] เทรนใหม่สำเร็จ: {', '.join(r['script'] for r in results)}")
     return {"ok": True, "results": results}
+
+
+# ---------------------------------------------------------------------------
+# ส่วนที่ 10 — Round Review: ไล่ดูทีละรอบว่าใครตายที่ไหนเมื่อไหร่ + บริบทจาก research/grid_ml1.py
+#
+# คีย์ของแมตช์คือชื่อไฟล์เดโม (ตาม brief) — ใช้ prefix /api/review/ เพราะ /api/matches/{match_id}/rounds
+# มีอยู่แล้ว (ไทม์ไลน์ของโมเดลโอกาสชนะรอบ) และรับเป็นเลข id
+# ข้อมูลกริดอ่านจาก output/grid_ml1.json ที่ cache ไว้ในหน่วยความจำ (backend/review.py) ไม่รันโมเดลตอน request
+# ---------------------------------------------------------------------------
+async def _review_match(conn: asyncpg.Connection, demo_file: str) -> dict:
+    m = await conn.fetchrow("""
+        SELECT id, demo_file, map_name, tickrate, team_a, team_b, status FROM matches WHERE demo_file = $1""", demo_file)
+    if not m:
+        raise HTTPException(404, f"ไม่พบแมตช์ {demo_file}")
+    if m["status"] != "done":
+        raise HTTPException(409, f"แมตช์ {demo_file} ยังไม่พร้อม (สถานะ {m['status']})")
+    return dict(m)
+
+
+async def _review_roster(conn: asyncpg.Connection, match_id: int) -> list[dict]:
+    """ทุกคนในแมตช์ + ทีม — แมตช์ที่โหลดก่อน migration 0004 (team_clan ว่าง) ผูกทีมจาก player_rounds ตอนนี้แทน"""
+    rows = await conn.fetch("""
+        SELECT mp.steam_id, p.name, mp.team_clan FROM match_players mp JOIN players p USING (steam_id)
+        WHERE mp.match_id = $1""", match_id)
+    roster = [{"steam_id": r["steam_id"], "name": r["name"], "team": r["team_clan"]} for r in rows]
+    if roster and all(r["team"] for r in roster):
+        return roster
+    pr = await conn.fetch("""
+        SELECT pr.steam_id, r.round_num, pr.side, p.name FROM player_rounds pr
+        JOIN rounds r ON r.id = pr.round_id JOIN players p USING (steam_id) WHERE r.match_id = $1""", match_id)
+    team_of = assign_teams([dict(x) for x in pr])
+    names = {x["steam_id"]: x["name"] for x in pr}
+    return [{"steam_id": sid, "name": names.get(sid), "team": team} for sid, team in team_of.items()]
+
+
+@app.get("/api/review/grid")
+def api_review_grid(map: str = Query(..., description="เช่น de_mirage"), _: dict = Depends(require_login)):
+    """ช่องกริด (จัดกลุ่มแล้ว) + วง hotspot เป็นพิกเซลบนภาพเรดาร์ — ไว้ให้ toggle ซ้อนบนแผนที่"""
+    frame = radar_frame(map)
+    model = load_grid_model()
+    if frame is None or model is None or model.map_name != map:
+        return {"available": False, "reason": "ยังไม่มีผล research/grid_ml1.py ของแมพนี้"}
+    return grid_overlay(model, frame)
+
+
+@app.get("/api/review/{demo_file}/rounds")
+async def api_review_rounds(demo_file: str, _: dict = Depends(require_login), conn: asyncpg.Connection = Depends(db)):
+    """รายรอบของแมตช์: ใครชนะ จบด้วยอะไร ตายกี่คน คนแรกตายวินาทีที่เท่าไหร่"""
+    m = await _review_match(conn, demo_file)
+    rounds_ = await conn.fetch("""
+        SELECT round_num, start_tick, winner_side, end_reason FROM rounds WHERE match_id = $1 ORDER BY round_num""", m["id"])
+    agg = await conn.fetch("""
+        SELECT r.round_num, COUNT(k.id) AS n, MIN(k.tick) AS first_tick
+        FROM rounds r LEFT JOIN kills k ON k.round_id = r.id WHERE r.match_id = $1 GROUP BY r.round_num""", m["id"])
+    return build_round_list(rows(rounds_), {a["round_num"]: a["first_tick"] for a in agg if a["first_tick"] is not None},
+                            {a["round_num"]: a["n"] for a in agg}, m["tickrate"])
+
+
+@app.get("/api/review/{demo_file}/rounds/{round_num}")
+async def api_review_round(demo_file: str, round_num: int, _: dict = Depends(require_login),
+                           conn: asyncpg.Connection = Depends(db)):
+    """รอบเดียวแบบละเอียด: ทีม / การตายทุกครั้ง (พิกัด + พิกเซลบนเรดาร์) / บริบทจาก grid_ml1 / สรุปรอบ"""
+    m = await _review_match(conn, demo_file)
+    rnd = await conn.fetchrow("""
+        SELECT id, round_num, start_tick, winner_side, end_reason, bomb_plant_tick, bomb_plant_x, bomb_plant_y, bomb_site
+        FROM rounds WHERE match_id = $1 AND round_num = $2""", m["id"], round_num)
+    if not rnd:
+        raise HTTPException(404, f"แมตช์นี้ไม่มีรอบที่ {round_num}")
+    roster = await _review_roster(conn, m["id"])
+    in_round = await conn.fetch("SELECT steam_id, side, survived FROM player_rounds WHERE round_id = $1", rnd["id"])
+    kills = await conn.fetch("""
+        SELECT k.*, pa.name AS attacker_name, pv.name AS victim_name, ps.name AS assister_name
+        FROM kills k
+        LEFT JOIN players pa ON pa.steam_id = k.attacker_id
+        LEFT JOIN players pv ON pv.steam_id = k.victim_id
+        LEFT JOIN players ps ON ps.steam_id = k.assister_id
+        WHERE k.round_id = $1 ORDER BY k.tick, k.id""", rnd["id"])
+    return build_round_detail(match=m, rnd=dict(rnd), roster=roster, in_round=rows(in_round), kills=rows(kills),
+                              frame=radar_frame(m["map_name"]), model=load_grid_model())

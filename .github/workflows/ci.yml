@@ -1,0 +1,57 @@
+# CI — lint + pytest ฝั่ง Python และ build ฝั่ง React ทุกครั้งที่ push / เปิด PR
+#
+# test parser บนเดโมจริงต้องมีไฟล์ .dem (100+ MB ไม่อยู่ใน git)
+#   ตั้ง repository variable CS2_TEST_DEMO_URL ให้ชี้ไปที่ไฟล์เดโม (เช่น asset ของ GitHub Release)
+#   แล้ว CI จะดาวน์โหลดมาให้ก่อนรัน pytest — ถ้าไม่ตั้ง test นั้นถูก skip ส่วน test อื่นรันปกติ
+name: ci
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -r requirements-dev.txt
+      - name: ruff
+        run: ruff check .
+      - name: ดาวน์โหลดเดโมตัวอย่าง (ถ้าตั้ง CS2_TEST_DEMO_URL)
+        if: vars.CS2_TEST_DEMO_URL != ''
+        run: |
+          mkdir -p demos
+          curl -L --fail --retry 3 -o demos/ci-sample.dem "${{ vars.CS2_TEST_DEMO_URL }}"
+          echo "CS2_TEST_DEMO=$PWD/demos/ci-sample.dem" >> "$GITHUB_ENV"
+      - name: pytest
+        run: pytest -v
+      - name: migration ต้องรันบน DB เปล่าได้ (up -> down -> up)
+        run: |
+          docker run -d --name pg -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=cs2_ci -p 5432:5432 postgres:16-alpine
+          for i in $(seq 1 30); do docker exec pg pg_isready -U postgres && break; sleep 1; done
+          export DATABASE_URL=postgresql://postgres:postgres@localhost:5432/cs2_ci
+          alembic upgrade head && alembic downgrade base && alembic upgrade head
+          python -c "import asyncio, asyncpg, os; from backend.db import apply_schema
+          async def m():
+              c = await asyncpg.connect(os.environ['DATABASE_URL']); await apply_schema(c); await c.close()
+          asyncio.run(m()); print('views ok')"
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run build

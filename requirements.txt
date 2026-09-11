@@ -1,26 +1,31 @@
-# ทุก library ที่โค้ดในรีโปนี้ import จริง (ตรวจด้วยการไล่ import ทั้งโปรเจกต์)
+# ทุก library ที่โค้ดในรีโปนี้ import จริง
 #
-# ติดตั้ง:  pip install -r requirements.txt
-# หรือใช้ Docker ก็ไม่ต้องลงเอง — ดู Dockerfile
+# ติดตั้ง:  pip install -r requirements.txt            (รันระบบ)
+#           pip install -r requirements-dev.txt        (เพิ่มเครื่องมือ test/lint)
+# หรือใช้ Docker ก็ไม่ต้องลงเอง — ดู Dockerfile / docker-compose.yml
 
-# --- โมเดลกับการวาดภาพ — pipeline/*.py ---
+# --- parser: อ่านไฟล์ .dem — backend/parser/ ---
+# pin เวอร์ชันตายตัว เพราะ CS2 อัปเดตทีไร demoparser2 มักพัง และ awpy ผูกกับ demoparser2 แน่น
+# ขยับเวอร์ชันได้ แต่ต้องรัน pytest (test parser บนเดโมจริง) ผ่านก่อนเสมอ
+awpy==2.0.2
+demoparser2==0.41.4
+polars>=1.0
+
+# --- backend: API + worker — backend/ ---
+fastapi>=0.115
+uvicorn[standard]>=0.30
+python-multipart>=0.0.9  # FastAPI ใช้ตัวนี้อ่านไฟล์ที่อัปโหลดมา (POST /api/demos) ขาดแล้ว endpoint จะพังตอนสตาร์ต
+httpx>=0.27              # โทรไปถาม Steam Web API
+itsdangerous>=2.2        # เซ็นคุกกี้กันปลอมแปลง
+asyncpg>=0.30            # driver PostgreSQL แบบ async (SQLAlchemy ใช้ตัวนี้ข้างใน และ query เดิมใช้ตรง ๆ)
+sqlalchemy[asyncio]>=2.0,<3
+alembic>=1.13            # migration ของสคีมา
+rq>=1.16                 # คิวงาน parse เดโมในเบื้องหลัง
+redis>=5                 # ที่เก็บคิวของ RQ
 pandas>=2.2
 numpy>=1.26
+
+# --- research: โมเดลกับการวาดภาพ — research/*.py (ไม่จำเป็นต่อการรันเว็บ) ---
 scikit-learn>=1.5
 matplotlib>=3.8
 pillow>=10.0
-
-# --- หน้าเว็บกับล็อกอิน Steam — frontend/app.py ---
-fastapi>=0.115
-uvicorn[standard]>=0.30
-httpx>=0.27              # โทรไปถาม Steam Web API
-itsdangerous>=2.2        # เซ็นคุกกี้กันปลอมแปลง
-asyncpg>=0.30            # ต่อ PostgreSQL แบบ async
-python-multipart>=0.0.9  # FastAPI ใช้ตัวนี้อ่านไฟล์ที่อัปโหลดมา (หน้า /upload) ขาดแล้ว endpoint จะพังตอนสตาร์ต
-
-# --- เฉพาะตอน parse ไฟล์ .dem — pipeline/demoparser.py, round_review.py ---
-# awpy ใช้ demoparser2 (เขียนด้วย Rust) อยู่ข้างใน จึงมี wheel สำเร็จรูป
-# ไม่ต้องมี compiler และคืนค่ามาเป็น polars
-# ถ้ามี data/all_kills.csv อยู่แล้วและจะรันแค่โมเดล ตัดสองบรรทัดล่างนี้ออกได้
-awpy>=2.0.2
-polars>=1.0

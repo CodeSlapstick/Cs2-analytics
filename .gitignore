@@ -17,6 +17,8 @@ output/
 # ...ยกเว้นชุดคิลตั้งต้น 2.6 MB (50 แมตช์ Mirage)
 # ต้องเข้า git ไม่งั้นโคลนใหม่แล้ว grid_ml.py / round_win.py รันไม่ได้เลย
 !data/all_kills.csv
+# ...และ snapshot ที่เทสต์ใช้เทียบ (grid_ml1_cells.csv) ไม่งั้น CI หาไฟล์ไม่เจอ
+!backend/tests/fixtures/*.csv
 
 # สิ่งที่ **ต้อง** เข้า git (เขียนไว้กันคนเผลอตัดทั้งโฟลเดอร์)
 #   assets/radars.json      ค่าปรับเทียบภาพเรดาร์ หาด้วยมือ สร้างใหม่ไม่ได้ง่าย ๆ
@@ -31,3 +33,11 @@ output/
 # ค่าตั้งของ editor แต่ละคน ไม่ใช่ของโปรเจกต์
 .vscode/
 .idea/
+
+# frontend (React/Vite)
+node_modules/
+frontend/dist/
+*.tsbuildinfo
+
+# ค่า override เฉพาะเครื่อง (เช่น ชี้ volume เดิม)
+docker-compose.override.yml

@@ -1,12 +1,13 @@
-# CS2 Map Zone Analytics
+# CS2 Scouting Platform — image ของฝั่ง Python (ใช้ทั้ง api และ worker ใน docker-compose.yml)
 #
 #   docker build -t cs2-analytics .
-#   docker run --rm -v "${PWD}/output:/app/output" cs2-analytics
+#   docker run --rm -p 8000:8000 cs2-analytics                       # เปิด API (ต้องมี DATABASE_URL/REDIS_URL ชี้ไปที่ใช้ได้)
+#   docker run --rm -v "${PWD}/output:/app/output" cs2-analytics python research/grid_ml.py   # รันสคริปต์วิจัย
 #
-# คำสั่งข้างบนรัน pipeline/grid_ml.py ได้ทันทีโดยไม่ต้องมีไฟล์ .dem
-# เพราะชุดคิลที่ parse แล้ว (data/all_kills.csv) ติดมากับรีโปอยู่แล้ว
+# ปกติไม่ต้อง build เอง — docker compose up -d ทำให้หมด
 
-FROM python:3.12-slim
+# 3.11 ตามข้อกำหนดของ Sprint 2 (awpy 2.0.2 / demoparser2 0.41.4 มี wheel สำเร็จรูปสำหรับรุ่นนี้)
+FROM python:3.11-slim
 
 # libgomp1 — scikit-learn ต้องใช้ตอนรัน แต่ไม่มีมากับ image แบบ slim
 RUN apt-get update \
@@ -28,7 +29,7 @@ ENV MPLBACKEND=Agg \
     MPLCONFIGDIR=/tmp/matplotlib \
     PYTHONUNBUFFERED=1
 
-# ผลลัพธ์ลงที่นี่ — mount ออกมาด้วย -v ไม่งั้นไฟล์หายไปพร้อม container
-VOLUME ["/app/output"]
+VOLUME ["/app/output", "/app/demos"]
 
-CMD ["python", "pipeline/grid_ml.py"]
+EXPOSE 8000
+CMD ["python", "-m", "uvicorn", "backend.app:app", "--host", "0.0.0.0", "--port", "8000"]
