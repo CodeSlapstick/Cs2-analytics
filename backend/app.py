@@ -14,8 +14,9 @@ backend/app.py — "หลังบ้าน" (backend) ของเว็บ CS
 ข้อมูลอยู่ใน PostgreSQL (ตาราง: backend/models.py + Alembic, view: backend/views.sql, โหลดผ่าน /api/demos หรือ backend/etl_loader.py)
 ไฟล์นี้ไม่อ่าน csv เองแล้ว — อ่านผ่าน SQL อย่างเดียว จะได้ filter/รวมข้อมูลได้เร็วโดยไม่ต้องโหลดทั้งตารางเข้าแรม
 
-รัน:  python -m uvicorn backend.app:app --reload
-เปิด: http://localhost:8000
+รัน:  python -m uvicorn backend.app:app --reload   (ในเครื่อง — หน้าเว็บ npm run dev ส่งต่อ /api มาที่นี่)
+ผู้ใช้ไม่เข้า API ตรง ๆ: เปิดหน้าเว็บ แล้วหน้าเว็บ (หรือ nginx ใน Docker) ส่ง /api /auth /assets มาให้
+Swagger: <หน้าเว็บ>/api/docs
 """
 
 # ---------------------------------------------------------------------------
@@ -106,7 +107,9 @@ async def lifespan(app: FastAPI):
         await app.state.pool.close()
 
 
-app = FastAPI(title="CS2 Analytics API", lifespan=lifespan)
+# Swagger อยู่ใต้ /api — หน้าเว็บส่งต่อให้เฉพาะ /api /auth /assets ถ้าอยู่ที่ /docs จะเปิดจากหน้าเว็บไม่ได้
+app = FastAPI(title="CS2 Analytics API", lifespan=lifespan,
+              docs_url="/api/docs", redoc_url=None, openapi_url="/api/openapi.json")
 app.mount("/assets", StaticFiles(directory=ASSETS_DIR), name="assets")  # URL ที่ขึ้นต้นด้วย /assets ให้ไปหยิบไฟล์จริงใน assets/ (ภาพเรดาร์)
 
 # Windows บางเครื่องไม่รู้จักนามสกุล .webp ทำให้ส่งไฟล์ออกไปเป็น application/octet-stream
