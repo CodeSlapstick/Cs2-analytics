@@ -41,8 +41,20 @@ class MatchStatus:
     ALL = (QUEUED, PARSING, DONE, ERROR)
 
 
+class Account(Base):
+    """บัญชีสำหรับล็อกอินหน้าเว็บ (username/password + JWT ใน httpOnly cookie) — migration 0005, backend/auth.py"""
+    __tablename__ = "accounts"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    username: Mapped[str] = mapped_column(Text, nullable=False)          # ไม่สนตัวพิมพ์ (unique บน lower(username))
+    password_hash: Mapped[str] = mapped_column(Text, nullable=False)     # pbkdf2_sha256$รอบ$salt$hash — ไม่เก็บรหัสจริง
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
+    last_login: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (Index("accounts_username_lower_idx", text("lower(username)"), unique=True),)
+
+
 class User(Base):
-    """ผู้ใช้เว็บ — คนที่ล็อกอินผ่าน Steam (หรือโหมดทดสอบ) เข้ามาดูข้อมูล"""
+    """ผู้ใช้จากระบบ Steam login เดิม — เลิกใช้แล้ว (แทนด้วย Account) เก็บตารางไว้ไม่ลบ ไม่มีโค้ดเขียนลงแล้ว"""
     __tablename__ = "users"
     steamid: Mapped[str] = mapped_column(String(32), primary_key=True)
     name: Mapped[str | None] = mapped_column(String(255))

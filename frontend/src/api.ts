@@ -99,9 +99,13 @@ export class ApiError extends Error {
   }
 }
 
+/** event ที่ยิงเมื่อ API ตอบ 401 (token หมดอายุระหว่างใช้งาน) — ProtectedRoute ฟังแล้วพาไปหน้า login */
+export const UNAUTHORIZED_EVENT = "cs2:unauthorized";
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const r = await fetch(path, { credentials: "same-origin", ...init });
   if (!r.ok) {
+    if (r.status === 401 && !path.startsWith("/auth/")) window.dispatchEvent(new Event(UNAUTHORIZED_EVENT));
     let msg = `เซิร์ฟเวอร์ตอบ ${r.status}`;
     try {
       const body = await r.json();
@@ -253,21 +257,26 @@ export const api = {
   },
 };
 
-// Sprint 2 ไม่มีระบบผู้ใช้ — ใช้ SteamID ตัวเดียวล็อกอินโหมดทดสอบ (backend ต้องเปิด ALLOW_DEV_LOGIN=1)
-const DEV_STEAMID = import.meta.env.VITE_DEV_STEAMID ?? "76561198000000001";
-
-export async function ensureLogin(): Promise<void> {
-  try {
-    await request("/api/me");
-    return; // มีคุกกี้อยู่แล้ว
-  } catch (e) {
-    if (!(e instanceof ApiError) || e.status !== 401) throw e;
-  }
-  await request("/auth/dev-login", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ steamid: DEV_STEAMID }),
-  });
+// ---------------------------------------------------------------------------
+// ล็อกอิน — JWT อยู่ในคุกกี้ httpOnly ที่เซิร์ฟเวอร์ตั้งให้ JavaScript ไม่เคยเห็น token (ไม่ใช้ localStorage)
+// ---------------------------------------------------------------------------
+export interface AuthUser {
+  id: number;
+  username: string;
 }
+
+const postJson = (body: unknown): RequestInit => ({
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify(body),
+});
+
+export const auth = {
+  me: () => request<{ user: AuthUser }>("/auth/me"),
+  login: (username: string, password: string) => request<{ user: AuthUser }>("/auth/login", postJson({ username, password })),
+  register: (username: string, password: string) =>
+    request<{ user: AuthUser }>("/auth/register", postJson({ username, password })),
+  logout: () => request<{ ok: boolean }>("/auth/logout", { method: "POST" }),
+};
 
 export const isBusy = (s: MatchStatus) => s === "queued" || s === "parsing";

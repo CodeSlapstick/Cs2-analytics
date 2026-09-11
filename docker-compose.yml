@@ -10,7 +10,7 @@
 # ถ้าเครื่องมี PostgreSQL ลงไว้อยู่แล้ว พอร์ต 5432 จะชนกัน ให้ตั้ง POSTGRES_PORT=5433 ใน .env
 # แล้วชี้ DATABASE_URL ของฝั่ง python-ในเครื่อง ไปที่พอร์ตนั้นด้วย (service ใน compose ไม่กระทบ เพราะคุยกันในเครือข่ายของ compose)
 #
-# ลำดับตอนสตาร์ต: db พร้อม -> api รัน `alembic upgrade head` (สร้าง/อัปเดตตาราง) แล้วค่อยเปิดเซิร์ฟเวอร์
+# ลำดับตอนสตาร์ต: db พร้อม -> api รัน `alembic upgrade head` (สร้าง/อัปเดตตาราง) -> สร้าง dev user -> เปิดเซิร์ฟเวอร์
 # worker ไม่แตะสคีมาเอง แค่รอรับงานจาก redis
 
 x-backend: &backend
@@ -67,13 +67,14 @@ services:
     restart: unless-stopped
     environment:
       <<: *backend-env
-      BASE_URL: ${BASE_URL:-http://localhost:8000}
-      SECRET_KEY: ${SECRET_KEY:-}
-      STEAM_API_KEY: ${STEAM_API_KEY:-}
-      ALLOW_DEV_LOGIN: ${ALLOW_DEV_LOGIN:-1}
+      SECRET_KEY: ${SECRET_KEY:-}              # กุญแจเซ็น JWT — ไม่ตั้ง = สุ่มใหม่ทุกครั้งที่ api รีสตาร์ต (ทุกคนต้องล็อกอินใหม่)
+      ALLOW_REGISTER: ${ALLOW_REGISTER:-1}     # 1 = สมัครสมาชิกเองได้ที่หน้า /login
+      COOKIE_SECURE: ${COOKIE_SECURE:-0}       # 1 = คุกกี้ส่งเฉพาะ HTTPS
+      DEV_USERNAME: ${DEV_USERNAME:-dev}       # user สำหรับ dev ที่ backend.seed_user สร้างให้ตอนสตาร์ต
+      DEV_PASSWORD: ${DEV_PASSWORD:-cs2dev1234}
     ports:
       - "${API_PORT:-8000}:8000"
-    command: sh -c "alembic upgrade head && python -m uvicorn backend.app:app --host 0.0.0.0 --port 8000"
+    command: sh -c "alembic upgrade head && python -m backend.seed_user && python -m uvicorn backend.app:app --host 0.0.0.0 --port 8000"
 
   # ตัวแกะเดโมในเบื้องหลัง — งานเดียวคือ backend.jobs.parse_demo(match_id)
   worker:
