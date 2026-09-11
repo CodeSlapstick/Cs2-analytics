@@ -48,7 +48,7 @@ from backend.db import (  # noqa: F401  (load_dotenv ทำงานตอน im
     create_pool,
     redacted_url,
 )
-from backend.queue import QueueUnavailable, enqueue_parse, job_state, queue_health  # คิวงาน parse (Sprint 2)
+from backend.jobqueue import QueueUnavailable, enqueue_parse, job_state, queue_health  # คิวงาน parse (Sprint 2)
 
 # ---------------------------------------------------------------------------
 # ส่วนที่ 1 — ค่าตั้งต้น (CONFIG) อยากแก้อะไรแก้ตรงนี้ที่เดียว
@@ -523,7 +523,25 @@ async def api_match(match_id: int, _: dict = Depends(require_login), conn: async
                    (SELECT COUNT(*) FROM mk WHERE attacker_id = p.steam_id AND headshot) AS headshots
             FROM ids JOIN players p USING (steam_id)
             ORDER BY kills DESC, deaths ASC""", match_id)
-    return {"match": dict(match), "rounds": rows(rounds_), "scoreboard": rows(scoreboard)}
+    # ฟีเจอร์ต่อคน (backend/features — คำนวณตอนโหลด เก็บใน player_rounds): opening / trade / clutch / buy type
+    feats = await conn.fetch("""
+        SELECT pr.steam_id::text AS steam_id,
+               COUNT(*) FILTER (WHERE pr.opening_kill)       AS opening_kills,
+               COUNT(*) FILTER (WHERE pr.opening_death)      AS opening_deaths,
+               COALESCE(SUM(pr.trade_kills), 0)              AS trade_kills,
+               COUNT(*) FILTER (WHERE pr.was_traded)         AS traded_deaths,
+               COUNT(*) FILTER (WHERE pr.clutch_vs > 0)      AS clutch_attempts,
+               COUNT(*) FILTER (WHERE pr.clutch_won)         AS clutch_wins,
+               COUNT(*) FILTER (WHERE pr.buy_type = 'full')  AS full_buys,
+               COUNT(*) FILTER (WHERE pr.buy_type = 'force') AS force_buys,
+               COUNT(*) FILTER (WHERE pr.buy_type = 'eco')   AS eco_buys,
+               MAX(pr.features_version)                      AS features_version
+        FROM player_rounds pr JOIN rounds r ON r.id = pr.round_id
+        WHERE r.match_id = $1
+        GROUP BY pr.steam_id""", match_id)
+    # features_version 0 = แถวจากยุคก่อนมีฟีเจอร์ (ยังไม่ backfill) — ไม่ส่งค่าศูนย์หลอก ๆ ไปให้หน้าเว็บ
+    features = {f["steam_id"]: dict(f) for f in feats if f["features_version"]}
+    return {"match": dict(match), "rounds": rows(rounds_), "scoreboard": rows(scoreboard), "features": features}
 
 
 # ---------------------------------------------------------------------------

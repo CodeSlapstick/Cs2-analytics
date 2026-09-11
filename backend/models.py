@@ -7,7 +7,6 @@ backend/models.py — SQLAlchemy 2.0 models ของทุกตาราง (�
 
 ชื่อตารางเทียบกับเอกสารดีไซน์ Sprint 2
     player_round_stats ในเอกสาร  =  ตาราง player_rounds ที่นี่ (ชื่อเดิมจาก Sprint 1, view ทุกตัวอ้างชื่อนี้อยู่)
-    match_players / player_positions  เพิ่มใน migration 0003
 """
 from datetime import datetime
 
@@ -19,6 +18,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    SmallInteger,
     String,
     Text,
     UniqueConstraint,
@@ -79,6 +79,20 @@ class Match(Base):
     __table_args__ = (
         CheckConstraint("status IN ('queued', 'parsing', 'done', 'error')", name="matches_status_check"),
         Index("matches_status_idx", "status"),
+    )
+
+
+class MatchPlayer(Base):
+    """ใครเล่นในแมตช์ไหน — สรุปจาก player_rounds ตอนโหลด (start_side = ฝั่งในรอบแรกที่เล่น = ระบุทีม)"""
+    __tablename__ = "match_players"
+    match_id: Mapped[int] = mapped_column(ForeignKey("matches.id", ondelete="CASCADE"), primary_key=True)
+    steam_id: Mapped[int] = mapped_column(ForeignKey("players.steam_id"), primary_key=True)
+    start_side: Mapped[str | None] = mapped_column(Text)
+    rounds: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+
+    __table_args__ = (
+        CheckConstraint("start_side IN ('ct', 't')", name="match_players_start_side_check"),
+        Index("match_players_player_idx", "steam_id"),
     )
 
 
@@ -155,7 +169,11 @@ class Damage(Base):
 
 
 class PlayerRound(Base):
-    """ผู้เล่นรายรอบ (= player_round_stats ในเอกสารดีไซน์) — ฝั่ง / มูลค่าอุปกรณ์ / รอดไหม"""
+    """ผู้เล่นรายรอบ (= player_round_stats ในเอกสารดีไซน์)
+
+    ครึ่งแรกมาจาก parser ตรง ๆ (ฝั่ง / มูลค่าอุปกรณ์ / รอดไหม)
+    ครึ่งหลังคือฟีเจอร์ที่ backend/features/compute.py คำนวณตอนโหลด ตามนิยามใน definitions.py
+    """
     __tablename__ = "player_rounds"
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     round_id: Mapped[int] = mapped_column(ForeignKey("rounds.id", ondelete="CASCADE"), nullable=False)
@@ -164,11 +182,50 @@ class PlayerRound(Base):
     equip_value: Mapped[int | None] = mapped_column(Integer)   # มูลค่าอุปกรณ์ตอน freeze time จบ
     balance: Mapped[int | None] = mapped_column(Integer)       # เงินในกระเป๋าตอนนั้น
     survived: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    # --- ฟีเจอร์ (migration 0003) ---
+    buy_type: Mapped[str | None] = mapped_column(Text)          # pistol / full / force / eco
+    kills: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    deaths: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    assists: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    headshots: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    damage: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    opening_kill: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    opening_death: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    trade_kills: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    was_traded: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    clutch_vs: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    clutch_won: Mapped[bool | None] = mapped_column(Boolean)
+    kast: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    features_version: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
 
     __table_args__ = (
         UniqueConstraint("round_id", "steam_id"),
         CheckConstraint("side IN ('ct', 't')", name="player_rounds_side_check"),
+        CheckConstraint("buy_type IS NULL OR buy_type IN ('pistol', 'full', 'force', 'eco')",
+                        name="player_rounds_buy_type_check"),
         Index("player_rounds_player_idx", "steam_id"),
+    )
+
+
+class PlayerPosition(Base):
+    """ตำแหน่งผู้เล่นที่ 1 Hz — หนึ่งแถวต่อคนต่อวินาที เฉพาะช่วงที่รอบกำลังเล่นและคนนั้นยังมีชีวิต"""
+    __tablename__ = "player_positions"
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    match_id: Mapped[int] = mapped_column(ForeignKey("matches.id", ondelete="CASCADE"), nullable=False)
+    round_num: Mapped[int] = mapped_column(Integer, nullable=False)
+    tick: Mapped[int] = mapped_column(Integer, nullable=False)
+    steam_id: Mapped[int] = mapped_column(ForeignKey("players.steam_id"), nullable=False)
+    side: Mapped[str | None] = mapped_column(Text)
+    x: Mapped[float] = mapped_column(REAL, nullable=False)
+    y: Mapped[float] = mapped_column(REAL, nullable=False)
+    z: Mapped[float | None] = mapped_column(REAL)
+    health: Mapped[int | None] = mapped_column(SmallInteger)
+    place: Mapped[str | None] = mapped_column(Text)
+
+    __table_args__ = (
+        CheckConstraint("side IN ('ct', 't')", name="player_positions_side_check"),
+        Index("player_positions_match_round_idx", "match_id", "round_num"),
+        Index("player_positions_player_idx", "steam_id"),
     )
 
 

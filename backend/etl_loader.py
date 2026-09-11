@@ -4,7 +4,7 @@ backend/etl_loader.py — เอาผลจาก parser (dict/JSON ที่ n
 
     python backend/etl_loader.py                      # โหลดทุกไฟล์ใน output/json (ข้ามที่เคยโหลด)
     python backend/etl_loader.py output/json/X.json   # ไฟล์เดียว
-    python backend/etl_loader.py --force              # โหลดทับของเดิม
+    python backend/etl_loader.py --force              # โหลดทับของเดิม (ใช้ backfill ฟีเจอร์ให้แมตช์เก่าด้วย)
 
     จากโค้ดอื่น:
         from backend.etl_loader import load_match_doc, load_match_json
@@ -15,6 +15,9 @@ idempotent ด้วยวิธีเดียว
     ก่อน INSERT ลูก ๆ ของแมตช์ (rounds -> kills/damages/player_rounds/grenades) จะ DELETE rounds ของแมตช์นั้นทิ้งก่อนเสมอ
     (ตารางลูกทั้งหมด ON DELETE CASCADE จาก rounds) แล้วค่อยใส่ใหม่ในทรานแซกชันเดียว
     รันซ้ำแมตช์เดิมกี่ครั้งจึงได้ข้อมูลชุดเดียว และ matches.id ไม่เปลี่ยน (หน้าเว็บที่ poll อยู่ไม่หลุด)
+
+ฟีเจอร์ (opening / trade / buy type / clutch / KAST) คำนวณที่นี่ด้วย backend/features/compute.py
+แล้วเก็บลง player_rounds — คำนวณครั้งเดียวตอนโหลด ไม่ต้องคิดใหม่ทุกครั้งที่หน้าเว็บถาม
 """
 import argparse
 import asyncio
@@ -29,6 +32,7 @@ sys.path.insert(0, str(ROOT))      # ให้รัน python backend/etl_loade
 
 from backend.db import DATABASE_URL as DB_URL  # noqa: E402  (โหลด .env ตอน import)
 from backend.db import apply_schema  # noqa: E402
+from backend.features.compute import compute_features  # noqa: E402
 
 
 def _int(v):
@@ -52,10 +56,12 @@ async def _replace_children(conn, match_id: int, doc: dict) -> dict:
     rounds = doc.get("rounds", [])
     kills = doc.get("kills", [])
     damages = doc.get("damages", [])
-    player_rounds = doc.get("player_rounds", [])   # schema_version >= 3
     grenades = doc.get("grenades", [])             # schema_version >= 3
+    positions = doc.get("positions", [])           # schema_version >= 4 (1 Hz)
 
-    await conn.execute("DELETE FROM rounds WHERE match_id = $1;", match_id)   # cascade ไปทุกตารางลูก
+    await conn.execute("DELETE FROM rounds WHERE match_id = $1;", match_id)            # cascade ไปทุกตารางลูก
+    await conn.execute("DELETE FROM match_players WHERE match_id = $1;", match_id)     # สองตารางนี้ผูกกับ match ตรง ๆ
+    await conn.execute("DELETE FROM player_positions WHERE match_id = $1;", match_id)
 
     round_id_map: dict[int, int] = {}
     for r in rounds:
@@ -101,17 +107,35 @@ async def _replace_children(conn, match_id: int, doc: dict) -> dict:
             VALUES ($1, $2, $3, $4, $5, $6, $7);
         """, dmg_rows)
 
+    # ผู้เล่นรายรอบ + ฟีเจอร์ — compute_features คืนหนึ่งแถวต่อคนต่อรอบจาก doc["player_rounds"]
+    feats = compute_features(doc)
     pr_rows = [
-        (rid_of(x), int(x["steam_id"]), x["side"], _int(x.get("equip_value")), _int(x.get("balance")),
-         bool(x.get("survived", False)))
-        for x in player_rounds if rid_of(x)
+        (round_id_map[f.round_num], f.steam_id, f.side, f.equip_value, f.balance, f.survived,
+         f.buy_type, f.kills, f.deaths, f.assists, f.headshots, f.damage,
+         f.opening_kill, f.opening_death, f.trade_kills, f.was_traded, f.clutch_vs, f.clutch_won, f.kast,
+         f.features_version)
+        for f in feats if f.round_num in round_id_map
     ]
     if pr_rows:
         await conn.executemany("""
-            INSERT INTO player_rounds (round_id, steam_id, side, equip_value, balance, survived)
-            VALUES ($1, $2, $3, $4, $5, $6)
+            INSERT INTO player_rounds (
+                round_id, steam_id, side, equip_value, balance, survived,
+                buy_type, kills, deaths, assists, headshots, damage,
+                opening_kill, opening_death, trade_kills, was_traded, clutch_vs, clutch_won, kast, features_version
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
             ON CONFLICT (round_id, steam_id) DO NOTHING;
         """, pr_rows)
+
+    # ใครเล่นในแมตช์นี้ — ฝั่งในรอบแรกที่เล่นคือ "ทีม"
+    mp: dict[int, dict] = {}
+    for f in sorted(feats, key=lambda f: f.round_num):
+        m = mp.setdefault(f.steam_id, {"start_side": f.side, "rounds": 0})
+        m["rounds"] += 1
+    if mp:
+        await conn.executemany("""
+            INSERT INTO match_players (match_id, steam_id, start_side, rounds) VALUES ($1, $2, $3, $4)
+            ON CONFLICT (match_id, steam_id) DO NOTHING;
+        """, [(match_id, sid, m["start_side"], m["rounds"]) for sid, m in mp.items()])
 
     g_rows = [
         (rid_of(g), int(g["tick"]), _int(g.get("thrower_id")), g.get("side"), g["type"])
@@ -122,8 +146,20 @@ async def _replace_children(conn, match_id: int, doc: dict) -> dict:
             INSERT INTO grenades (round_id, tick, thrower_id, side, type) VALUES ($1, $2, $3, $4, $5);
         """, g_rows)
 
+    pos_rows = [
+        (match_id, int(p["round_num"]), int(p["tick"]), int(p["steam_id"]), p.get("side"),
+         float(p["x"]), float(p["y"]), _float(p.get("z")), _int(p.get("health")), p.get("place"))
+        for p in positions if int(p.get("round_num", 0)) in round_id_map
+    ]
+    if pos_rows:
+        await conn.executemany("""
+            INSERT INTO player_positions (match_id, round_num, tick, steam_id, side, x, y, z, health, place)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10);
+        """, pos_rows)
+
     return {"rounds": len(round_id_map), "kills": len(kill_rows), "damages": len(dmg_rows),
-            "player_rounds": len(pr_rows), "grenades": len(g_rows)}
+            "player_rounds": len(pr_rows), "match_players": len(mp), "grenades": len(g_rows),
+            "positions": len(pos_rows)}
 
 
 async def load_match_doc(conn, doc: dict, *, match_id: int | None = None, force: bool = False) -> int:

@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
-import { api, isBusy, type RoundRow, type ScoreRow } from "../api";
+import { api, isBusy, type PlayerFeatures, type RoundRow, type ScoreRow } from "../api";
 
 const END_REASON: Record<string, string> = {
   ct_killed: "ฆ่า CT หมดทีม",
@@ -26,7 +26,7 @@ export function MatchOverview() {
   if (q.error) return <p className="err">โหลดแมตช์ไม่ได้: {(q.error as Error).message}</p>;
   if (!q.data) return null;
 
-  const { match, rounds, scoreboard } = q.data;
+  const { match, rounds, scoreboard, features } = q.data;
   const title = match.team_a && match.team_b ? `${match.team_a} vs ${match.team_b}` : match.demo_file;
 
   return (
@@ -55,15 +55,18 @@ export function MatchOverview() {
           </div>
 
           <section className="card">
-            <p className="eyebrow">ROUND TIMELINE</p>
-            <h2>ใครชนะรอบไหน</h2>
-            <RoundTimeline rounds={rounds} />
+            <p className="eyebrow">SCOREBOARD</p>
+            <h2>สกอร์บอร์ด</h2>
+            <Scoreboard rows={scoreboard} features={features ?? {}} />
+            {features && Object.keys(features).length === 0 && (
+              <p className="muted small">แมตช์นี้ยังไม่มีฟีเจอร์ (โหลดก่อนรุ่นที่คำนวณ) — โหลดเดโมซ้ำเพื่อคำนวณใหม่</p>
+            )}
           </section>
 
           <section className="card">
-            <p className="eyebrow">SCOREBOARD</p>
-            <h2>สกอร์บอร์ด</h2>
-            <Scoreboard rows={scoreboard} />
+            <p className="eyebrow">ROUND TIMELINE</p>
+            <h2>ใครชนะรอบไหน</h2>
+            <RoundTimeline rounds={rounds} />
           </section>
         </>
       )}
@@ -115,8 +118,9 @@ function RoundTimeline({ rounds }: { rounds: RoundRow[] }) {
   );
 }
 
-function Scoreboard({ rows }: { rows: ScoreRow[] }) {
+function Scoreboard({ rows, features }: { rows: ScoreRow[]; features: Record<string, PlayerFeatures> }) {
   const sorted = [...rows].sort((a, b) => b.rating - a.rating);
+  const hasFeatures = Object.keys(features).length > 0;
   return (
     <table className="tbl" data-testid="scoreboard">
       <thead>
@@ -129,25 +133,40 @@ function Scoreboard({ rows }: { rows: ScoreRow[] }) {
           <th className="num">HS%</th>
           <th className="num">ADR</th>
           <th className="num">KAST</th>
+          <th className="num" title="เปิดรอบ: คิลแรก / ตายแรก">
+            เปิด K/D
+          </th>
+          <th className="num" title="trade kill: ฆ่าคนที่เพิ่งฆ่าเพื่อนภายใน 5 วิ">
+            Trade
+          </th>
+          <th className="num" title="clutch: ชนะ / เจอสถานการณ์เหลือคนเดียว">
+            Clutch
+          </th>
           <th className="num">Rating</th>
         </tr>
       </thead>
       <tbody>
-        {sorted.map((p) => (
-          <tr key={p.steam_id}>
-            <td>{p.name}</td>
-            <td>{p.start_side ? <span className={`badge b-${p.start_side}`}>{p.start_side.toUpperCase()}</span> : "—"}</td>
-            <td className="num">{p.kills}</td>
-            <td className="num">{p.deaths}</td>
-            <td className="num">{p.assists}</td>
-            <td className="num">{p.hs_rate.toFixed(0)}%</td>
-            <td className="num">{p.adr.toFixed(1)}</td>
-            <td className="num">{p.kast.toFixed(0)}%</td>
-            <td className="num">
-              <b>{p.rating.toFixed(2)}</b>
-            </td>
-          </tr>
-        ))}
+        {sorted.map((p) => {
+          const f = features[p.steam_id];
+          return (
+            <tr key={p.steam_id}>
+              <td>{p.name}</td>
+              <td>{p.start_side ? <span className={`badge b-${p.start_side}`}>{p.start_side.toUpperCase()}</span> : "—"}</td>
+              <td className="num">{p.kills}</td>
+              <td className="num">{p.deaths}</td>
+              <td className="num">{p.assists}</td>
+              <td className="num">{p.hs_rate.toFixed(0)}%</td>
+              <td className="num">{p.adr.toFixed(1)}</td>
+              <td className="num">{p.kast.toFixed(0)}%</td>
+              <td className="num">{f ? `${f.opening_kills}/${f.opening_deaths}` : hasFeatures ? "0/0" : "—"}</td>
+              <td className="num">{f ? f.trade_kills : hasFeatures ? 0 : "—"}</td>
+              <td className="num">{f ? `${f.clutch_wins}/${f.clutch_attempts}` : hasFeatures ? "0/0" : "—"}</td>
+              <td className="num">
+                <b>{p.rating.toFixed(2)}</b>
+              </td>
+            </tr>
+          );
+        })}
       </tbody>
     </table>
   );

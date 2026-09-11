@@ -15,7 +15,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
-from backend.queue import QUEUE_NAME, REDIS_URL  # noqa: E402  (โหลด .env ผ่าน backend.db ตอน import ใน jobs)
+from backend.jobqueue import QUEUE_NAME, REDIS_URL  # noqa: E402  (โหลด .env ผ่าน backend.db ตอน import ใน jobs)
 
 
 def main() -> None:

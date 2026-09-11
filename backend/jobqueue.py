@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """
-backend/queue.py — ส่งงาน parse เข้าคิว และถามสถานะงาน
+backend/jobqueue.py — ส่งงาน parse เข้าคิว และถามสถานะงาน
 
-    from backend.queue import enqueue_parse, job_state
+    from backend.jobqueue import enqueue_parse, job_state
     job_id = enqueue_parse(match_id)     # เข้าคิว "parse" ให้ worker (python -m backend.worker) หยิบไปทำ
     job_state(job_id)                    # 'queued' / 'started' / 'finished' / 'failed' / None
 

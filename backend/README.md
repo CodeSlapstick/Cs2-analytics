@@ -7,7 +7,13 @@ FastAPI + PostgreSQL 16 (ผ่าน asyncpg) — เสิร์ฟหน้�
 backend/
   app.py          FastAPI — routes ทั้งหมด
   db.py           จุดเดียวที่ต่อ PostgreSQL (อ่าน DATABASE_URL จาก .env ที่ราก)
-  schema.sql      โครงตาราง + view (รันซ้ำได้ ทุกคำสั่งเป็น IF NOT EXISTS)
+  models.py       SQLAlchemy models = แหล่งความจริงของสคีมา (ตารางสร้างด้วย Alembic: alembic upgrade head)
+  alembic/        migration ทีละรุ่น (0001 baseline, 0002 สถานะแมตช์, 0003 ฟีเจอร์ + positions)
+  views.sql       view ทั้งหมด (รันซ้ำทุกครั้งที่สตาร์ต ไม่แตะข้อมูล)
+  features/       นิยาม 4 ตัว (definitions.py) + ตัวคำนวณจาก parser output (compute.py)
+  parser/         .dem -> dict (service.py) ใช้ทั้ง worker และ CLI
+  jobs.py / jobqueue.py / worker.py   งาน parse_demo(match_id) ผ่านคิว RQ บน Redis
+  tests/          pytest (นิยาม 4 ตัว, fixture เดโมจริง, parser)
   load_kills.py   data/all_kills.csv -> DB
 ```
 
@@ -15,7 +21,7 @@ backend/
 
 ```bash
 cp .env.example .env                    # แก้ POSTGRES_PORT=5433 ถ้าเครื่องมี Postgres อยู่แล้ว
-docker compose up -d db                 # เปิดฐานข้อมูล (สร้างตารางจาก schema.sql ให้เอง)
+docker compose up -d db redis           # เปิดฐานข้อมูลกับคิว แล้ว alembic upgrade head เพื่อสร้างตาราง
 python backend/load_kills.py            # โหลดชุดคิล 7,270 แถวเข้า DB (~2 วินาที)
 python -m uvicorn backend.app:app --reload
 ```
@@ -79,6 +85,6 @@ python backend/load_kills.py --force    # หรือลบทั้งหม�
 
 ## แก้ schema
 
-แก้ `schema.sql` แล้ว
-- เพิ่มตาราง/คอลัมน์/view ใหม่: รีสตาร์ต api ก็พอ (มันรัน schema.sql ทุกครั้งที่สตาร์ต)
+แก้สคีมาแล้ว (models.py + migration ใหม่) หรือแก้ `views.sql` แล้ว
+- view ใหม่: รีสตาร์ต api ก็พอ (มันรัน views.sql ทุกครั้งที่สตาร์ต) · ตาราง/คอลัมน์ใหม่: `alembic upgrade head`
 - เปลี่ยนคอลัมน์ที่มีอยู่แล้ว: `IF NOT EXISTS` ไม่ช่วย ต้อง `docker compose down -v` แล้วเริ่มใหม่ + โหลดข้อมูลอีกรอบ

@@ -47,10 +47,26 @@ export interface ScoreRow {
   rating: number;
 }
 
+/** ฟีเจอร์จาก backend/features (นิยามใน definitions.py) รวมทั้งแมตช์ต่อคน */
+export interface PlayerFeatures {
+  steam_id: string;
+  opening_kills: number;
+  opening_deaths: number;
+  trade_kills: number;
+  traded_deaths: number;
+  clutch_attempts: number;
+  clutch_wins: number;
+  full_buys: number;
+  force_buys: number;
+  eco_buys: number;
+  features_version: number;
+}
+
 export interface MatchDetail {
   match: Match;
   rounds: RoundRow[];
   scoreboard: ScoreRow[];
+  features?: Record<string, PlayerFeatures>; // ว่างสำหรับแมตช์เก่าที่ยังไม่ได้ backfill
 }
 
 export interface StatusInfo {

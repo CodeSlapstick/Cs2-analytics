@@ -57,7 +57,7 @@ from backend.parser.constants import (  # noqa: E402  ชุด event/prop เ�
 DEMO_DIR = ROOT / "demos"
 OUT_DIR = ROOT / "output" / "json"
 
-SCHEMA_VERSION = 3      # ขยับเมื่อโครง JSON เปลี่ยนแบบที่ ETL เดิมอ่านไม่ได้  (2 = damages, 3 = player_rounds + grenades)
+SCHEMA_VERSION = 4      # ขยับเมื่อโครง JSON เปลี่ยนแบบที่ ETL เดิมอ่านไม่ได้  (2 = damages, 3 = player_rounds + grenades, 4 = positions 1 Hz)
 
 # ชื่อไฟล์เดโมจาก HLTV มีแบบแผน "ทีมA-vs-ทีมB-แมพ.dem" (regex เดียวกับ backend/load_kills.py)
 TEAMS_RE = re.compile(r"^(?P<a>.+?)-vs-(?P<b>.+?)-[^-]+\.dem$", re.IGNORECASE)
@@ -87,7 +87,8 @@ DAMAGE_COLUMNS = {
 #   ทำไมใช้ current_equip_value ไม่ใช่ round_start_equip_value
 #   ตัวหลังในเดโม CS2 ค้างค่าเก่า (เห็น 200 ทั้งที่ถือ M4 อยู่) ส่วนตัวแรก ณ tick ที่ freeze จบ
 #   คือมูลค่าจริง ซึ่งตรงกับนิยาม "equipment value at freeze-time end" ของ HLTV พอดี
-TICK_PROPS = ["team_name", "is_alive", "current_equip_value", "balance"]
+TICK_PROPS = ["team_name", "is_alive", "current_equip_value", "balance",
+              "X", "Y", "Z", "last_place_name", "health"]   # ห้าตัวหลังใช้กับตำแหน่ง 1 Hz (positions)
 
 for _s in (sys.stdout, sys.stderr):     # ให้คอนโซล Windows พิมพ์ไทยได้
     try:
@@ -171,6 +172,7 @@ def parse_demo(path: Path) -> dict:
     #   tick "start" = freeze จบ (ฝั่ง + เงิน)   tick "end" = round_end (ใครยังรอด)
     #   ใช้ end ไม่ใช่ official_end เพราะช่วงหลัง round_end ยังยิงกันได้ คนที่ตายตอนนั้นไม่นับว่าเสียรอบ
     want: dict[int, tuple[int, str]] = {}
+    pos_want: dict[int, int] = {}          # tick -> round_num ของตำแหน่ง 1 Hz (ห้ามเก็บทุก tick — ดูคอมเมนต์ positions)
     for r in dem.rounds.iter_rows(named=True):
         fe = r["freeze_end"] or r["start"]
         en = r["end"] or r["official_end"]
@@ -178,7 +180,12 @@ def parse_demo(path: Path) -> dict:
             want[int(fe)] = (r["round_num"], "start")
         if en is not None:
             want[int(en)] = (r["round_num"], "end")
-    ticks = pl.from_pandas(dem.parser.parse_ticks(wanted_props=TICK_PROPS, ticks=sorted(want))).join(
+        if fe is not None and en is not None:
+            for t in range(int(fe), int(en), tickrate):      # วินาทีละครั้ง ตั้งแต่ freeze จบถึงรอบจบ
+                pos_want[t] = int(r["round_num"])
+    # ขอ parser ทีเดียวทั้ง tick ของ player_rounds และของ positions — parser (Rust) ข้าม tick ที่ไม่ขอให้เอง
+    all_ticks = pl.from_pandas(dem.parser.parse_ticks(wanted_props=TICK_PROPS, ticks=sorted(set(want) | set(pos_want))))
+    ticks = all_ticks.join(
         pl.DataFrame({"tick": list(want), "round_num": [v[0] for v in want.values()], "at": [v[1] for v in want.values()]}),
         on="tick",
     )
@@ -197,6 +204,27 @@ def parse_demo(path: Path) -> dict:
             pl.col("survived").fill_null(False),
         )
         .sort(["round_num", "steam_id"])
+    )
+
+    # --- positions: ตำแหน่งผู้เล่น 1 Hz เฉพาะช่วงที่รอบกำลังเล่นและคนนั้นยังมีชีวิต ---
+    #   เดโมบันทึก 64-128 tick/วินาที ถ้าเก็บทุก tick จะได้ ~2.7 ล้านแถวต่อแมตช์ และ 99% ซ้ำกัน
+    #   วินาทีละครั้งเหลือ ~21,000 แถว ยังพอบอกได้ว่าใครไปทางไหน โรเทตตอนไหน
+    #   คนตายแล้วยังมีพิกัดค้างตรงที่ตาย ถ้าไม่กรอง is_alive จะกลายเป็น "ยืนนิ่งตรงนั้นทั้งรอบ"
+    positions = _clean(
+        all_ticks.join(pl.DataFrame({"tick": list(pos_want), "round_num": list(pos_want.values())}), on="tick")
+        .filter(pl.col("is_alive"))
+        .select(
+            pl.col("round_num").cast(pl.Int32),
+            pl.col("tick").cast(pl.Int32),
+            pl.col("steamid").cast(pl.Int64).alias("steam_id"),
+            pl.when(pl.col("team_name") == "CT").then(pl.lit("ct")).otherwise(pl.lit("t")).alias("side"),
+            pl.col("X").cast(pl.Float32).alias("x"),
+            pl.col("Y").cast(pl.Float32).alias("y"),
+            pl.col("Z").cast(pl.Float32).alias("z"),
+            pl.col("health").cast(pl.Int16),
+            pl.col("last_place_name").alias("place"),
+        )
+        .sort(["round_num", "tick", "steam_id"])
     )
 
     # --- grenades: ระเบิดทุกลูก จาก weapon_fire (grenade_thrown ไม่มีในเดโม 14 จาก 50 ไฟล์ — ดู parse_grenades.py) ---
@@ -245,13 +273,14 @@ def parse_demo(path: Path) -> dict:
             "team_b": team_b,
         },
         "counts": {"players": len(players), "rounds": len(rounds), "kills": len(kills), "damages": len(damages),
-                   "player_rounds": len(player_rounds), "grenades": len(grenades)},
+                   "player_rounds": len(player_rounds), "grenades": len(grenades), "positions": len(positions)},
         "players": players.to_dicts(),
         "rounds": rounds.to_dicts(),
         "kills": kills.to_dicts(),
         "damages": damages.to_dicts(),
         "player_rounds": player_rounds.to_dicts(),
         "grenades": grenades.to_dicts(),
+        "positions": positions.to_dicts(),
     }
 
 
