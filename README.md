@@ -1,205 +1,154 @@
-# CS2 Map Zone Analytics
+# CS2 Scouting Platform
 
-หาว่า "จุดปะทะสำคัญของแมพอยู่ตรงไหน และตรงไหนใครได้เปรียบ" จากไฟล์ demo ของ
-Counter-Strike 2 จริง แล้ววัดผลด้วยตัวเลขที่เถียงกลับไม่ได้
-(SP-404 Senior Project · UTCC STECH)
+เว็บวิเคราะห์เดโม Counter-Strike 2 สำหรับโค้ช/ทีม — อัปโหลดไฟล์ `.dem` แล้วระบบแกะในเบื้องหลัง
+เปิดดูสถิติของแมตช์นั้นได้ทันทีที่เสร็จ (SP-404 Senior Project · UTCC STECH)
 
 ```
-demos/*.dem ──awpy──> data/all_kills.csv ──┬── grid_ml.py      ช่องนี้ฝั่งไหนชนะการดวล
-                                            └── round_win.py    สถานะนี้ใครชนะรอบ
-                                                     ↓
-                                            round_review.py  เจาะรายรอบของแมตช์เดียว
-                                                     ↓
-                                            frontend/build.py ──> output/*.html
+เบราว์เซอร์ ──► frontend (React, :3000) ──► api (FastAPI, :8000) ──► PostgreSQL
+                                                │  ▲                      ▲
+                                        enqueue │  │ status               │ INSERT
+                                                ▼  │                      │
+                                              Redis ──► worker ── parse_demo(match_id) ── awpy/demoparser2
+                                                        │
+                                                        └── backend/features  (opening / trade / buy / clutch / KAST)
 ```
 
-**ทำไมต้องตั้งโจทย์แบบนี้** — วิธีที่ทำกันทั่วไปคือตีกริดทับแมพแล้วให้คะแนนแต่ละช่อง
-ตามน้ำหนักที่คนตั้งเอง ปัญหาคือ **ไม่มีเฉลยให้วัด** ตั้งน้ำหนักคนละชุดก็ได้แผนที่คนละแบบ
-โดยไม่มีทางบอกว่าอันไหนถูก โปรเจกต์นี้จึงเปลี่ยนไปถามคำถามที่มีคำตอบอยู่ในข้อมูลอยู่แล้ว
-คือ "การดวลที่ช่องนี้ฝั่งไหนชนะ" ทำให้วัดด้วย Brier / AUC เทียบ baseline ได้ตรง ๆ
+Sprint 1 ตอบว่า "จุดปะทะสำคัญอยู่ตรงไหน ตรงไหนใครได้เปรียบ" ด้วยโมเดลบน Mirage 50 แมตช์ (ดู `research/`)
+Sprint 2 เปลี่ยนสิ่งนั้นจากสคริปต์เป็นระบบที่ใช้งานได้จริง end-to-end: **อัปโหลด → parse ในเบื้องหลัง → ดูสถิติ**
 
 ---
 
-## เริ่มใช้
+## เริ่มใช้ในคำสั่งเดียว (Docker)
 
 ```bash
-pip install -r requirements.txt
-
-python pipeline/grid_ml.py       # กริด + ML  ใช้ csv ที่ให้มาในรีโป รันได้ทันที
-python pipeline/round_win.py     # โมเดลโอกาสชนะรอบ  ใช้ csv เดียวกับ grid_ml
-python pipeline/round_review.py  # เจาะแมตช์เดียวเป็นรายรอบ  ต้องมีไฟล์ .dem ก่อน
-python frontend/build.py         # เอาผลข้างบนทำเป็นหน้าเว็บ -> output/*.html
+cp .env.example .env          # ค่าเริ่มต้นใช้ได้เลย (ถ้าเครื่องมี PostgreSQL อยู่แล้ว ตั้ง POSTGRES_PORT=5433)
+docker compose up -d          # db + redis + api + worker + frontend
 ```
 
-รันได้ทันทีตั้งแต่โคลนเสร็จ เพราะ `data/all_kills.csv` (ชุดคิลที่ parse ไว้แล้ว)
-อยู่ในรีโปด้วย ไม่ต้องมีไฟล์ `.dem`
-
-ผลลัพธ์ทุกอย่างลงโฟลเดอร์ `output/` ที่รากโปรเจกต์ — `grid_ml_map.png` คือรูปนิ่ง
-ส่วนหน้าเว็บมีสองหน้า ดับเบิลคลิกเปิดได้เลยไม่ต้องมีเซิร์ฟเวอร์
-
-| ไฟล์ | ดูอะไร |
+| ที่อยู่ | คืออะไร |
 |---|---|
-| `output/index.html`  | แผนที่รวมทุกแมตช์ — ตรงไหนปะทะหนัก ตรงไหนใครได้เปรียบ |
-| `output/rounds.html` | รีวิวรายรอบของแมตช์เดียว |
+| http://localhost:3000 | หน้าเว็บ Sprint 2 (React) — Match Library + Match Overview |
+| http://localhost:8000 | API (Swagger ที่ `/docs`) + หน้าเว็บ Sprint 1 ที่ยังใช้ได้ (`/upload` `/map` `/ml` …) |
+| localhost:5432 (หรือ `POSTGRES_PORT`) | PostgreSQL · user/pass `postgres` · db `cs2_analytics` |
 
-### สองคำถาม คนละระดับกัน
+`api` รัน `alembic upgrade head` ให้เองตอนสตาร์ต จึงเปิดบนฐานข้อมูลเปล่าได้ทันที และเปิดบนฐานข้อมูลเดิมของ Sprint 1 ได้โดยไม่เสียข้อมูล
 
-โปรเจกต์นี้มีโมเดลสองตัว ใช้ข้อมูลชุดเดียวกันแต่ถามคนละคำถาม และนั่นคือประเด็นทั้งหมด
+```bash
+docker compose logs -f api worker     # ดู log
+docker compose down                   # ปิด (ข้อมูลยังอยู่ใน volume pgdata)
+docker compose down -v                # ปิดแล้วลบข้อมูลทิ้ง
+```
 
-| | `grid_ml.py` | `round_win.py` |
+## รันในเครื่องตอนพัฒนา
+
+```bash
+docker compose up -d db redis                  # ฐานข้อมูล + คิว ใน Docker
+pip install -r requirements-dev.txt
+alembic upgrade head                           # สร้าง/อัปเดตตาราง
+python -m uvicorn backend.app:app --reload     # API ที่ :8000
+python -m backend.worker                       # worker (อีกหน้าต่าง) — บน Windows ใช้ SimpleWorker ให้เอง
+cd frontend && npm install && npm run dev      # React ที่ :5173 (proxy /api ไป :8000 ให้)
+```
+
+ไม่มี Redis ก็ dev ได้: ตั้ง `QUEUE_BACKEND=thread` ใน `.env` แล้ว api จะรัน parse ใน thread ของตัวเอง (พฤติกรรมที่หน้าเว็บเห็นเหมือนกันทุกอย่าง)
+
+## วิธีเพิ่มเดโม
+
+1. **ผ่านหน้าเว็บ** — เปิด http://localhost:3000 ลากไฟล์ `.dem` ลงกล่อง (เลือกหลายไฟล์ได้)
+   แถวจะขึ้นเป็น `รอคิว → กำลังแกะ → พร้อม` เองโดยไม่ต้องรีเฟรช (poll ทุก 2 วินาที) แล้วกด "ดูสถิติ →"
+2. **ผ่าน API** — `POST /api/demos` (multipart `file`, `force=1` ถ้าจะโหลดทับ) ตอบ 202 พร้อม `status_url`
+3. **ผ่าน CLI** (ไม่ผ่านคิว) — วางไฟล์ใน `demos/` แล้ว
+   ```bash
+   python -m backend.parser.service demos/X.dem     # -> output/json/X.json
+   python backend/etl_loader.py output/json/X.json  # -> PostgreSQL (--force = โหลดทับ + คำนวณฟีเจอร์ใหม่)
+   ```
+
+ชื่อไฟล์แบบ `ทีมA-vs-ทีมB-แมพ.dem` จะถูกแกะเป็นชื่อทีมให้ ไฟล์ชื่อซ้ำถูกปฏิเสธ (409) เว้นแต่ติ๊ก "โหลดทับ" หรือแมตช์นั้นเคยพัง
+ทุกงานเป็น idempotent: โหลดแมตช์เดิมซ้ำกี่ครั้งก็ได้ข้อมูลชุดเดียว และ `matches.id` ไม่เปลี่ยน
+
+## API
+
+| Method | Path | ใช้ทำอะไร |
 |---|---|---|
-| ถามว่า | การดวลครั้งนี้ **คนยิง**เป็น CT ไหม | จากสถานะตรงนี้ CT จะ**ชนะรอบ**ไหม |
-| ฟีเจอร์ที่ได้ผล | ตำแหน่งบนแมพ (+16.9%) | คนเหลือกี่ต่อกี่ + ระเบิด (+32.8%) |
-| AUC | 0.743 | 0.826 |
+| POST | `/api/demos` | อัปโหลดเดโม → สร้างแถว `matches` (queued) → เข้าคิว → 202 |
+| GET | `/api/matches/{id}/status` | `queued / parsing / done / error` + `error_message` + สถานะงานในคิว |
+| GET | `/api/matches` | รายการแมตช์ทั้งหมดพร้อมสรุปและสถานะ |
+| GET | `/api/matches/{id}` | สรุป + รายรอบ + สกอร์บอร์ด + ฟีเจอร์ต่อคน (opening / trade / clutch / buy) |
+| GET | `/api/health` | DB ต่อได้ไหม คิวยาวแค่ไหน มี worker กี่ตัว |
 
-เอาฟีเจอร์ข้ามฝั่งกันแล้วพังทั้งคู่ — สถานะกลางรอบทายการดวลได้ AUC แค่ 0.552
-(เกือบเดาสุ่ม) เพราะ **ความได้เปรียบเป็นเรื่องของรอบ ไม่ใช่ของกระสุนนัดเดียว**
-ส่วนตำแหน่งบนแมพก็ไม่ได้บอกว่าใครจะชนะรอบ
+endpoint อื่น ๆ ของ Sprint 1 (`/api/players` `/api/heatmap` `/api/tactical` `/api/ml/*`) ยังอยู่ครบ — ดู `/docs`
+ทุก `/api/*` ต้องล็อกอิน: หน้า React ล็อกอินโหมดทดสอบให้เอง (Sprint 2 ยังไม่มีระบบผู้ใช้ — `ALLOW_DEV_LOGIN=1`)
 
-ประโยชน์ของตัวที่สองคือทำให้ "ตกเป็นรอง 3v5" กลายเป็นตัวเลขที่วัดได้ และชี้ได้ว่า
-**คิลไหนคือจังหวะที่ตัดสินรอบ** (คิลที่ขยับโอกาสชนะมากที่สุด) ซึ่งโผล่ในหน้า `rounds.html`
+## นิยามที่ใช้ทั้งระบบ — `backend/features/definitions.py`
 
-### รันด้วย Docker แทนก็ได้
-
-```bash
-docker build -t cs2-analytics .
-docker run --rm -v "${PWD}/output:/app/output" cs2-analytics
-```
-
-ไม่ต้องลง Python หรือ library อะไรเลย ค่าเริ่มต้นคือรัน `pipeline/grid_ml.py`
-ซึ่งใช้ csv ที่ติดมากับรีโปอยู่แล้ว จึงได้ผลทันทีโดยไม่ต้องมีไฟล์ `.dem`
-
-ต้อง mount `output/` ออกมาด้วย ไม่งั้นไฟล์ผลลัพธ์หายไปพร้อม container
-ถ้าจะรันสคริปต์อื่นก็ต่อท้ายคำสั่งได้ และถ้าสคริปต์นั้นต้องอ่านไฟล์ `.dem`
-ต้อง mount `demos/` เข้าไปด้วย (ไฟล์ `.dem` ไม่ถูกใส่เข้า image โดยตั้งใจ — ดู `.dockerignore`)
-
-```bash
-docker run --rm \
-  -v "${PWD}/demos:/app/demos" \
-  -v "${PWD}/output:/app/output" \
-  cs2-analytics python pipeline/round_review.py
-```
-
-ภาพที่ได้ราว 1.35 GB ส่วนใหญ่เป็น `awpy` กับ `polars` ที่ใช้เฉพาะตอน parse `.dem`
-ถ้าต้องการแค่ `grid_ml.py` ตัดสองบรรทัดท้ายใน `requirements.txt` ออกแล้ว build ใหม่
-ภาพจะเล็กลงราวครึ่งหนึ่ง
-
-### หน้าเว็บ + ล็อกอิน Steam
-
-`backend/app.py` เสิร์ฟหน้าล็อกอินด้วย Steam OpenID และตอบ `/api/*` จาก PostgreSQL
-(แมตช์ / รอบ / คิล / นักแข่ง — โครงอยู่ที่ `backend/schema.sql`)
-
-```bash
-cp .env.example .env                    # แก้ค่าถ้าต้องการ (พอร์ตชนกันให้ตั้ง POSTGRES_PORT=5433)
-docker compose up -d db                 # เปิดฐานข้อมูล สร้างตารางให้เอง
-python backend/load_kills.py            # โหลด data/all_kills.csv เข้า DB
-python -m uvicorn backend.app:app --reload    # เปิด http://localhost:8000  (Swagger ที่ /docs)
-```
-
-หรือ `docker compose up -d` เปิดทั้ง db + api ในคำสั่งเดียว ไม่ต้องลง Python
-
-`.env` ที่รากโปรเจกต์เป็นไฟล์เดียวที่ทั้ง docker compose และ `backend/` อ่าน
-รายละเอียด API และโครงตารางอยู่ที่ [backend/README.md](backend/README.md)
-ส่วนหน้าเว็บอยู่ที่ [frontend/README.md](frontend/README.md)
-
-## กริด + ML
-
-`pipeline/grid_ml.py` แบ่งแมพ (ตั้งที่ตัวแปร `MAP`) เป็นตาราง `GRID_N × GRID_N` เอาจุดที่คนตาย
-หย่อนลงช่อง แล้วเทรน logistic regression ทำนายว่า **การดวลในช่องนั้นฝั่งไหนเป็นคนยิงชนะ**
-(`y = 1` ถ้าคนยิงเป็น CT)
-
-ผลบนข้อมูลจริง 3,776 ดวล จาก 26 แมตช์:
-
-| วิธี | Brier | AUC | ดีกว่า baseline |
-|---|---|---|---|
-| baseline — ทายค่าเฉลี่ยรวม ไม่ดูตำแหน่ง | 0.2490 | — | — |
-| กริด 16×16 + logistic | 0.2276 | 0.666 | +8.6% |
-
-ช่องที่ได้ตรงกับความรู้เกม — B site CT ชนะ 83% (172 ดวล), Hole ฝั่ง T ได้เปรียบที่ 0.33
-
-**สองอย่างที่ทำให้ตัวเลขไม่หลอกตัวเอง** (เขียนอธิบายไว้ในหัวไฟล์แล้ว)
-
-1. แบ่ง train/test ด้วย `GroupKFold` โดย **group = แมตช์** ถ้าสุ่มแบ่งรายแถว คิลจาก
-   แมตช์เดียวกันจะไปโผล่ทั้งสองฝั่งของการแบ่ง คะแนนจะสวยเกินจริง
-2. ใช้ **แค่ตำแหน่ง** เป็นฟีเจอร์ — `headshot` / `distance` / `weapon` ล้วนเป็นสิ่งที่
-   รู้ได้หลังดวลจบแล้ว ใส่เข้าไปคือโกงตัวเอง
-
-ค่าที่ปรับได้อยู่ที่บล็อก `CONFIG` หัวไฟล์: `GRID_N`, `N_SPLITS`, `MIN_KILLS`
-
-> **ข้อควรรู้** — ถ้าเอา baseline อีกตัวมาเทียบ คือใช้ชื่อ callout (`victim_place`)
-> ที่แมพมีให้อยู่แล้วแทนกริด จะได้ Brier 0.2254 ซึ่ง **ดีกว่ากริด 16×16 นิดหน่อย**
-> ต้องดันกริดถึง 24×24 ถึงจะเบียดชนะได้แบบเฉียดฉิว แปลว่า callout ที่ผู้เล่นตั้งกันมา
-> แบ่งพื้นที่ได้ดีพอ ๆ กับกริดที่ขีดด้วยเครื่อง
-
-## หาไฟล์ .dem มาจากไหน
-
-วางไฟล์ `.dem` ไว้ในโฟลเดอร์ `demos/` โปรแกรมอ่านให้เอง (ไฟล์ `.dem` ไม่ถูกเก็บใน git
-เพราะไฟล์ละ 200–500 MB)
-
-| แหล่ง | วิธีเอา |
+| ฟีเจอร์ | นิยาม |
 |---|---|
-| **HLTV** (แมตช์อาชีพ ย้อนหลังได้เป็นปี) | เปิดหน้าแมตช์ที่ [hltv.org/results](https://www.hltv.org/results) แล้วกด GOTV Demo |
-| **ในเกม CS2** (แมตช์ตัวเอง) | Watch → Your Matches → Download |
-| **FACEIT / Leetify** | หน้าแมตช์มีปุ่มโหลด demo |
-| **แมตช์เก่าที่หมดอายุ** | เอา sharecode ไปเปิดผ่านเว็บอย่าง csgostats.gg |
+| opening kill | คิลแรกของรอบหลัง freeze-time จบ (นับเฉพาะการดวล: มีคนยิงและคนละฝั่ง) |
+| trade | คนที่ฆ่าเหยื่อ ตายภายใน 5 วินาทีด้วยมือเพื่อนของเหยื่อ |
+| buy type | ต่อคน ณ freeze-time จบ: Full ≥ $4000 · Force $2000–4000 · Eco < $2000 · Pistol = รอบ 1 และ 13 |
+| clutch | เหลือคนเดียวฝั่งตัวเอง เจอศัตรู ≥ 1 และรอบยังไม่จบ (1v1 นับทั้งสองฝั่ง) |
+| ADR / KAST | ดาเมจใส่ศัตรูต่อรอบ · % รอบที่มี Kill / Assist / Survived / Traded |
+
+คำนวณครั้งเดียวตอนโหลด (`backend/features/compute.py`) แล้วเก็บลง `player_rounds` — `features_version` บอกรุ่นนิยาม
+เปลี่ยนนิยามเมื่อไร ขยับเลขนั้นแล้ว `python backend/etl_loader.py --force` เพื่อ backfill
+
+## ฐานข้อมูล (PostgreSQL · SQLAlchemy models ใน `backend/models.py` · migration ใน `backend/alembic/`)
+
+| ตาราง | หนึ่งแถวคือ | คอลัมน์สำคัญ |
+|---|---|---|
+| `matches` | ไฟล์ .dem หนึ่งไฟล์ | `demo_file` (unique) `map_name` `tickrate` `team_a/b` **`status`** `error_message` `job_id` `started_at` `finished_at` |
+| `rounds` | รอบหนึ่งของแมตช์ | `match_id` `round_num` `start_tick` (freeze จบ) `bomb_plant_tick` `winner_side` `end_reason` |
+| `players` | นักแข่ง (SteamID64) | `steam_id` `name` |
+| `match_players` | ใครเล่นในแมตช์ไหน | `match_id` `steam_id` `start_side` `rounds` |
+| `player_rounds` (= player_round_stats) | คนหนึ่งในรอบหนึ่ง | `side` `equip_value` `survived` + ฟีเจอร์: `buy_type` `kills` `deaths` `assists` `damage` `opening_kill/death` `trade_kills` `was_traded` `clutch_vs` `clutch_won` `kast` |
+| `kills` | การฆ่าหนึ่งครั้ง | `round_id` `tick` `attacker_id` `victim_id` `assister_id` ฝั่ง อาวุธ headshot พิกัดและ callout ของทั้งคู่ |
+| `player_positions` | คนหนึ่ง ณ วินาทีหนึ่ง (1 Hz) | `match_id` `round_num` `tick` `steam_id` `side` `x y z` `health` `place` — เฉพาะช่วงที่รอบเล่นและคนยังมีชีวิต |
+| `damages` `grenades` `users` | ดาเมจแต่ละครั้ง · ระเบิดแต่ละลูก · ผู้ใช้เว็บ | (จาก Sprint 1) |
+
+view สรุป (`backend/views.sql`): `match_summary` `match_scoreboard` `player_stats` `player_round_facts` `player_clutches` `round_economy`
+
+```bash
+alembic upgrade head        # อัปเดตสคีมา (ปลอดภัยบน DB ที่มีข้อมูล)
+alembic downgrade -1        # ถอยหนึ่งรุ่น
+alembic history
+```
+
+`player_positions` เก็บที่ 1 Hz เท่านั้น — เดโมบันทึก 64–128 tick/วินาที ถ้าเก็บทุก tick จะได้ ~2.7 ล้านแถวต่อแมตช์ (`backend/parser/service.py`)
+
+## ทดสอบและ CI
+
+```bash
+ruff check .        # lint
+pytest              # 28 เทสต์: นิยาม 4 ตัว (doc สังเคราะห์), fixture เดโมจริง 6 รอบ, parser บน .dem จริง
+```
+
+test parser ต้องมีไฟล์ `.dem` (100+ MB ไม่อยู่ใน git): ใช้ไฟล์เล็กสุดใน `demos/` หรือตั้ง `CS2_TEST_DEMO=path` — ไม่มีก็ skip
+GitHub Actions (`.github/workflows/ci.yml`) รัน ruff · pytest · migration up/down/up บน Postgres จริง · `npm run build`
+ตั้ง repository variable `CS2_TEST_DEMO_URL` (ลิงก์ไฟล์เดโม เช่น asset ของ Release) ถ้าอยากให้ CI รัน test parser ด้วย
 
 ## โครงโปรเจกต์
 
 ```
-pipeline/         แกน ML ทั้งหมด
-  demoparser.py         demos/*.dem -> data/all_kills.csv (awpy + แคชรายไฟล์)
-  grid_ml.py            กริด + logistic + GroupKFold  <- ตัวหลัก
-  round_win.py          โมเดลโอกาสชนะรอบ -> ตารางเปิดค่าให้หน้าเว็บใช้
-  round_review.py       เจาะแมตช์เดียวเป็นรายรอบ (ใครชนะรอบไหน ชนะด้วยอะไร)
-
-backend/          เซิร์ฟเวอร์หลังบ้าน + ฐานข้อมูล (รายละเอียดใน backend/README.md)
-  app.py                FastAPI — ล็อกอิน Steam + /api/* ดึงจาก PostgreSQL + เสิร์ฟหน้า frontend/pages/
-  db.py                 จุดเดียวที่ต่อ PostgreSQL
-  schema.sql            โครงตาราง matches / rounds / kills / players / users + view สรุป
-  load_kills.py         data/all_kills.csv -> DB (รันซ้ำได้ ข้ามแมตช์ที่มีแล้ว)
-
-frontend/         หน้าเว็บทั้งหมด
-  build.py              ยัดข้อมูล+ภาพเรดาร์เข้าเทมเพลต -> output/*.html ไฟล์เดียวจบ
-  pages/                หน้าที่ app.py เสิร์ฟตอนรันเซิร์ฟเวอร์
-    login.html            หน้าล็อกอิน
-    overview.html         ภาพรวม — การ์ดตัวเลขสรุป + กราฟ + แมตช์ล่าสุด
-    matches.html          แมตช์ — ตารางแมตช์ + รายรอบ + สกอร์บอร์ด
-    players.html          นักแข่ง — อันดับ + รายละเอียดรายคน
-    map.html              แผนที่ — heatmap จุดที่คนตาย
-    tactical.html         แท็คติก — การดวลแรกของรอบ / จังหวะปะทะ / ผลของการปักระเบิด
-    ml.html               โมเดล ML — โอกาสชนะรอบ + โมเดลกริด
-  templates/            เทมเพลตของ build.py (ยังไม่มีข้อมูล เปิดตรง ๆ ไม่ได้)
-    map.html              หน้าแผนที่รวมทุกแมตช์  -> output/index.html
-    rounds.html           หน้ารีวิวรายรอบ        -> output/rounds.html
-  static/               style.css, common.js, hero.png + js ของแต่ละหน้า (overview.js, matches.js, ...)
-
-data/             all_kills.csv — ชุดคิล 7,270 แถวจาก 50 demo (อยู่ใน git ให้ผลซ้ำได้)
-assets/           ภาพเรดาร์ + ค่าปรับเทียบพิกัด (radars.json คือแหล่งความจริงแหล่งเดียว)
-demos/            วางไฟล์ .dem ตรงนี้ (ไม่เข้า git)
-output/           ผลลัพธ์ที่โปรแกรมสร้าง (ไม่เข้า git)
+backend/            FastAPI + worker + parser + feature layer (Python 3.11)
+  app.py              API และหน้าเว็บ Sprint 1
+  jobs.py             parse_demo(match_id): queued -> parsing -> done | error
+  jobqueue.py         คิว RQ/Redis (หรือ thread)     worker.py  โปรเซสที่หยิบงาน
+  parser/service.py   .dem -> dict (awpy 2.0.2 / demoparser2 0.41.4 — pin ไว้ เพราะ CS2 อัปเดตแล้ว parser พังบ่อย)
+  features/           definitions.py (นิยาม) · compute.py (คำนวณ)
+  models.py · alembic/ · views.sql · etl_loader.py · db.py · database.py
+  web/                หน้าเว็บ vanilla ของ Sprint 1 (ยังเสิร์ฟที่ :8000 จนกว่าจะย้ายครบใน Sprint 3)
+  tests/              pytest + fixtures/sample_match.json
+frontend/           React + TypeScript + Vite + TanStack Query (Match Library, Match Overview)
+research/           สคริปต์วิเคราะห์/ML ของ Sprint 1 (grid_ml, round_win, …) — ไม่ใช่ส่วนหนึ่งของระบบที่รัน
+assets/             ภาพเรดาร์ + radars.json (แหล่งความจริงของค่าปรับเทียบพิกัด)
+data/               all_kills.csv ชุดคิล 50 แมตช์ที่สคริปต์วิจัยใช้
+demos/ output/      ไฟล์ .dem ที่อัปโหลด · ผล parse (json) — ไม่เข้า git
 ```
 
-## สร้างชุดข้อมูลขึ้นใหม่
+## ปัญหาที่เจอบ่อย
 
-`data/all_kills.csv` อยู่ใน git อยู่แล้ว จึงไม่ต้องสร้างใหม่
-แต่ถ้าอยากเพิ่ม demo หรือทำซ้ำเองทั้งหมด วางไฟล์ `.dem` ใน `demos/` แล้วรัน
-
-```bash
-python pipeline/demoparser.py            # demos/*.dem -> data/all_kills.csv
-                                         #   แคชรายไฟล์ไว้ที่ output/kills_cache/
-                                         #   รันซ้ำจะอ่านเฉพาะ demo ที่เพิ่งเพิ่มเข้ามา
-```
-
-สคริปต์ทุกตัวรับ path แบบอิงรากโปรเจกต์ จึงควรรันจากรากโปรเจกต์
-
----
-
-## หมายเหตุเรื่องขอบเขต
-
-เดิมโปรเจกต์นี้เป็นเว็บแอปเต็มรูป (Node + PGlite + React + หน้าอัปโหลด `.dem`)
-พร้อม parser อีกชุดที่แปลง `.dem` เป็น normalized JSON แล้วแบ่งโซนด้วย KMeans
-ตอนนี้หั่นเหลือเฉพาะฝั่ง Python ที่เป็นแกน ML ตัวจริง — โค้ดชุดเก่าถูกลบออกแล้ว
-ย้อนดูได้ที่ commit ก่อน `ตัดโค้ดรุ่นเก่ากับสโคปที่เลิกทำออก`
-
-หน้าอัปโหลดถูกตัดออกเพราะไฟล์ demo หาได้จากแหล่งอื่นอยู่แล้ว (ดูตารางข้างบน)
-แค่วางไฟล์ในโฟลเดอร์ `demos/` ก็พอ
+- **พอร์ต 5432 ชน** (มี PostgreSQL ในเครื่อง): ตั้ง `POSTGRES_PORT=5433` ใน `.env` และแก้ `DATABASE_URL` ให้ตรง
+- **อัปโหลดแล้ว 503 "ส่งงานเข้าคิวไม่ได้"**: Redis ไม่ได้เปิด — `docker compose up -d redis` หรือใช้ `QUEUE_BACKEND=thread`
+- **แถวค้าง `queued` ไม่ขยับ**: ไม่มี worker — `python -m backend.worker` หรือ `docker compose up -d worker` (`/api/health` บอกจำนวน worker)
+- **แมตช์ `error`**: ดู `error_message` ในตาราง/หน้าเว็บ ส่งไฟล์ซ้ำได้เลยโดยไม่ต้องติ๊กโหลดทับ
+- **เปลี่ยนภาพแมพแล้วแผนที่หาย**: `assets/radars.json` ต้องชี้ไปไฟล์ที่มีจริงและขนาดเดิม (1024×1024)

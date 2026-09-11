@@ -36,3 +36,6 @@ output/
 node_modules/
 frontend/dist/
 *.tsbuildinfo
+
+# ค่า override เฉพาะเครื่อง (เช่น ชี้ volume เดิม)
+docker-compose.override.yml
