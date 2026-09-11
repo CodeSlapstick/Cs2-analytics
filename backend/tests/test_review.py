@@ -126,9 +126,9 @@ FORBIDDEN = ("โอกาสชนะรอบ", "เล่นแย่", "ย�
 
 def test_review_ui_text_follows_the_rules():
     """กฎข้อ 2 และ 3: ห้ามเรียก ct_win ว่าโอกาสชนะรอบ และห้ามใช้ภาษาตัดสินคน ในโค้ดหน้า Round Review"""
-    files = [ROOT / "frontend" / "src" / "pages" / "RoundReviewPage.tsx",
-             *sorted((ROOT / "frontend" / "src" / "components" / "review").glob("*.tsx"))]
-    assert len(files) >= 5
+    src = ROOT / "frontend" / "src"
+    files = sorted([*src.glob("pages/*.tsx"), *src.glob("components/**/*.tsx")])
+    assert len(files) >= 8 and (src / "components" / "review" / "RoundView.tsx") in files
     for f in files:
         text = f.read_text(encoding="utf-8")
         for bad in FORBIDDEN:

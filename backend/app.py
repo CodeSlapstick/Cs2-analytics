@@ -6,17 +6,17 @@ backend/app.py — "หลังบ้าน" (backend) ของเว็บ CS
   - หน้าเว็บ (frontend/) = ลูกค้าที่มายืนหน้าเคาน์เตอร์
   - ไฟล์นี้ = พนักงานที่คอยรับคำสั่ง ไปหยิบของจากคลัง (PostgreSQL) แล้วส่งกลับไปให้
 
-หน้าที่ของไฟล์นี้มี 4 อย่าง
-  1) ส่งหน้าเว็บ (ไฟล์ .html ใน backend/web/pages/) ให้เบราว์เซอร์
-  2) พาผู้ใช้ไปล็อกอินที่ Steam แล้วรับผลกลับมา
-  3) จำว่า "ใครล็อกอินอยู่" ด้วยคุกกี้ (cookie = บัตรคิวที่ติดตัวลูกค้าไว้)
-  4) ตอบ /api/* — ดึงสถิติจากฐานข้อมูลแล้วส่งเป็น JSON ให้หน้าเว็บเอาไปวาด
+หน้าที่ของไฟล์นี้มี 3 อย่าง (หน้าเว็บทั้งหมดอยู่ที่ frontend/ — React)
+  1) ล็อกอินด้วย username/password (backend/auth.py)
+  2) จำว่า "ใครล็อกอินอยู่" ด้วย JWT ในคุกกี้ httpOnly (JavaScript อ่านไม่ได้)
+  3) ตอบ /api/* — ดึงสถิติจากฐานข้อมูลแล้วส่งเป็น JSON ให้หน้าเว็บเอาไปวาด
 
 ข้อมูลอยู่ใน PostgreSQL (ตาราง: backend/models.py + Alembic, view: backend/views.sql, โหลดผ่าน /api/demos หรือ backend/etl_loader.py)
 ไฟล์นี้ไม่อ่าน csv เองแล้ว — อ่านผ่าน SQL อย่างเดียว จะได้ filter/รวมข้อมูลได้เร็วโดยไม่ต้องโหลดทั้งตารางเข้าแรม
 
-รัน:  python -m uvicorn backend.app:app --reload
-เปิด: http://localhost:8000
+รัน:  python -m uvicorn backend.app:app --reload   (ในเครื่อง — หน้าเว็บ npm run dev ส่งต่อ /api มาที่นี่)
+ผู้ใช้ไม่เข้า API ตรง ๆ: เปิดหน้าเว็บ แล้วหน้าเว็บ (หรือ nginx ใน Docker) ส่ง /api /auth /assets มาให้
+Swagger: <หน้าเว็บ>/api/docs
 """
 
 # ---------------------------------------------------------------------------
@@ -26,22 +26,20 @@ import json
 import mimetypes
 import os
 import re
-import secrets
 import subprocess
 import sys
 import threading
-import urllib.parse
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 import asyncpg
-import httpx  # httpx = โทรศัพท์ ใช้ "โทร" ไปถามเว็บอื่น (ที่นี่คือเซิร์ฟเวอร์ Steam)
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.concurrency import run_in_threadpool  # เอางานหนักที่ไม่ใช่ async ไปรันในเธรดแยก ไม่ให้เซิร์ฟเวอร์ค้าง
-from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
-from itsdangerous import BadSignature, URLSafeSerializer  # เครื่อง "เซ็นชื่อ" ข้อมูลในคุกกี้ กันคนปลอมแปลง
+from pydantic import BaseModel
 
+from backend import auth  # ล็อกอิน: hash รหัสผ่าน + JWT ใน httpOnly cookie
 from backend.db import (  # noqa: F401  (load_dotenv ทำงานตอน import)
     DATABASE_URL,
     apply_schema,
@@ -57,9 +55,6 @@ from backend.review import build_round_detail, build_round_list, grid_overlay, l
 # ส่วนที่ 1 — ค่าตั้งต้น (CONFIG) อยากแก้อะไรแก้ตรงนี้ที่เดียว
 # ---------------------------------------------------------------------------
 ROOT = Path(__file__).resolve().parent.parent   # โฟลเดอร์โปรเจกต์
-FRONTEND = ROOT / "backend" / "web"                    # โฟลเดอร์ของหน้าเว็บทั้งหมด
-PAGES_DIR = FRONTEND / "pages"                  # หน้า .html ที่ไฟล์นี้เสิร์ฟให้เบราว์เซอร์
-STATIC_DIR = FRONTEND / "static"                # ไฟล์นิ่ง ๆ (.css .js รูป)
 ASSETS_DIR = ROOT / "assets"                    # ภาพเรดาร์ของแต่ละแมพ + ค่าปรับเทียบพิกัด (radars.json)
 DEMOS_DIR = ROOT / "demos"                      # ไฟล์ .dem ที่ผู้ใช้อัปโหลดเข้ามา (ไม่ถูก commit — ดู .gitignore)
 JSON_DIR = ROOT / "output" / "json"             # ผลจาก parser ก่อนเข้าฐานข้อมูล เก็บไว้ตรวจย้อนหลังได้
@@ -87,19 +82,9 @@ def log(msg: str) -> None:
 
 
 # ค่าจาก .env ที่รากโปรเจกต์ (backend/db.py โหลดเข้า environment ให้แล้วตอน import)
-STEAM_API_KEY = os.environ.get("STEAM_API_KEY", "")             # กุญแจ Steam ขอฟรีที่ steamcommunity.com/dev/apikey ("" = ยังไม่มี)
-BASE_URL = os.environ.get("BASE_URL", "http://localhost:8000")  # ที่อยู่เว็บเรา ใช้บอก Steam ว่า "ล็อกอินเสร็จให้ส่งกลับมาที่นี่"
-SECRET_KEY = os.environ.get("SECRET_KEY") or secrets.token_hex(32)  # กุญแจเซ็นคุกกี้ ถ้าไม่ตั้งไว้ = สุ่มใหม่ทุกครั้งที่รัน (ล็อกอินจะหลุดตอนรีสตาร์ต)
-ALLOW_DEV_LOGIN = os.environ.get("ALLOW_DEV_LOGIN", "1") == "1"     # "โหมดทดสอบ" ให้พิมพ์เลข Steam เข้าเองได้ โดยไม่ต้องมีกุญแจ API
+ALLOW_REGISTER = os.environ.get("ALLOW_REGISTER", "1") == "1"   # 1 = ให้สมัครสมาชิกเองได้ที่หน้า /login
 
-COOKIE_NAME = "cs2_session"        # ชื่อคุกกี้ (บัตรคิว) ที่เราจะติดให้ผู้ใช้
-COOKIE_MAX_AGE = 60 * 60 * 24 * 7  # อายุคุกกี้ 1 สัปดาห์
-
-STEAM_OPENID_URL = "https://steamcommunity.com/openid/login"  # ประตูล็อกอินของ Steam (มาตรฐานชื่อ OpenID 2.0)
-STEAM_ID_RE = re.compile(r"^7656119\d{10}$")                  # แบบแผนของ SteamID64: ขึ้นต้น 7656119 แล้วตามด้วยเลข 10 ตัว
 SIDE_RE = re.compile(r"^(ct|t)$")
-
-signer = URLSafeSerializer(SECRET_KEY, salt="cs2-session")    # "ตราประทับ" ไว้เซ็นและตรวจคุกกี้ด้วยกุญแจลับ
 
 
 # ---------------------------------------------------------------------------
@@ -122,41 +107,14 @@ async def lifespan(app: FastAPI):
         await app.state.pool.close()
 
 
-app = FastAPI(title="CS2 Analytics API", lifespan=lifespan)
-app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")  # URL ที่ขึ้นต้นด้วย /static ให้ไปหยิบไฟล์จริงใน backend/web/static/
+# Swagger อยู่ใต้ /api — หน้าเว็บส่งต่อให้เฉพาะ /api /auth /assets ถ้าอยู่ที่ /docs จะเปิดจากหน้าเว็บไม่ได้
+app = FastAPI(title="CS2 Analytics API", lifespan=lifespan,
+              docs_url="/api/docs", redoc_url=None, openapi_url="/api/openapi.json")
 app.mount("/assets", StaticFiles(directory=ASSETS_DIR), name="assets")  # URL ที่ขึ้นต้นด้วย /assets ให้ไปหยิบไฟล์จริงใน assets/ (ภาพเรดาร์)
 
 # Windows บางเครื่องไม่รู้จักนามสกุล .webp ทำให้ส่งไฟล์ออกไปเป็น application/octet-stream
 # บอกชนิดไฟล์ให้ถูกต้องไว้ก่อน เบราว์เซอร์จะได้รู้แน่ ๆ ว่านี่คือรูปภาพ
 mimetypes.add_type("image/webp", ".webp")
-
-
-@app.middleware("http")
-async def no_stale_static(request: Request, call_next):
-    """บังคับให้เบราว์เซอร์ถามเซิร์ฟเวอร์ก่อนใช้ไฟล์ .css/.js/.html ที่แคชไว้
-
-    ทำไมต้องมี
-        FastAPI ส่ง etag กับ last-modified มาให้อยู่แล้ว แต่ "ไม่ส่ง" cache-control
-        พอไม่มี cache-control เบราว์เซอร์จะใช้ heuristic caching คือเดาอายุไฟล์เอง
-        จาก last-modified แล้วหยิบของในแคชมาใช้เลยโดยไม่ถามเซิร์ฟเวอร์ซ้ำ
-        ผลคือแก้ style.css แล้วรีเฟรชธรรมดาไม่เห็นการเปลี่ยนแปลง ต้อง Ctrl+Shift+R ทุกครั้ง
-        และอาการจะโผล่เฉพาะเครื่องที่เคยเปิดเว็บก่อนแก้ไฟล์ — เครื่องใหม่ดูปกติ หาสาเหตุยากมาก
-
-    no-cache ไม่ได้แปลว่า "ห้ามแคช"
-        แปลว่า "แคชได้ แต่ต้องถามก่อนใช้" ถ้าไฟล์ไม่เปลี่ยน etag จะตรงกัน
-        เซิร์ฟเวอร์ตอบ 304 Not Modified ตัวเปล่า ๆ ไม่ได้ส่งไฟล์ซ้ำ จึงแทบไม่เปลืองอะไร
-
-    รูปกับฟอนต์ไม่ต้องยุ่ง — พวกนั้นเปลี่ยนน้อย ปล่อยให้แคชยาว ๆ ได้เลย
-
-    ดูจาก content-type ไม่ใช่จากนามสกุลใน URL
-        เพราะหน้าเว็บของเราเป็น /upload /players /map ไม่มี .html ต่อท้ายสักอัน
-        ถ้าไล่เช็คนามสกุลจะหลุดทุกหน้าพอดี แต่ content-type บอกตรง ๆ ว่าไฟล์นี้คืออะไร
-    """
-    response = await call_next(request)
-    ctype = response.headers.get("content-type", "")
-    if ctype.startswith(("text/html", "text/css", "text/javascript", "application/javascript")):
-        response.headers["Cache-Control"] = "no-cache"
-    return response
 
 
 async def db(request: Request) -> asyncpg.Connection:
@@ -169,216 +127,77 @@ async def db(request: Request) -> asyncpg.Connection:
 
 
 # ---------------------------------------------------------------------------
-# ส่วนที่ 3 — เรื่องคุกกี้ "ใครล็อกอินอยู่"
+# ส่วนที่ 3 — ใครล็อกอินอยู่: JWT ในคุกกี้ httpOnly (สร้าง/ตรวจที่ backend/auth.py)
 # ---------------------------------------------------------------------------
-def make_session_cookie(response, user: dict) -> None:
-    """เอาข้อมูลผู้ใช้ใส่ซอง เซ็นชื่อกำกับ แล้วแปะเป็นคุกกี้ติดตัวเบราว์เซอร์"""
-    token = signer.dumps(user)          # แปลง dict เป็นข้อความ + เซ็นชื่อต่อท้าย (ถ้ามีคนแอบแก้ข้างใน ลายเซ็นจะไม่ตรง)
-    response.set_cookie(
-        COOKIE_NAME, token,
-        max_age=COOKIE_MAX_AGE,
-        httponly=True,                  # JavaScript อ่านคุกกี้นี้ไม่ได้ (กันสคริปต์แปลกปลอมขโมย)
-        samesite="lax",                 # ส่งคุกกี้เฉพาะตอนอยู่เว็บเรา กันเว็บอื่นยืมใช้
-    )
-
-
-def read_session(request: Request) -> dict | None:
-    """แกะคุกกี้ออกมาดูว่าเป็นใคร — ถ้าไม่มีหรือถูกปลอม จะคืน None (แปลว่า "ยังไม่ล็อกอิน")"""
-    token = request.cookies.get(COOKIE_NAME)
-    if not token:
-        return None
-    try:
-        return signer.loads(token)             # ตรวจลายเซ็นก่อน ถ้าผ่านค่อยแปลงกลับเป็น dict
-    except BadSignature:                       # ลายเซ็นไม่ตรง = มีคนแก้คุกกี้ -> ถือว่าไม่ล็อกอิน
-        return None
-
-
 def require_login(request: Request) -> dict:
-    """Dependency: route ไหนใส่อันนี้ = ต้องล็อกอินก่อน ไม่งั้นตอบ 401 ทันที"""
-    user = read_session(request)
+    """Dependency: route ไหนใส่อันนี้ = ต้องล็อกอินก่อน ไม่งั้นตอบ 401 ทันที — คืน {id, username}"""
+    user = auth.user_from_token(request.cookies.get(auth.COOKIE_NAME))
     if not user:
-        raise HTTPException(401, "ยังไม่ได้ล็อกอิน")
+        raise HTTPException(401, "ยังไม่ได้ล็อกอิน หรือ session หมดอายุ")
     return user
-
-
-# ---------------------------------------------------------------------------
-# ส่วนที่ 4 — ส่งหน้าเว็บ
-# ---------------------------------------------------------------------------
-@app.get("/")
-def page_login():
-    """หน้าแรก = หน้าล็อกอิน"""
-    return FileResponse(PAGES_DIR / "login.html")
-
-
-# แต่ละหน้าเป็นไฟล์ .html ของตัวเองใน backend/web/pages/ (1 หน้า = 1 ไฟล์ html + 1 ไฟล์ js)
-# ตัว JS ในแต่ละหน้าจะเช็คเองว่าล็อกอินแล้วหรือยัง ถ้ายังจะเด้งกลับมาหน้า /
-
-@app.get("/upload")
-def page_upload():
-    """อัปโหลดเดโม — ลากไฟล์ .dem เข้ามา ระบบ parse แล้วโหลดเข้าฐานข้อมูลให้ในคำขอเดียว"""
-    return FileResponse(PAGES_DIR / "upload.html")
-
-
-@app.get("/overview")
-def page_overview():
-    """ที่อยู่เดิมของหน้าภาพรวม — หน้านั้นถูกแทนที่ด้วยหน้าอัปโหลด ลิงก์เก่าและบุ๊กมาร์กจะได้ไม่พัง"""
-    return RedirectResponse("/upload")
-
-
-@app.get("/matches")
-def page_matches():
-    """แมตช์ — ตารางแมตช์ + รายรอบ + สกอร์บอร์ด"""
-    return FileResponse(PAGES_DIR / "matches.html")
-
-
-@app.get("/rounds/{match_id}")
-def page_rounds(match_id: int):
-    """ไทม์ไลน์รายรอบของแมตช์เดียว — JS อ่านเลขแมตช์จาก URL เอง ไฟล์ html เดียวจึงใช้ได้ทุกแมตช์"""
-    return FileResponse(PAGES_DIR / "rounds.html")
-
-
-@app.get("/review/{match_id}")
-def page_review(match_id: int):
-    """รีวิวจุดพลาดรายคนของแมตช์เดียว — JS อ่านเลขแมตช์จาก URL เอง"""
-    return FileResponse(PAGES_DIR / "review.html")
-
-
-@app.get("/players")
-def page_players():
-    """นักแข่ง — อันดับ + รายละเอียดรายคน"""
-    return FileResponse(PAGES_DIR / "players.html")
-
-
-@app.get("/map")
-def page_map():
-    """แผนที่ — heatmap จุดที่คนตาย"""
-    return FileResponse(PAGES_DIR / "map.html")
-
-
-@app.get("/tactical")
-def page_tactical():
-    """แท็คติก — การดวลแรกของรอบ / จังหวะปะทะ / ผลของการปักระเบิด"""
-    return FileResponse(PAGES_DIR / "tactical.html")
-
-
-@app.get("/ml")
-def page_ml():
-    """โมเดล ML — โอกาสชนะรอบ + โมเดลกริด"""
-    return FileResponse(PAGES_DIR / "ml.html")
-
-
-@app.get("/main")
-def page_main():
-    """ที่อยู่เดิมสมัยยังเป็นหน้าเดียว — ส่งต่อไปหน้าแรกปัจจุบัน ลิงก์เก่าจะได้ไม่พัง"""
-    return RedirectResponse("/upload")
 
 
 # ---------------------------------------------------------------------------
 # ส่วนที่ 5 — ล็อกอิน / ออกจากระบบ
 # ---------------------------------------------------------------------------
-@app.get("/auth/steam/login")
-def steam_login():
-    """พาผู้ใช้ไปหน้าล็อกอินของ Steam (OpenID 2.0) พร้อมบอกว่าเสร็จแล้วให้ส่งกลับมาที่ /auth/steam/callback"""
-    params = {
-        "openid.ns": "http://specs.openid.net/auth/2.0",
-        "openid.mode": "checkid_setup",
-        "openid.return_to": f"{BASE_URL}/auth/steam/callback",
-        "openid.realm": BASE_URL,
-        "openid.identity": "http://specs.openid.net/auth/2.0/identifier_select",
-        "openid.claimed_id": "http://specs.openid.net/auth/2.0/identifier_select",
-    }
-    return RedirectResponse(f"{STEAM_OPENID_URL}?{urllib.parse.urlencode(params)}")
+class Credentials(BaseModel):
+    username: str
+    password: str
 
 
-@app.get("/auth/steam/callback")
-async def steam_callback(request: Request, conn: asyncpg.Connection = Depends(db)):
-    """Steam ส่งผู้ใช้กลับมาที่นี่ — ต้องถาม Steam ซ้ำอีกรอบว่า "ข้อมูลชุดนี้มาจากคุณจริงไหม" กันคนปลอม URL"""
-    params = dict(request.query_params)
-    params["openid.mode"] = "check_authentication"      # เปลี่ยนโหมดเป็น "ขอตรวจสอบ" แล้วส่งกลับไปให้ Steam ทั้งชุด
-    async with httpx.AsyncClient(timeout=10) as client:
-        r = await client.post(STEAM_OPENID_URL, data=params)
-    if "is_valid:true" not in r.text:
-        return JSONResponse({"error": "Steam ไม่ยืนยันการล็อกอินนี้"}, status_code=401)
-
-    claimed = params.get("openid.claimed_id", "")       # หน้าตา https://steamcommunity.com/openid/id/7656119...
-    steamid = claimed.rsplit("/", 1)[-1]
-    if not STEAM_ID_RE.match(steamid):
-        return JSONResponse({"error": "SteamID ที่ได้กลับมาผิดรูปแบบ"}, status_code=400)
-
-    profile = await fetch_steam_profile(steamid)
-    user = {"steamid": steamid, **profile, "mode": "steam"}
-    await save_user(conn, user)
-
-    # 303 See Other = "ล็อกอินเสร็จแล้ว ไปเปิดหน้านี้ต่อด้วย GET"
-    # ถ้าไม่ระบุ RedirectResponse จะใช้ 307 ซึ่งแปลว่า "ใช้ method เดิมยิงซ้ำ" — ผิดความหมายของจังหวะนี้
-    response = RedirectResponse("/upload", status_code=303)   # ล็อกอินเสร็จแล้วพาไปหน้าอัปโหลด
-    make_session_cookie(response, user)     # ติดคุกกี้ไปกับ response ตัวเดียวกับที่พาไปหน้าถัดไป
-    return response                         # ขาดบรรทัดนี้เมื่อไร = ล็อกอินไม่ติดเลย เพราะเบราว์เซอร์ไม่เคยได้คุกกี้
-
-
-@app.post("/auth/dev-login")
-async def dev_login(request: Request, conn: asyncpg.Connection = Depends(db)):
-    """โหมดทดสอบ: พิมพ์เลข Steam64 เข้าเองได้เลย ไม่ต้องมีกุญแจ API (ไว้ตอนพัฒนา/ตอนนำเสนอ)"""
-    if not ALLOW_DEV_LOGIN:
-        return JSONResponse({"error": "dev login ถูกปิดอยู่"}, status_code=403)
-
-    body = await request.json()
-    steamid = str(body.get("steamid", "")).strip()
-    if not STEAM_ID_RE.match(steamid):              # ตรวจรูปแบบก่อนเสมอ อย่าเชื่อสิ่งที่ผู้ใช้พิมพ์
-        return JSONResponse({"error": "SteamID64 ต้องเป็นตัวเลข 17 หลักขึ้นต้นด้วย 7656119"}, status_code=400)
-
-    profile = await fetch_steam_profile(steamid)
-    user = {"steamid": steamid, **profile, "mode": "dev"}   # mode="dev" ไว้ให้หน้าเว็บโชว์ป้าย "โหมดทดสอบ"
-    await save_user(conn, user)
-
-    response = JSONResponse({"ok": True, "user": user})
-    make_session_cookie(response, user)
+def _logged_in(account) -> JSONResponse:
+    """ตอบกลับพร้อมติดคุกกี้ JWT — ใช้ร่วมกันทั้งตอนสมัครและตอนล็อกอิน"""
+    user = {"id": account["id"], "username": account["username"]}
+    response = JSONResponse({"user": user})
+    auth.set_auth_cookie(response, auth.create_token(user["id"], user["username"]))
     return response
+
+
+@app.post("/auth/register")
+async def auth_register(body: Credentials, conn: asyncpg.Connection = Depends(db)):
+    """สมัครสมาชิกแล้วล็อกอินให้เลย — ปิดได้ด้วย ALLOW_REGISTER=0"""
+    if not ALLOW_REGISTER:
+        raise HTTPException(403, "ระบบนี้ปิดการสมัครสมาชิก")
+    username = body.username.strip()
+    if (err := auth.validate_credentials(username, body.password)):
+        raise HTTPException(400, err)
+    password_hash = await run_in_threadpool(auth.hash_password, body.password)
+    try:
+        row = await conn.fetchrow("""
+            INSERT INTO accounts (username, password_hash, last_login) VALUES ($1, $2, now())
+            RETURNING id, username""", username, password_hash)
+    except asyncpg.UniqueViolationError:
+        raise HTTPException(409, "ชื่อผู้ใช้นี้มีคนใช้แล้ว") from None
+    log(f"[AUTH] สมัครสมาชิก {username} (id {row['id']})")
+    return _logged_in(row)
+
+
+@app.post("/auth/login")
+async def auth_login(body: Credentials, conn: asyncpg.Connection = Depends(db)):
+    """ตรวจรหัสผ่าน ผ่านแล้วติดคุกกี้ JWT — ผิดทั้งชื่อหรือรหัสตอบข้อความเดียวกัน ไม่บอกว่าชื่อนี้มีอยู่ไหม"""
+    row = await conn.fetchrow(
+        "SELECT id, username, password_hash FROM accounts WHERE lower(username) = lower($1)", body.username.strip())
+    if row is None:
+        await run_in_threadpool(auth.burn_time_like_verify, body.password)   # เวลาตอบเท่ากับกรณีมีชื่อจริง
+        raise HTTPException(401, "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง")
+    if not await run_in_threadpool(auth.verify_password, body.password, row["password_hash"]):
+        raise HTTPException(401, "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง")
+    await conn.execute("UPDATE accounts SET last_login = now() WHERE id = $1", row["id"])
+    return _logged_in(row)
+
+
+@app.get("/auth/me")
+def auth_me(user: dict = Depends(require_login)):
+    """หน้าเว็บถามว่า 'ตอนนี้ฉันล็อกอินอยู่ไหม เป็นใคร' — ยังไม่ล็อกอินตอบ 401"""
+    return {"user": user}
 
 
 @app.post("/auth/logout")
-def logout():
-    """ลบคุกกี้ = ออกจากระบบ"""
+def auth_logout():
+    """ลบคุกกี้ = ออกจากระบบ (JWT เป็น stateless ไม่มีอะไรต้องลบในฐานข้อมูล)"""
     response = JSONResponse({"ok": True})
-    response.delete_cookie(COOKIE_NAME)
+    auth.clear_auth_cookie(response)
     return response
-
-
-async def save_user(conn: asyncpg.Connection, user: dict) -> None:
-    """จดว่าใครล็อกอินเข้ามาลงตาราง users — เคยมีแล้วก็อัปเดตชื่อ/รูป/เวลาล่าสุด"""
-    await conn.execute(
-        """
-        INSERT INTO users (steamid, name, avatar, profile_url, mode, last_login)
-        VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP)
-        ON CONFLICT (steamid) DO UPDATE
-        SET name = EXCLUDED.name, avatar = EXCLUDED.avatar, profile_url = EXCLUDED.profile_url,
-            mode = EXCLUDED.mode, last_login = CURRENT_TIMESTAMP
-        """,
-        str(user.get("steamid", "")), str(user.get("name", "")), str(user.get("avatar", "")),
-        str(user.get("profile_url", "")), str(user.get("mode", "dev")),
-    )
-    log(f"[DB] บันทึกผู้ใช้ {user.get('steamid')} ({user.get('mode')})")
-
-
-async def fetch_steam_profile(steamid: str) -> dict:
-    """ขอชื่อ/รูปโปรไฟล์จาก Steam Web API — ถ้าไม่มีกุญแจหรือโทรไม่ติด ใช้ค่าสำรองแทน"""
-    fallback = {
-        "name": f"ผู้เล่น {steamid[-4:]}",
-        "avatar": "",
-        "profile_url": f"https://steamcommunity.com/profiles/{steamid}",
-    }
-    if not STEAM_API_KEY:
-        return fallback
-    url = "https://api.steampowered.com/ISteamUser/GetPlayerSummaries/v2/"
-    try:
-        async with httpx.AsyncClient(timeout=8) as client:
-            r = await client.get(url, params={"key": STEAM_API_KEY, "steamids": steamid})
-        p = r.json()["response"]["players"][0]
-        return {"name": p.get("personaname", fallback["name"]),
-                "avatar": p.get("avatarfull", ""),
-                "profile_url": p.get("profileurl", fallback["profile_url"])}
-    except Exception:
-        return fallback
 
 
 # ---------------------------------------------------------------------------
@@ -402,22 +221,6 @@ async def api_health(request: Request):
         return {"queue": await run_in_threadpool(queue_health), "ok": True, "db": "ต่อได้", "matches": n["matches"], "kills": n["kills"]}
     except Exception as e:
         return JSONResponse({"ok": False, "db": str(e)}, status_code=503)
-
-
-@app.get("/api/me")
-def api_me(user: dict = Depends(require_login)):
-    """หน้าเว็บถามว่า 'ตอนนี้ฉันล็อกอินอยู่ไหม เป็นใคร'"""
-    return {"user": user}
-
-
-@app.get("/api/config")
-def api_config():
-    """บอกหน้าเว็บว่าเซิร์ฟเวอร์ตั้งค่าไว้ยังไง (เช่น ต้องซ่อนกล่องโหมดทดสอบไหม เพดานไฟล์เท่าไร)"""
-    return {
-        "allow_dev_login": ALLOW_DEV_LOGIN,
-        "has_steam_key": bool(STEAM_API_KEY),
-        "max_demo_mb": MAX_DEMO_MB,     # หน้าอัปโหลดใช้บอกผู้ใช้ และกันไฟล์ใหญ่ตั้งแต่ยังไม่ส่ง
-    }
 
 
 @app.get("/api/stats")

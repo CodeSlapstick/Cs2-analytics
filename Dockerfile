@@ -1,7 +1,6 @@
 # CS2 Scouting Platform — image ของฝั่ง Python (ใช้ทั้ง api และ worker ใน docker-compose.yml)
 #
 #   docker build -t cs2-analytics .
-#   docker run --rm -p 8000:8000 cs2-analytics                       # เปิด API (ต้องมี DATABASE_URL/REDIS_URL ชี้ไปที่ใช้ได้)
 #   docker run --rm -v "${PWD}/output:/app/output" cs2-analytics python research/grid_ml.py   # รันสคริปต์วิจัย
 #
 # ปกติไม่ต้อง build เอง — docker compose up -d ทำให้หมด
@@ -31,5 +30,6 @@ ENV MPLBACKEND=Agg \
 
 VOLUME ["/app/output", "/app/demos"]
 
+# พอร์ตของ API ภายใน container — compose ไม่เปิดออกมานอกเครื่อง หน้าเว็บ (nginx) ต่อเข้ามาทางเครือข่ายของ compose
 EXPOSE 8000
 CMD ["python", "-m", "uvicorn", "backend.app:app", "--host", "0.0.0.0", "--port", "8000"]

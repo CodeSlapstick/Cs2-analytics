@@ -8,7 +8,7 @@ backend/db.py — จุดเดียวที่คุยกับ PostgreSQL
     from backend.db import connect, create_pool, DATABASE_URL
 
     - DATABASE_URL   อ่านจาก .env ที่รากโปรเจกต์ (ค่าดีฟอลต์คือ postgres ในเครื่อง)
-    - connect()      เปิด connection เดี่ยว ๆ ใช้กับสคริปต์ที่รันครั้งเดียวจบ เช่น load_kills.py
+    - connect()      เปิด connection เดี่ยว ๆ ใช้กับสคริปต์ที่รันครั้งเดียวจบ เช่น etl_loader.py / seed_user.py
     - create_pool()  สร้าง "บ่อ" connection ให้เว็บเซิร์ฟเวอร์หยิบใช้/คืนได้ไม่ต้องต่อใหม่ทุก request
     - apply_schema() รัน views.sql สร้าง view ใหม่ทุกครั้ง (ตารางเป็นของ Alembic: alembic upgrade head)
 """
