@@ -33,6 +33,7 @@ sys.path.insert(0, str(ROOT))      # ให้รัน python backend/etl_loade
 from backend.db import DATABASE_URL as DB_URL  # noqa: E402  (โหลด .env ตอน import)
 from backend.db import apply_schema  # noqa: E402
 from backend.features.compute import compute_features  # noqa: E402
+from backend.features.teams import assign_teams  # noqa: E402
 
 
 def _int(v):
@@ -66,10 +67,12 @@ async def _replace_children(conn, match_id: int, doc: dict) -> dict:
     round_id_map: dict[int, int] = {}
     for r in rounds:
         rid = await conn.fetchval("""
-            INSERT INTO rounds (match_id, round_num, start_tick, bomb_plant_tick, winner_side, end_reason)
-            VALUES ($1, $2, $3, $4, $5, $6) RETURNING id;
+            INSERT INTO rounds (match_id, round_num, start_tick, bomb_plant_tick, winner_side, end_reason,
+                                bomb_plant_x, bomb_plant_y, bomb_site)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id;
         """, match_id, int(r["round_num"]), _int(r.get("start_tick")), _int(r.get("bomb_plant_tick")),
-           r.get("winner_side"), r.get("end_reason"))
+           r.get("winner_side"), r.get("end_reason"),
+           _float(r.get("bomb_plant_x")), _float(r.get("bomb_plant_y")), r.get("bomb_site"))
         round_id_map[int(r["round_num"])] = rid
 
     def rid_of(row) -> int | None:
@@ -126,16 +129,18 @@ async def _replace_children(conn, match_id: int, doc: dict) -> dict:
             ON CONFLICT (round_id, steam_id) DO NOTHING;
         """, pr_rows)
 
-    # ใครเล่นในแมตช์นี้ — ฝั่งในรอบแรกที่เล่นคือ "ทีม"
+    # ใครเล่นในแมตช์นี้ + อยู่ทีมไหน (ชื่อทีมคงที่ทั้งแมตช์ ไม่ใช่ side ที่สลับกันทุกครึ่ง)
+    team_of = assign_teams([{"steam_id": x["steam_id"], "round_num": x["round_num"], "side": x["side"],
+                             "clan": x.get("team_clan")} for x in doc.get("player_rounds", [])])
     mp: dict[int, dict] = {}
     for f in sorted(feats, key=lambda f: f.round_num):
         m = mp.setdefault(f.steam_id, {"start_side": f.side, "rounds": 0})
         m["rounds"] += 1
     if mp:
         await conn.executemany("""
-            INSERT INTO match_players (match_id, steam_id, start_side, rounds) VALUES ($1, $2, $3, $4)
+            INSERT INTO match_players (match_id, steam_id, start_side, rounds, team_clan) VALUES ($1, $2, $3, $4, $5)
             ON CONFLICT (match_id, steam_id) DO NOTHING;
-        """, [(match_id, sid, m["start_side"], m["rounds"]) for sid, m in mp.items()])
+        """, [(match_id, sid, m["start_side"], m["rounds"], team_of.get(sid)) for sid, m in mp.items()])
 
     g_rows = [
         (rid_of(g), int(g["tick"]), _int(g.get("thrower_id")), g.get("side"), g["type"])

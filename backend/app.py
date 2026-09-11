@@ -48,7 +48,10 @@ from backend.db import (  # noqa: F401  (load_dotenv ทำงานตอน im
     create_pool,
     redacted_url,
 )
+from backend.features.teams import assign_teams  # ผูกคนกับทีม (Round Review)
+from backend.geo import radar_frame
 from backend.jobqueue import QueueUnavailable, enqueue_parse, job_state, queue_health  # คิวงาน parse (Sprint 2)
+from backend.review import build_round_detail, build_round_list, grid_overlay, load_grid_model
 
 # ---------------------------------------------------------------------------
 # ส่วนที่ 1 — ค่าตั้งต้น (CONFIG) อยากแก้อะไรแก้ตรงนี้ที่เดียว
@@ -1315,3 +1318,82 @@ async def api_ml_retrain(_: dict = Depends(require_login)):
         raise HTTPException(500, f"{failed['script']} ล้มเหลว — {failed['log'][-400:]}")
     log(f"[RETRAIN] เทรนใหม่สำเร็จ: {', '.join(r['script'] for r in results)}")
     return {"ok": True, "results": results}
+
+
+# ---------------------------------------------------------------------------
+# ส่วนที่ 10 — Round Review: ไล่ดูทีละรอบว่าใครตายที่ไหนเมื่อไหร่ + บริบทจาก research/grid_ml1.py
+#
+# คีย์ของแมตช์คือชื่อไฟล์เดโม (ตาม brief) — ใช้ prefix /api/review/ เพราะ /api/matches/{match_id}/rounds
+# มีอยู่แล้ว (ไทม์ไลน์ของโมเดลโอกาสชนะรอบ) และรับเป็นเลข id
+# ข้อมูลกริดอ่านจาก output/grid_ml1.json ที่ cache ไว้ในหน่วยความจำ (backend/review.py) ไม่รันโมเดลตอน request
+# ---------------------------------------------------------------------------
+async def _review_match(conn: asyncpg.Connection, demo_file: str) -> dict:
+    m = await conn.fetchrow("""
+        SELECT id, demo_file, map_name, tickrate, team_a, team_b, status FROM matches WHERE demo_file = $1""", demo_file)
+    if not m:
+        raise HTTPException(404, f"ไม่พบแมตช์ {demo_file}")
+    if m["status"] != "done":
+        raise HTTPException(409, f"แมตช์ {demo_file} ยังไม่พร้อม (สถานะ {m['status']})")
+    return dict(m)
+
+
+async def _review_roster(conn: asyncpg.Connection, match_id: int) -> list[dict]:
+    """ทุกคนในแมตช์ + ทีม — แมตช์ที่โหลดก่อน migration 0004 (team_clan ว่าง) ผูกทีมจาก player_rounds ตอนนี้แทน"""
+    rows = await conn.fetch("""
+        SELECT mp.steam_id, p.name, mp.team_clan FROM match_players mp JOIN players p USING (steam_id)
+        WHERE mp.match_id = $1""", match_id)
+    roster = [{"steam_id": r["steam_id"], "name": r["name"], "team": r["team_clan"]} for r in rows]
+    if roster and all(r["team"] for r in roster):
+        return roster
+    pr = await conn.fetch("""
+        SELECT pr.steam_id, r.round_num, pr.side, p.name FROM player_rounds pr
+        JOIN rounds r ON r.id = pr.round_id JOIN players p USING (steam_id) WHERE r.match_id = $1""", match_id)
+    team_of = assign_teams([dict(x) for x in pr])
+    names = {x["steam_id"]: x["name"] for x in pr}
+    return [{"steam_id": sid, "name": names.get(sid), "team": team} for sid, team in team_of.items()]
+
+
+@app.get("/api/review/grid")
+def api_review_grid(map: str = Query(..., description="เช่น de_mirage"), _: dict = Depends(require_login)):
+    """ช่องกริด (จัดกลุ่มแล้ว) + วง hotspot เป็นพิกเซลบนภาพเรดาร์ — ไว้ให้ toggle ซ้อนบนแผนที่"""
+    frame = radar_frame(map)
+    model = load_grid_model()
+    if frame is None or model is None or model.map_name != map:
+        return {"available": False, "reason": "ยังไม่มีผล research/grid_ml1.py ของแมพนี้"}
+    return grid_overlay(model, frame)
+
+
+@app.get("/api/review/{demo_file}/rounds")
+async def api_review_rounds(demo_file: str, _: dict = Depends(require_login), conn: asyncpg.Connection = Depends(db)):
+    """รายรอบของแมตช์: ใครชนะ จบด้วยอะไร ตายกี่คน คนแรกตายวินาทีที่เท่าไหร่"""
+    m = await _review_match(conn, demo_file)
+    rounds_ = await conn.fetch("""
+        SELECT round_num, start_tick, winner_side, end_reason FROM rounds WHERE match_id = $1 ORDER BY round_num""", m["id"])
+    agg = await conn.fetch("""
+        SELECT r.round_num, COUNT(k.id) AS n, MIN(k.tick) AS first_tick
+        FROM rounds r LEFT JOIN kills k ON k.round_id = r.id WHERE r.match_id = $1 GROUP BY r.round_num""", m["id"])
+    return build_round_list(rows(rounds_), {a["round_num"]: a["first_tick"] for a in agg if a["first_tick"] is not None},
+                            {a["round_num"]: a["n"] for a in agg}, m["tickrate"])
+
+
+@app.get("/api/review/{demo_file}/rounds/{round_num}")
+async def api_review_round(demo_file: str, round_num: int, _: dict = Depends(require_login),
+                           conn: asyncpg.Connection = Depends(db)):
+    """รอบเดียวแบบละเอียด: ทีม / การตายทุกครั้ง (พิกัด + พิกเซลบนเรดาร์) / บริบทจาก grid_ml1 / สรุปรอบ"""
+    m = await _review_match(conn, demo_file)
+    rnd = await conn.fetchrow("""
+        SELECT id, round_num, start_tick, winner_side, end_reason, bomb_plant_tick, bomb_plant_x, bomb_plant_y, bomb_site
+        FROM rounds WHERE match_id = $1 AND round_num = $2""", m["id"], round_num)
+    if not rnd:
+        raise HTTPException(404, f"แมตช์นี้ไม่มีรอบที่ {round_num}")
+    roster = await _review_roster(conn, m["id"])
+    in_round = await conn.fetch("SELECT steam_id, side, survived FROM player_rounds WHERE round_id = $1", rnd["id"])
+    kills = await conn.fetch("""
+        SELECT k.*, pa.name AS attacker_name, pv.name AS victim_name, ps.name AS assister_name
+        FROM kills k
+        LEFT JOIN players pa ON pa.steam_id = k.attacker_id
+        LEFT JOIN players pv ON pv.steam_id = k.victim_id
+        LEFT JOIN players ps ON ps.steam_id = k.assister_id
+        WHERE k.round_id = $1 ORDER BY k.tick, k.id""", rnd["id"])
+    return build_round_detail(match=m, rnd=dict(rnd), roster=roster, in_round=rows(in_round), kills=rows(kills),
+                              frame=radar_frame(m["map_name"]), model=load_grid_model())

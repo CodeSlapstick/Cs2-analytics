@@ -27,7 +27,7 @@ docker compose up -d          # db + redis + api + worker + frontend
 
 | ที่อยู่ | คืออะไร |
 |---|---|
-| http://localhost:3000 | หน้าเว็บ Sprint 2 (React) — Match Library + Match Overview |
+| http://localhost:3000 | หน้าเว็บ Sprint 2 (React) — Match Library + Match Overview + Round Review (`/matches/{demo_file}/rounds/{n}`) |
 | http://localhost:8000 | API (Swagger ที่ `/docs`) + หน้าเว็บ Sprint 1 ที่ยังใช้ได้ (`/upload` `/map` `/ml` …) |
 | localhost:5432 (หรือ `POSTGRES_PORT`) | PostgreSQL · user/pass `postgres` · db `cs2_analytics` |
 
@@ -75,6 +75,13 @@ cd frontend && npm install && npm run dev      # React ที่ :5173 (proxy /a
 | GET | `/api/matches` | รายการแมตช์ทั้งหมดพร้อมสรุปและสถานะ |
 | GET | `/api/matches/{id}` | สรุป + รายรอบ + สกอร์บอร์ด + ฟีเจอร์ต่อคน (opening / trade / clutch / buy) |
 | GET | `/api/health` | DB ต่อได้ไหม คิวยาวแค่ไหน มี worker กี่ตัว |
+| GET | `/api/review/{demo_file}/rounds` | Round Review: รายรอบ (ผู้ชนะ / จบด้วยอะไร / ตายกี่คน / คนแรกตายวินาทีที่เท่าไหร่) |
+| GET | `/api/review/{demo_file}/rounds/{n}` | Round Review: ทีม / การตายทุกครั้งพร้อมพิกเซลบนเรดาร์ / บริบทจาก grid_ml1 / สรุปรอบ |
+| GET | `/api/review/grid?map=de_mirage` | ช่องกริดที่จัดกลุ่มแล้ว + วง hotspot เป็นพิกเซล (toggle ซ้อนบนแผนที่) |
+
+Round Review ใช้ `/api/review/` ไม่ใช่ `/api/matches/` เพราะ `/api/matches/{id}/rounds` เดิมรับเลข id
+บริบทของการตายอ่านจาก `output/grid_ml1.json` (cache ในหน่วยความจำ ไม่รันโมเดลตอน request) — ยังไม่เคยรัน `python research/grid_ml1.py` หน้าเว็บจะบอกว่าไม่มีข้อมูล
+พิกัดทุกจุดแปลงที่ `backend/geo.py` ที่เดียว (grid_ml1.py import สูตรเดียวกัน) frontend ไม่มีสูตรแปลงพิกัดของตัวเอง
 
 endpoint อื่น ๆ ของ Sprint 1 (`/api/players` `/api/heatmap` `/api/tactical` `/api/ml/*`) ยังอยู่ครบ — ดู `/docs`
 ทุก `/api/*` ต้องล็อกอิน: หน้า React ล็อกอินโหมดทดสอบให้เอง (Sprint 2 ยังไม่มีระบบผู้ใช้ — `ALLOW_DEV_LOGIN=1`)
@@ -119,8 +126,11 @@ alembic history
 
 ```bash
 ruff check .        # lint
-pytest              # 28 เทสต์: นิยาม 4 ตัว (doc สังเคราะห์), fixture เดโมจริง 6 รอบ, parser บน .dem จริง
+pytest              # 53 เทสต์: นิยาม 4 ตัว, ผูกทีมข้ามครึ่ง, สูตรพิกัด = grid_ml1, payload Round Review, parser บน .dem จริง
 ```
+
+`backend/tests/fixtures/` เก็บ snapshot ของ `output/grid_ml1.json` / `grid_ml1_cells.csv` ที่คำนวณจาก `data/all_kills.csv` ปัจจุบัน
+ถ้าเพิ่มเดโมแล้วรัน `research/demoparser.py` + `research/grid_ml1.py` ใหม่ ต้องก๊อปสองไฟล์นั้นเข้า fixtures ด้วย ไม่งั้นเทสต์เทียบช่องจะแดง
 
 test parser ต้องมีไฟล์ `.dem` (100+ MB ไม่อยู่ใน git): ใช้ไฟล์เล็กสุดใน `demos/` หรือตั้ง `CS2_TEST_DEMO=path` — ไม่มีก็ skip
 GitHub Actions (`.github/workflows/ci.yml`) รัน ruff · pytest · migration up/down/up บน Postgres จริง · `npm run build`

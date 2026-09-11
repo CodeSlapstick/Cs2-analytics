@@ -91,6 +91,13 @@ def test_positions_are_one_hz_and_alive_only(doc):
     assert all(rounds[p["round_num"]]["start_tick"] <= p["tick"] < rounds[p["round_num"]]["end_tick"] for p in pos)
 
 
+def test_team_clan_and_bomb_position(doc):
+    """schema 5: ทุกแถว player_rounds มี team_clan และทุกรอบที่วางบอมบ์มีพิกัดวางบอมบ์"""
+    assert all("team_clan" in x for x in doc["player_rounds"])
+    planted = [r for r in doc["rounds"] if r["bomb_plant_tick"] is not None]
+    assert all(r["bomb_plant_x"] is not None and r["bomb_plant_y"] is not None for r in planted)
+
+
 def test_feature_layer_runs_on_real_parse(doc):
     from backend.features.compute import compute_features
     rows = compute_features(doc)

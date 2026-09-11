@@ -89,6 +89,7 @@ class MatchPlayer(Base):
     steam_id: Mapped[int] = mapped_column(ForeignKey("players.steam_id"), primary_key=True)
     start_side: Mapped[str | None] = mapped_column(Text)
     rounds: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    team_clan: Mapped[str | None] = mapped_column(Text)   # ชื่อทีมคงที่ทั้งแมตช์ (clan tag หรือ Team A/B) — migration 0004
 
     __table_args__ = (
         CheckConstraint("start_side IN ('ct', 't')", name="match_players_start_side_check"),
@@ -106,6 +107,9 @@ class Round(Base):
     bomb_plant_tick: Mapped[int | None] = mapped_column(Integer)   # NULL = รอบนี้ไม่มีการวางระเบิด
     winner_side: Mapped[str | None] = mapped_column(Text)
     end_reason: Mapped[str | None] = mapped_column(Text)           # t_killed / ct_killed / bomb_defused / ...
+    bomb_plant_x: Mapped[float | None] = mapped_column(REAL)       # จุดที่วางบอมบ์ (migration 0004)
+    bomb_plant_y: Mapped[float | None] = mapped_column(REAL)
+    bomb_site: Mapped[str | None] = mapped_column(Text)
 
     __table_args__ = (
         UniqueConstraint("match_id", "round_num"),

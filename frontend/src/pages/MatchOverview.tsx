@@ -65,8 +65,10 @@ export function MatchOverview() {
 
           <section className="card">
             <p className="eyebrow">ROUND TIMELINE</p>
-            <h2>ใครชนะรอบไหน</h2>
-            <RoundTimeline rounds={rounds} />
+            <h2>
+              ใครชนะรอบไหน <span className="muted small">— กดเลขรอบเพื่อดูว่าใครตายที่ไหนเมื่อไหร่</span>
+            </h2>
+            <RoundTimeline rounds={rounds} demo={match.demo_file} />
           </section>
         </>
       )}
@@ -74,18 +76,19 @@ export function MatchOverview() {
   );
 }
 
-function RoundTimeline({ rounds }: { rounds: RoundRow[] }) {
+function RoundTimeline({ rounds, demo }: { rounds: RoundRow[]; demo: string }) {
   return (
     <>
       <div className="timeline" data-testid="round-timeline">
         {rounds.map((r) => (
-          <div
+          <Link
             key={r.round_num}
+            to={`/matches/${encodeURIComponent(demo)}/rounds/${r.round_num}`}
             className={`rbox ${r.winner_side ?? "none"}`}
-            title={`รอบ ${r.round_num} · ${r.winner_side?.toUpperCase() ?? "?"} ชนะ · ${END_REASON[r.end_reason ?? ""] ?? r.end_reason ?? ""}${r.bomb_planted ? " · วางระเบิด" : ""}`}
+            title={`รอบ ${r.round_num} · ${r.winner_side?.toUpperCase() ?? "?"} ชนะ · ${END_REASON[r.end_reason ?? ""] ?? r.end_reason ?? ""}${r.bomb_planted ? " · วางระเบิด" : ""} — กดเพื่อ Round Review`}
           >
             {r.round_num}
-          </div>
+          </Link>
         ))}
       </div>
       <table className="tbl compact">

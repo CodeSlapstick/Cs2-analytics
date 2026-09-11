@@ -32,6 +32,9 @@ DEMO_DIR = ROOT / "demos"
 CACHE_DIR = ROOT / "output" / "kills_cache"
 OUT_CSV = ROOT / "data" / "all_kills.csv"
 
+sys.path.insert(0, str(ROOT))
+from backend.features.teams import assign_teams  # noqa: E402  ผูกทีมด้วยกฎชุดเดียวกับระบบหลัก
+
 # event ที่ dem.kills ต้องใช้ — ตัดที่เหลือออกให้หมด
 EVENTS = [
     "player_death",           # ตัวคิลเอง
@@ -45,7 +48,8 @@ EVENTS = [
 # props ชุดเดียวกับที่ awpy ใส่ให้เป็น default
 #   awpy จะเปลี่ยนชื่อให้เองตอนอ่าน: team_name -> side, last_place_name -> place
 #   จึงได้คอลัมน์ attacker_side / victim_side / victim_place / victim_X ฯลฯ ออกมา
-PLAYER_PROPS = ["last_place_name", "X", "Y", "Z", "health", "team_name"]
+PLAYER_PROPS = ["last_place_name", "X", "Y", "Z", "health", "team_name",
+                "team_clan_name"]   # ชื่อทีม (clan tag) — ใช้ผูกคนกับทีมข้ามครึ่ง (Round Review)
 
 for _s in (sys.stdout, sys.stderr):     # ให้คอนโซล Windows พิมพ์ไทยได้
     try:
@@ -73,13 +77,46 @@ def parse_one(path: Path) -> pl.DataFrame:
         pl.col("reason").alias("round_end_reason"),
     )
 
-    return dem.kills.join(ctx, on="round_num", how="left").with_columns(
+    kills = dem.kills.join(ctx, on="round_num", how="left").with_columns(
         # สองคอลัมน์นี้คือเหตุผลที่ต้องมีสคริปต์นี้ ไม่ใช่แค่ต่อ csv เอาเอง
         # ปลายทาง (grid_ml.py) ต้องแยกให้ออกว่าแถวไหนมาจากแมตช์ไหน ถึงจะแบ่ง train/test ได้ถูก
         pl.lit(path.name).alias("demo_file"),
         pl.lit(dem.header.get("map_name", "unknown")).alias("map_name"),
         pl.lit(dem.tickrate).alias("tickrate"),
     )
+    return add_round_review_columns(kills)
+
+
+def add_round_review_columns(kills: pl.DataFrame) -> pl.DataFrame:
+    """คอลัมน์ที่หน้า Round Review ต้องใช้ (STEP 0)
+
+    attacker_team_clan / victim_team_clan / assister_team_clan
+        ชื่อทีมที่คงที่ทั้งแมตช์ — ผูกด้วย backend/features/teams.assign_teams
+        (คนฝั่งเดียวกันในรอบเดียวกัน = ทีมเดียวกัน, ชื่อ = clan tag ที่พบบ่อยสุด, ไม่มี clan -> Team A/B ตาม side ครึ่งแรก)
+    round_winner_side / attacker_blind
+        ชื่อตาม brief — คอลัมน์เดิม round_winner / attackerblind ยังอยู่ เพราะ research/*.py อ้างชื่อเดิมอยู่
+    """
+    rows = []
+    for who in ("attacker", "victim"):
+        part = kills.select(
+            pl.col(f"{who}_steamid").cast(pl.Int64).alias("steam_id"),
+            pl.col("round_num"),
+            pl.col(f"{who}_side").alias("side"),
+            pl.col(f"{who}_team_clan_name").alias("clan") if f"{who}_team_clan_name" in kills.columns else pl.lit(None).alias("clan"),
+        ).drop_nulls("steam_id")
+        rows.extend(part.to_dicts())
+    team_of = assign_teams(rows)
+
+    def team_col(who: str) -> pl.Expr:
+        return (pl.col(f"{who}_steamid").cast(pl.Int64)
+                .replace_strict(team_of, default=None, return_dtype=pl.Utf8).alias(f"{who}_team_clan"))
+
+    raw_clan = [c for c in kills.columns if c.endswith("_team_clan_name")]
+    return kills.with_columns(
+        team_col("attacker"), team_col("victim"), team_col("assister"),
+        pl.col("round_winner").alias("round_winner_side"),
+        pl.col("attackerblind").alias("attacker_blind"),
+    ).drop(raw_clan)
 
 
 def main() -> None:

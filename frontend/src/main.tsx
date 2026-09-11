@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Link, Route, Routes } from "react-router-dom";
 import { MatchLibrary } from "./pages/MatchLibrary";
 import { MatchOverview } from "./pages/MatchOverview";
+import { RoundReviewPage } from "./pages/RoundReviewPage";
 import { ensureLogin } from "./api";
 import "./styles.css";
 
@@ -30,6 +31,7 @@ function App() {
         <Routes>
           <Route path="/" element={<MatchLibrary />} />
           <Route path="/matches/:id" element={<MatchOverview />} />
+          <Route path="/matches/:demo/rounds/:n" element={<RoundReviewPage />} />
         </Routes>
       </main>
     </BrowserRouter>

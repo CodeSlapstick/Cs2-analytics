@@ -57,7 +57,7 @@ from backend.parser.constants import (  # noqa: E402  ชุด event/prop เ�
 DEMO_DIR = ROOT / "demos"
 OUT_DIR = ROOT / "output" / "json"
 
-SCHEMA_VERSION = 4      # ขยับเมื่อโครง JSON เปลี่ยนแบบที่ ETL เดิมอ่านไม่ได้  (2 = damages, 3 = player_rounds + grenades, 4 = positions 1 Hz)
+SCHEMA_VERSION = 5      # ขยับเมื่อโครง JSON เปลี่ยนแบบที่ ETL เดิมอ่านไม่ได้  (2 = damages, 3 = player_rounds + grenades, 4 = positions 1 Hz, 5 = team_clan + จุดวางบอมบ์)
 
 # ชื่อไฟล์เดโมจาก HLTV มีแบบแผน "ทีมA-vs-ทีมB-แมพ.dem" (regex เดียวกับ backend/load_kills.py)
 TEAMS_RE = re.compile(r"^(?P<a>.+?)-vs-(?P<b>.+?)-[^-]+\.dem$", re.IGNORECASE)
@@ -88,7 +88,8 @@ DAMAGE_COLUMNS = {
 #   ตัวหลังในเดโม CS2 ค้างค่าเก่า (เห็น 200 ทั้งที่ถือ M4 อยู่) ส่วนตัวแรก ณ tick ที่ freeze จบ
 #   คือมูลค่าจริง ซึ่งตรงกับนิยาม "equipment value at freeze-time end" ของ HLTV พอดี
 TICK_PROPS = ["team_name", "is_alive", "current_equip_value", "balance",
-              "X", "Y", "Z", "last_place_name", "health"]   # ห้าตัวหลังใช้กับตำแหน่ง 1 Hz (positions)
+              "X", "Y", "Z", "last_place_name", "health",
+              "team_clan_name"]   # ห้าตัวหลังใช้กับตำแหน่ง 1 Hz (positions)
 
 for _s in (sys.stdout, sys.stderr):     # ให้คอนโซล Windows พิมพ์ไทยได้
     try:
@@ -123,7 +124,18 @@ def parse_demo(path: Path) -> dict:
         pl.col("bomb_plant").cast(pl.Int32).alias("bomb_plant_tick"),
         pl.col("winner").alias("winner_side"),
         pl.col("reason").alias("end_reason"),
+        pl.col("bomb_site").cast(pl.Utf8).alias("bomb_site"),
     )).sort("round_num")
+    # จุดที่วางบอมบ์ = ตำแหน่งคนวาง ณ event bomb_planted (ไอคอนบอมบ์บนแผนที่หน้า Round Review)
+    bp = dem.events.get("bomb_planted") if isinstance(dem.events, dict) else None
+    if bp is not None and len(bp):
+        plant = (bp.select(pl.col("tick").cast(pl.Int32).alias("bomb_plant_tick"),
+                           pl.col("user_X").cast(pl.Float64).alias("bomb_plant_x"),
+                           pl.col("user_Y").cast(pl.Float64).alias("bomb_plant_y"))
+                 .unique("bomb_plant_tick", keep="first"))
+        rounds = rounds.join(plant, on="bomb_plant_tick", how="left")
+    else:
+        rounds = rounds.with_columns(pl.lit(None, pl.Float64).alias("bomb_plant_x"), pl.lit(None, pl.Float64).alias("bomb_plant_y"))
 
     # --- kills: เปลี่ยนชื่อคอลัมน์ให้ตรง schema ตัดคอลัมน์ที่ DB ไม่เก็บ ---
     kills = _clean(
@@ -202,6 +214,7 @@ def parse_demo(path: Path) -> dict:
             pl.col("current_equip_value").cast(pl.Int32).alias("equip_value"),
             pl.col("balance").cast(pl.Int32),
             pl.col("survived").fill_null(False),
+            pl.col("team_clan_name").alias("team_clan"),      # clan tag ณ รอบนั้น — loader ผูกเป็นทีมคงที่ด้วย teams.assign_teams
         )
         .sort(["round_num", "steam_id"])
     )

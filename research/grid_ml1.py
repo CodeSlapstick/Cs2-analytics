@@ -68,6 +68,9 @@ ROOT = Path(__file__).resolve().parent.parent
 CSV = ROOT / "data" / "all_kills.csv"     # สร้างด้วย python research/demoparser.py
 OUT = ROOT / "output"
 
+sys.path.insert(0, str(ROOT))           # ให้ import backend.* ได้เมื่อรันจากรากโปรเจกต์
+from backend.geo import cells_of, radar_frame  # noqa: E402  สูตรพิกัดชุดเดียวของทั้งรีโป
+
 for _s in (sys.stdout, sys.stderr):     # ให้คอนโซล Windows พิมพ์ไทยได้
     try:
         _s.reconfigure(encoding="utf-8")
@@ -129,17 +132,15 @@ df["ct_won"] = (df["attacker_side"] == "ct").astype(int)
 # STEP 5 — หย่อนลงกริด และคำนวณลักษณะของแต่ละดวล
 # ===========================================================================
 # ขอบเขตกริดเอาจากภาพเรดาร์ ไม่ใช่จากค่าต่ำสุด-สูงสุดของข้อมูล (เหตุผลเดียวกับ grid_ml.py)
-radar = json.loads((ROOT / "assets" / "radars.json").read_text(encoding="utf-8"))[MAP]
+radar = json.loads((ROOT / "assets" / "radars.json").read_text(encoding="utf-8"))[MAP]   # ไว้ใส่ payload + path รูป
 
-span = radar["size"] * radar["scale"]      # 1024 พิกเซล x 5.0 = 5120 หน่วยในเกม
-x_left = radar["pos_x"]
-y_top = radar["pos_y"]
-x_right = x_left + span
-y_bottom = y_top - span
-cell_size = span / GRID_N                  # 5120 / 32 = 160 หน่วยต่อหนึ่งช่อง
+# สูตรแปลงพิกัด -> ช่องกริดอยู่ที่ backend/geo.py ที่เดียว (API หน้า Round Review ใช้ตัวเดียวกัน ช่องจึงตรงกันเสมอ)
+frame = radar_frame(MAP)
+span = frame.span                          # 1024 พิกเซล x 5.0 = 5120 หน่วยในเกม
+x_left, x_right, y_bottom, y_top = frame.extent
+cell_size = frame.cell_size(GRID_N)        # 5120 / 32 = 160 หน่วยต่อหนึ่งช่อง
 
-df["cx"] = np.clip((df["victim_X"] - x_left) // cell_size, 0, GRID_N - 1).astype(int)
-df["cy"] = np.clip((df["victim_Y"] - y_bottom) // cell_size, 0, GRID_N - 1).astype(int)
+df["cx"], df["cy"] = cells_of(df["victim_X"], df["victim_Y"], frame, GRID_N)
 
 # ระยะดวลคิดจากพิกัดเอง ให้อยู่ในหน่วยเกมเดียวกับกริด (คอลัมน์ distance ของ parser คนละหน่วย)
 df["dist_xy"] = np.hypot(df["attacker_X"] - df["victim_X"], df["attacker_Y"] - df["victim_Y"])
