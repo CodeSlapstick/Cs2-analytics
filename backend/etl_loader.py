@@ -1,14 +1,16 @@
 import argparse
 import asyncio
 import json
-import os
+import sys
 from pathlib import Path
 import asyncpg
-from dotenv import load_dotenv
 
-load_dotenv()
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))      # ให้รัน python backend/etl_loader.py จากรากโปรเจกต์ได้
 
-DB_URL = os.getenv("DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/cs2_analytics")
+# ที่อยู่ฐานข้อมูลใช้ตัวเดียวกับทั้ง backend/ (backend/db.py อ่าน .env ให้ตอน import)
+# เมื่อก่อนไฟล์นี้เรียก python-dotenv เอง ซึ่งไม่ได้อยู่ใน requirements.txt — import จากที่เดียวจึงไม่มีทางหลุด
+from backend.db import DATABASE_URL as DB_URL   # noqa: E402
 
 async def load_match_json(conn, json_path: Path, force: bool = False):
     with open(json_path, "r", encoding="utf-8") as f:

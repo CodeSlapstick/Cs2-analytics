@@ -18,6 +18,19 @@
       <div class="eyebrow">ML insights</div>
       <h1>โมเดลทำนาย</h1>
     </div>
+    <!-- เลือกแมตช์ที่อัปโหลดไว้ — โมเดลจะอ่านแมตช์นั้นแล้วบอกว่ามีอะไรสำคัญ (ml.js เติมรายการให้) -->
+    <select id="mlMatch"></select>
+  </div>
+
+  <!-- ================= แมตช์ที่เลือก — โมเดล "อ่าน" เดโมของผู้ใช้ ================= -->
+  <div class="box" style="margin-bottom:14px" id="insightBox">
+    <div class="eyebrow">This match</div>
+    <h2 id="insightTitle">ข้อมูลสำคัญของแมตช์นี้</h2>
+    <div class="sub" id="insightNote" style="margin-bottom:12px"></div>
+    <div id="insightKpis" class="kpis" style="margin-bottom:14px"></div>
+    <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:14px" id="insightLinks"></div>
+    <div class="eyebrow">จังหวะตัดสินของแต่ละรอบ</div>
+    <div id="insightRounds" style="margin-top:8px"></div>
   </div>
 
   <!-- ================= โมเดลที่ 1 — โอกาสชนะรอบ ================= -->
@@ -25,7 +38,9 @@
     <div class="eyebrow">Round win model</div>
     <h2>โอกาสชนะรอบ จากสถานะกลางรอบ</h2>
 
-    <div id="rwKpis" class="kpis" style="margin:12px 0 18px"></div>
+    <div id="rwKpis" class="kpis" style="margin:12px 0 8px"></div>
+    <!-- โมเดลเทรนเมื่อไร จากแหล่งไหน — ไม่มีบรรทัดนี้ ผู้ใช้จะไม่รู้ว่าอัปเดโมไปแล้วผลเปลี่ยนหรือยัง -->
+    <div class="sub" id="rwTrained" style="margin-bottom:16px"></div>
 
     <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:14px">
       <select id="rwCt"></select>       <!-- CT เหลือกี่คน -->

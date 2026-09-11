@@ -13,7 +13,7 @@ async function boot() {
   // fetch = ส่งคำขอไปหาเซิร์ฟเวอร์, await = รอจนกว่าคำตอบจะมาถึงค่อยทำบรรทัดถัดไป
   const me = await fetch("/api/me");
   if (me.ok) {                      // .ok = true เมื่อเซิร์ฟเวอร์ตอบสำเร็จ (สถานะ 200-299)
-    location.href = "/overview";    // location.href = "พาเบราว์เซอร์ไปหน้านี้" (เหมือนพิมพ์ URL เอง)
+    location.href = "/upload";    // location.href = "พาเบราว์เซอร์ไปหน้านี้" (เหมือนพิมพ์ URL เอง)
     return;
   }
 
@@ -47,7 +47,7 @@ $("btnDev").addEventListener("click", async () => {
   if (!res.ok) return say(data.error || "เข้าสู่ระบบไม่สำเร็จ");  // || = "ถ้าตัวซ้ายไม่มีค่า ให้ใช้ตัวขวา"
 
   say("สำเร็จ! กำลังเข้าหน้าหลัก…", "ok");
-  location.href = "/overview";
+  location.href = "/upload";
 });
 
 boot();   

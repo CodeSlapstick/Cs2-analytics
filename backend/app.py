@@ -22,6 +22,7 @@ backend/app.py — "หลังบ้าน" (backend) ของเว็บ CS
 # ---------------------------------------------------------------------------
 # ส่วนที่ 0 — ขนเครื่องมือเข้ามาใช้
 # ---------------------------------------------------------------------------
+import asyncio
 import json
 import mimetypes
 import os
@@ -34,12 +35,14 @@ from pathlib import Path
 
 import asyncpg
 import httpx                   # httpx = โทรศัพท์ ใช้ "โทร" ไปถามเว็บอื่น (ที่นี่คือเซิร์ฟเวอร์ Steam)
-from fastapi import Depends, FastAPI, HTTPException, Query, Request
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, Request, UploadFile
+from fastapi.concurrency import run_in_threadpool   # เอางานหนักที่ไม่ใช่ async ไปรันในเธรดแยก ไม่ให้เซิร์ฟเวอร์ค้าง
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from itsdangerous import BadSignature, URLSafeSerializer   # เครื่อง "เซ็นชื่อ" ข้อมูลในคุกกี้ กันคนปลอมแปลง
 
 from backend.db import DATABASE_URL, apply_schema, create_pool, redacted_url  # noqa: F401  (load_dotenv ทำงานตอน import)
+from backend.etl_loader import load_match_json   # ตัวเดียวกับที่ CLI ใช้ — เดโมที่อัปโหลดจึงเข้าฐานข้อมูลด้วยเส้นทางเดิมเป๊ะ
 
 # ---------------------------------------------------------------------------
 # ส่วนที่ 1 — ค่าตั้งต้น (CONFIG) อยากแก้อะไรแก้ตรงนี้ที่เดียว
@@ -49,6 +52,13 @@ FRONTEND = ROOT / "frontend"                    # โฟลเดอร์ขอ
 PAGES_DIR = FRONTEND / "pages"                  # หน้า .html ที่ไฟล์นี้เสิร์ฟให้เบราว์เซอร์
 STATIC_DIR = FRONTEND / "static"                # ไฟล์นิ่ง ๆ (.css .js รูป)
 ASSETS_DIR = ROOT / "assets"                    # ภาพเรดาร์ของแต่ละแมพ + ค่าปรับเทียบพิกัด (radars.json)
+DEMOS_DIR = ROOT / "demos"                      # ไฟล์ .dem ที่ผู้ใช้อัปโหลดเข้ามา (ไม่ถูก commit — ดู .gitignore)
+JSON_DIR = ROOT / "output" / "json"             # ผลจาก parser ก่อนเข้าฐานข้อมูล เก็บไว้ตรวจย้อนหลังได้
+
+MAX_DEMO_MB = int(os.environ.get("MAX_DEMO_MB", "600"))   # เพดานขนาดไฟล์ที่ยอมรับ กันคนอัปของใหญ่จนดิสก์เต็ม
+# ชื่อไฟล์ที่ยอมรับ — อนุญาตเฉพาะตัวอักษร ตัวเลข และ . _ - ( ) เท่านั้น
+# สำคัญกว่าที่คิด: ถ้าปล่อยให้มี / หรือ .. ในชื่อ คนอัปจะเขียนไฟล์ทับที่ไหนก็ได้ในเครื่อง (path traversal)
+DEMO_NAME_RE = re.compile(r"^[A-Za-z0-9._()-]{1,120}\.dem$", re.IGNORECASE)
 
 # คอนโซลของ Windows ดีฟอลต์เป็น cp1252 ซึ่งพิมพ์ภาษาไทยไม่ได้ ถ้าไม่ตั้งบรรทัดนี้
 # print() ที่มีข้อความไทยจะโยน UnicodeEncodeError ออกมากลางคัน ทำให้ทั้ง request พัง
@@ -130,7 +140,7 @@ async def no_stale_static(request: Request, call_next):
     รูปกับฟอนต์ไม่ต้องยุ่ง — พวกนั้นเปลี่ยนน้อย ปล่อยให้แคชยาว ๆ ได้เลย
 
     ดูจาก content-type ไม่ใช่จากนามสกุลใน URL
-        เพราะหน้าเว็บของเราเป็น /overview /players /map ไม่มี .html ต่อท้ายสักอัน
+        เพราะหน้าเว็บของเราเป็น /upload /players /map ไม่มี .html ต่อท้ายสักอัน
         ถ้าไล่เช็คนามสกุลจะหลุดทุกหน้าพอดี แต่ content-type บอกตรง ๆ ว่าไฟล์นี้คืออะไร
     """
     response = await call_next(request)
@@ -194,16 +204,34 @@ def page_login():
 # แต่ละหน้าเป็นไฟล์ .html ของตัวเองใน frontend/pages/ (1 หน้า = 1 ไฟล์ html + 1 ไฟล์ js)
 # ตัว JS ในแต่ละหน้าจะเช็คเองว่าล็อกอินแล้วหรือยัง ถ้ายังจะเด้งกลับมาหน้า /
 
+@app.get("/upload")
+def page_upload():
+    """อัปโหลดเดโม — ลากไฟล์ .dem เข้ามา ระบบ parse แล้วโหลดเข้าฐานข้อมูลให้ในคำขอเดียว"""
+    return FileResponse(PAGES_DIR / "upload.html")
+
+
 @app.get("/overview")
 def page_overview():
-    """ภาพรวม — การ์ดตัวเลขสรุป + กราฟ + แมตช์ล่าสุด"""
-    return FileResponse(PAGES_DIR / "overview.html")
+    """ที่อยู่เดิมของหน้าภาพรวม — หน้านั้นถูกแทนที่ด้วยหน้าอัปโหลด ลิงก์เก่าและบุ๊กมาร์กจะได้ไม่พัง"""
+    return RedirectResponse("/upload")
 
 
 @app.get("/matches")
 def page_matches():
     """แมตช์ — ตารางแมตช์ + รายรอบ + สกอร์บอร์ด"""
     return FileResponse(PAGES_DIR / "matches.html")
+
+
+@app.get("/rounds/{match_id}")
+def page_rounds(match_id: int):
+    """ไทม์ไลน์รายรอบของแมตช์เดียว — JS อ่านเลขแมตช์จาก URL เอง ไฟล์ html เดียวจึงใช้ได้ทุกแมตช์"""
+    return FileResponse(PAGES_DIR / "rounds.html")
+
+
+@app.get("/review/{match_id}")
+def page_review(match_id: int):
+    """รีวิวจุดพลาดรายคนของแมตช์เดียว — JS อ่านเลขแมตช์จาก URL เอง"""
+    return FileResponse(PAGES_DIR / "review.html")
 
 
 @app.get("/players")
@@ -228,6 +256,12 @@ def page_tactical():
 def page_ml():
     """โมเดล ML — โอกาสชนะรอบ + โมเดลกริด"""
     return FileResponse(PAGES_DIR / "ml.html")
+
+
+@app.get("/main")
+def page_main():
+    """ที่อยู่เดิมสมัยยังเป็นหน้าเดียว — ส่งต่อไปหน้าแรกปัจจุบัน ลิงก์เก่าจะได้ไม่พัง"""
+    return RedirectResponse("/upload")
 
 
 # ---------------------------------------------------------------------------
@@ -266,9 +300,11 @@ async def steam_callback(request: Request, conn: asyncpg.Connection = Depends(db
     user = {"steamid": steamid, **profile, "mode": "steam"}
     await save_user(conn, user)
 
-    response = RedirectResponse("/overview", status_code=303)
-    make_session_cookie(response, user)
-    return response
+    # 303 See Other = "ล็อกอินเสร็จแล้ว ไปเปิดหน้านี้ต่อด้วย GET"
+    # ถ้าไม่ระบุ RedirectResponse จะใช้ 307 ซึ่งแปลว่า "ใช้ method เดิมยิงซ้ำ" — ผิดความหมายของจังหวะนี้
+    response = RedirectResponse("/upload", status_code=303)   # ล็อกอินเสร็จแล้วพาไปหน้าอัปโหลด
+    make_session_cookie(response, user)     # ติดคุกกี้ไปกับ response ตัวเดียวกับที่พาไปหน้าถัดไป
+    return response                         # ขาดบรรทัดนี้เมื่อไร = ล็อกอินไม่ติดเลย เพราะเบราว์เซอร์ไม่เคยได้คุกกี้
 
 
 @app.post("/auth/dev-login")
@@ -367,8 +403,12 @@ def api_me(user: dict = Depends(require_login)):
 
 @app.get("/api/config")
 def api_config():
-    """บอกหน้าเว็บว่าเซิร์ฟเวอร์ตั้งค่าไว้ยังไง (เช่น ต้องซ่อนกล่องโหมดทดสอบไหม)"""
-    return {"allow_dev_login": ALLOW_DEV_LOGIN, "has_steam_key": bool(STEAM_API_KEY)}
+    """บอกหน้าเว็บว่าเซิร์ฟเวอร์ตั้งค่าไว้ยังไง (เช่น ต้องซ่อนกล่องโหมดทดสอบไหม เพดานไฟล์เท่าไร)"""
+    return {
+        "allow_dev_login": ALLOW_DEV_LOGIN,
+        "has_steam_key": bool(STEAM_API_KEY),
+        "max_demo_mb": MAX_DEMO_MB,     # หน้าอัปโหลดใช้บอกผู้ใช้ และกันไฟล์ใหญ่ตั้งแต่ยังไม่ส่ง
+    }
 
 
 @app.get("/api/stats")
@@ -480,6 +520,270 @@ async def api_match(match_id: int, _: dict = Depends(require_login), conn: async
     return {"match": dict(match), "rounds": rows(rounds_), "scoreboard": rows(scoreboard)}
 
 
+# ---------------------------------------------------------------------------
+# ส่วนที่ 5.5 — โมเดลโอกาสชนะรอบ "อ่าน" แมตช์เดียว
+#
+# ตรรกะกลางใช้ร่วมกันสอง endpoint
+#   /api/matches/{id}/rounds   ไทม์ไลน์รายรอบ: P(CT ชนะ) หลังทุกคิล + จังหวะตัดสินรอบ
+#   /api/matches/{id}/review   จุดพลาดรายคน: การตายที่แพงที่สุด / ตายฟรี / ดวลในจุดเสียเปรียบ
+#
+# ทิศทางกลับกับการเทรน: เทรน = เดโมหลายสิบไฟล์ -> ตาราง P(CT ชนะ)
+# ที่นี่ = ตาราง -> เดโมไฟล์เดียว จึงใช้กับแมตช์ที่เพิ่งอัปโหลดได้ทันที ไม่ต้องเทรนใหม่
+# ---------------------------------------------------------------------------
+ROUND_KILLS_SQL = """
+    SELECT r.round_num, r.winner_side, r.end_reason, r.start_tick, r.bomb_plant_tick, m.tickrate,
+           k.tick, k.attacker_side, k.victim_side, k.weapon, k.headshot, k.attacker_place, k.victim_place,
+           k.attacker_id::text AS attacker_id, k.victim_id::text AS victim_id,
+           k.victim_x, k.victim_y,
+           pa.name AS attacker, pv.name AS victim
+    FROM rounds r
+    JOIN matches m ON m.id = r.match_id
+    LEFT JOIN kills k    ON k.round_id = r.id          -- LEFT ทั้งสาย: รอบที่ไม่มีคิลเลย (หมดเวลา) ต้องยังโผล่
+    LEFT JOIN players pa ON pa.steam_id = k.attacker_id
+    LEFT JOIN players pv ON pv.steam_id = k.victim_id
+    WHERE r.match_id = $1
+    ORDER BY r.round_num, k.tick, k.id"""
+
+
+def load_round_win_model() -> dict:
+    """ตาราง P(CT ชนะรอบ) ที่ round_win.py เขียนไว้ — ไม่มีก็บอกวิธีสร้าง"""
+    return read_output_json("round_win.json", "python pipeline/round_win.py")
+
+
+def annotate_rounds(rows_, model: dict) -> list[dict]:
+    """ไล่คิลทีละแถว ติดสถานะ "ก่อน" คิล (ใครเหลือกี่คน ระเบิดลงยัง วินาทีที่เท่าไร)
+    แล้วเปิดตาราง -> P(CT ชนะ) ก่อนและหลัง  delta = หลัง - ก่อน (มุมมอง CT)
+    คิลที่ |delta| มากที่สุดในรอบ = จังหวะที่ตัดสินรอบ
+    """
+    table, edges, names = model["table"], model["time_edges"], model["time_names"]
+
+    def time_bucket(sec: float) -> str:
+        # ใช้ <= ให้ตรงกับ pd.cut (ช่วงปิดขวา) ที่ round_win.py ใช้ตอนเทรน ไม่งั้นวินาทีที่ 20 พอดีจะตกคนละถัง
+        for edge, name in zip(edges, names):
+            if sec <= edge:
+                return name
+        return names[-1]
+
+    def p_ct(ct: int, t: int, planted: int, sec: float | None):
+        """P(CT ชนะ) จากตาราง — None ถ้าสถานะนี้ไม่มีในตาราง (นอกช่วง 1-5 หรือไม่รู้เวลาเริ่มรอบ)"""
+        if sec is None or not (1 <= ct <= 5 and 1 <= t <= 5):
+            return None
+        return table.get(f"{ct}v{t}|{planted}|{time_bucket(sec)}")
+
+    rounds_out: list[dict] = []
+    cur: dict | None = None
+    for row in rows_:
+        rate = row["tickrate"] or 128
+        start = row["start_tick"]
+        if cur is None or cur["round_num"] != row["round_num"]:
+            plant = row["bomb_plant_tick"]
+            cur = {
+                "round_num": row["round_num"],
+                "winner_side": row["winner_side"],
+                "end_reason": row["end_reason"],
+                "bomb_plant_sec": round((plant - start) / rate, 1) if plant is not None and start is not None else None,
+                "kills": [],
+                "_dead_ct": 0, "_dead_t": 0,
+            }
+            rounds_out.append(cur)
+        if row["tick"] is None:
+            continue
+
+        sec = round((row["tick"] - start) / rate, 1) if start is not None else None
+        planted = int(row["bomb_plant_tick"] is not None and row["tick"] >= row["bomb_plant_tick"])
+
+        # สถานะ "ก่อน" คิลนี้ — นับคนตายจากทุกสาเหตุ (C4 / ตกที่สูง / ทีมคิล) เหมือน round_win.py
+        ct_before, t_before = 5 - cur["_dead_ct"], 5 - cur["_dead_t"]
+        if row["victim_side"] == "ct":
+            cur["_dead_ct"] += 1
+        elif row["victim_side"] == "t":
+            cur["_dead_t"] += 1
+        ct_after, t_after = 5 - cur["_dead_ct"], 5 - cur["_dead_t"]
+
+        p_before = p_ct(ct_before, t_before, planted, sec)
+        if ct_after <= 0:
+            p_after = 0.0                       # CT หมด = T ชนะแน่
+        elif t_after <= 0:
+            p_after = None if planted else 1.0  # T หมดแต่ระเบิดลงแล้ว CT ยังต้องกู้ให้ทัน ตารางไม่มีสถานะนี้ ไม่เดา
+        else:
+            p_after = p_ct(ct_after, t_after, planted, sec)
+        delta = round(p_after - p_before, 4) if p_after is not None and p_before is not None else None
+
+        cur["kills"].append({
+            "sec": sec,
+            "attacker": row["attacker"], "attacker_side": row["attacker_side"], "attacker_place": row["attacker_place"],
+            "victim": row["victim"], "victim_side": row["victim_side"], "victim_place": row["victim_place"],
+            "attacker_id": row["attacker_id"], "victim_id": row["victim_id"],
+            "victim_x": row["victim_x"], "victim_y": row["victim_y"],
+            "weapon": row["weapon"], "headshot": row["headshot"],
+            "before": f"{ct_before}v{t_before}", "after": f"{ct_after}v{t_after}",
+            "planted": planted,
+            "p_before": p_before, "p_after": p_after, "delta": delta,
+        })
+
+    for r in rounds_out:
+        del r["_dead_ct"], r["_dead_t"]
+        ks = r["kills"]
+        measurable = [i for i, k in enumerate(ks) if k["delta"] is not None]
+        r["deciding"] = max(measurable, key=lambda i: abs(ks[i]["delta"])) if measurable else None
+        r["p_final"] = next((k["p_after"] for k in reversed(ks) if k["p_after"] is not None), None)
+    return rounds_out
+
+
+def model_info(model: dict, map_name: str) -> dict:
+    """ข้อมูลกำกับโมเดลที่หน้าเว็บต้องรู้ — โดยเฉพาะว่าเทรนจากแมพเดียวกับแมตช์นี้ไหม"""
+    return {
+        "map": model["map"],
+        "trained_matches": model["metrics"]["matches"],
+        "trained_at": model.get("trained_at"),
+        "same_map": model["map"] == map_name,       # ฟีเจอร์คือคนเหลือ/ระเบิด/เวลา ใช้ข้ามแมพได้ แต่ต้องบอกผู้ใช้
+        "p_start": model["table"].get(f"5v5|0|{model['time_names'][0]}"),
+    }
+
+
+@app.get("/api/matches/{match_id}/rounds")
+async def api_match_rounds(match_id: int, _: dict = Depends(require_login), conn: asyncpg.Connection = Depends(db)):
+    """ไทม์ไลน์รายรอบ — P(CT ชนะ) หลังทุกคิล และคิลที่ตัดสินรอบ"""
+    match = await conn.fetchrow("SELECT * FROM match_summary WHERE id = $1", match_id)
+    if not match:
+        raise HTTPException(404, "ไม่พบแมตช์นี้")
+    model = load_round_win_model()
+    rows_ = await conn.fetch(ROUND_KILLS_SQL, match_id)
+    return {"match": dict(match), "model": model_info(model, match["map_name"]), "rounds": annotate_rounds(rows_, model)}
+
+
+# ---- กริด: ช่องไหนบนแมพที่ฝั่งไหนชนะดวล (ใช้ได้เฉพาะแมพที่ grid_ml.py เทรนไว้) ----------
+BAD_CELL_P = 0.40      # ถ้าฝั่งเราชนะดวลในช่องนั้นน้อยกว่านี้ = "ดวลในจุดเสียเปรียบ"
+
+
+def load_grid(map_name: str) -> dict | None:
+    """โหลด grid_ml.json + ค่าปรับเทียบเรดาร์ ถ้าโมเดลกริดเป็นของแมพนี้ — ไม่ใช่ก็คืน None (ไม่พัง)"""
+    f = ROOT / "output" / "grid_ml.json"
+    if not f.exists():
+        return None
+    g = json.loads(f.read_text(encoding="utf-8"))
+    if g.get("map") != map_name:
+        return None
+    radar = json.loads((ASSETS_DIR / "radars.json").read_text(encoding="utf-8")).get(map_name)
+    if not radar:
+        return None
+    # เรขาคณิตชุดเดียวกับ grid_ml.py: ขอบกริดเอาจากภาพเรดาร์ ไม่ใช่จากข้อมูล
+    span = radar["size"] * radar["scale"]
+    n = g["grid_n"]
+    return {
+        "n": n, "cell": span / n,
+        "x_left": radar["pos_x"], "y_bottom": radar["pos_y"] - span,
+        "cells": {(c["cx"], c["cy"]): c for c in g["cells"]},
+        "matches": g["metrics"]["matches"],
+    }
+
+
+def grid_cell(grid: dict | None, x, y) -> dict | None:
+    """พิกัดเกม -> ช่องกริด -> ค่าที่โมเดลรู้ (None ถ้าช่องนั้นมีดวลน้อยเกินจะสรุป)"""
+    if grid is None or x is None or y is None:
+        return None
+    cx = int(min(max((x - grid["x_left"]) // grid["cell"], 0), grid["n"] - 1))
+    cy = int(min(max((y - grid["y_bottom"]) // grid["cell"], 0), grid["n"] - 1))
+    return grid["cells"].get((cx, cy))
+
+
+@app.get("/api/matches/{match_id}/review")
+async def api_match_review(match_id: int, _: dict = Depends(require_login), conn: asyncpg.Connection = Depends(db)):
+    """รีวิวรายคน: เราพลาดตรงไหน — สามคำถามที่ข้อมูลตอบได้จริง
+
+    A  การตายที่แพงที่สุด   ทุกครั้งที่ตาย โอกาสชนะรอบของทีมหายไปกี่ % (จากตาราง round_win)
+    B  ดวลในจุดเสียเปรียบ   ตายในช่องที่โมเดลกริดบอกว่าฝั่งเราชนะน้อยกว่า 40% (เฉพาะแมพที่มีกริด)
+    C  ตายฟรี              opening death ที่เพื่อนไม่เทรดคืนใน 5 วิ / ตายแล้วไม่ถูกเทรด (จาก player_round_facts)
+
+    สิ่งที่ตั้งใจ "ไม่" ตอบ: ทำไมถึงแพ้ดวล (เล็ง/ปืน) — โมเดลไม่ใช้ headshot/weapon ตั้งแต่ต้น
+    """
+    match = await conn.fetchrow("SELECT * FROM match_summary WHERE id = $1", match_id)
+    if not match:
+        raise HTTPException(404, "ไม่พบแมตช์นี้")
+    model = load_round_win_model()
+    rows_ = await conn.fetch(ROUND_KILLS_SQL, match_id)
+    rounds_ = annotate_rounds(rows_, model)
+    grid = load_grid(match["map_name"])
+
+    # ---- รายชื่อผู้เล่น: จาก scoreboard ถ้ามี (เดโมที่อัปผ่านเว็บ) ไม่มีก็ประกอบจากคิล (แมตช์จาก csv) ----
+    players: dict[str, dict] = {}
+    for sb in await conn.fetch(
+            "SELECT steam_id::text AS steam_id, name, start_side, kills, deaths FROM match_scoreboard WHERE match_id = $1", match_id):
+        players[sb["steam_id"]] = {**dict(sb), "side": sb["start_side"]}
+    for r in rounds_:
+        for k in r["kills"]:
+            for pid, name, side in ((k["victim_id"], k["victim"], k["victim_side"]),
+                                    (k["attacker_id"], k["attacker"], k["attacker_side"])):
+                if pid and pid not in players:
+                    players[pid] = {"steam_id": pid, "name": name, "start_side": None, "side": side, "kills": 0, "deaths": 0}
+    if not players:
+        raise HTTPException(404, "แมตช์นี้ไม่มีคิลให้รีวิว")
+
+    for p in players.values():
+        p.update({"cost_total": 0.0, "costly_deaths": [], "bad_cell_deaths": [], "deaths_seen": 0})
+
+    # ---- A + B: ไล่ทุกการตาย ----------------------------------------------------------------
+    for r in rounds_:
+        for k in r["kills"]:
+            p = players.get(k["victim_id"])
+            if not p:
+                continue
+            p["deaths_seen"] += 1
+            side = k["victim_side"]
+            # delta เป็นมุมมอง CT — แปลงเป็น "ทีมของคนตายเสียไปเท่าไร" (บวก = เสีย)
+            cost = None if k["delta"] is None else (-k["delta"] if side == "ct" else k["delta"])
+            cell = grid_cell(grid, k["victim_x"], k["victim_y"])
+            own_p = None
+            if cell is not None and side in ("ct", "t"):
+                own_p = cell["pred"] if side == "ct" else 1 - cell["pred"]
+            death = {
+                "round_num": r["round_num"], "sec": k["sec"], "before": k["before"], "after": k["after"],
+                "planted": k["planted"], "killer": k["attacker"], "weapon": k["weapon"],
+                "place": k["victim_place"], "cost": None if cost is None else round(cost, 4),
+                "cell_place": cell["place"] if cell else None,
+                "cell_own_p": None if own_p is None else round(own_p, 3),
+                "cell_kills": cell["kills"] if cell else None,
+                "round_won": (r["winner_side"] == side) if r["winner_side"] else None,
+            }
+            if cost is not None:
+                p["cost_total"] += cost
+                p["costly_deaths"].append(death)
+            if own_p is not None and own_p < BAD_CELL_P:
+                p["bad_cell_deaths"].append(death)
+
+    # ---- C: จาก view player_round_facts (มีเฉพาะเดโมที่อัปผ่านเว็บ — จาก csv ไม่มี player_rounds) ----
+    facts = await conn.fetch("""
+        SELECT steam_id::text AS steam_id,
+               COUNT(*)                                                AS rounds,
+               COUNT(*) FILTER (WHERE opening_death)                   AS opening_deaths,
+               COUNT(*) FILTER (WHERE opening_death AND was_traded)    AS opening_traded,
+               COUNT(*) FILTER (WHERE deaths > 0)                      AS deaths,
+               COUNT(*) FILTER (WHERE deaths > 0 AND NOT was_traded)   AS untraded_deaths,
+               COUNT(*) FILTER (WHERE survived)                        AS survived,
+               COUNT(*) FILTER (WHERE kast)                            AS kast_rounds,
+               COUNT(*) FILTER (WHERE opening_kill)                    AS opening_kills
+        FROM player_round_facts WHERE match_id = $1 GROUP BY steam_id""", match_id)
+    facts_by = {f["steam_id"]: dict(f) for f in facts}
+
+    out = []
+    for p in players.values():
+        p["costly_deaths"].sort(key=lambda d: -d["cost"])
+        p["costly_deaths"] = p["costly_deaths"][:5]
+        p["bad_cell_deaths"].sort(key=lambda d: d["cell_own_p"])
+        p["cost_total"] = round(p["cost_total"], 3)
+        p["facts"] = facts_by.get(p["steam_id"])
+        out.append(p)
+    out.sort(key=lambda p: -p["cost_total"])
+
+    return {
+        "match": dict(match),
+        "model": model_info(model, match["map_name"]),
+        "grid": None if grid is None else {"map": match["map_name"], "matches": grid["matches"], "bad_cell_p": BAD_CELL_P},
+        "facts_available": bool(facts_by),
+        "players": out,
+    }
+
+
 @app.get("/api/players")
 async def api_players(
     limit: int = Query(20, ge=1, le=200),
@@ -585,7 +889,7 @@ def api_radar(
 
     return {
         "map": map_name,
-        "image": "/assets" + cal["image"],   # cal["image"] เก็บเป็น "/maps/de_mirage.webp" -> เติม /assets ข้างหน้าให้เป็น URL จริง
+        "image": "/assets" + cal["image"],   # cal["image"] เก็บเป็น "/maps/de_mirage.png" -> เติม /assets ข้างหน้าให้เป็น URL จริง
         "size": cal["size"],                 # ภาพเป็นจัตุรัส ด้านละกี่พิกเซล
         "pos_x": cal["pos_x"],               # พิกัดเกมของมุมบนซ้ายของภาพ
         "pos_y": cal["pos_y"],
@@ -765,3 +1069,209 @@ def api_ml_grid(_: dict = Depends(require_login)):
     # sorted(..., key=lambda c: -c["kills"]) = เรียงจากช่องที่มีคนตายเยอะสุดไปน้อยสุด (ติดลบ = กลับด้าน)
     # [:40] = เอาแค่ 40 ช่องแรก พอสำหรับโชว์ตาราง
     return d
+
+
+# ---------------------------------------------------------------------------
+# ส่วนที่ 8 — รับไฟล์เดโมจากผู้ใช้
+#
+# ทางเดินของไฟล์หนึ่งไฟล์ ทำครบจบในคำขอเดียว ไม่มีคิวงานเบื้องหลัง
+#     อัปโหลด -> demos/X.dem -> parse_demo() -> output/json/X.json -> INSERT -> ตอบสรุปกลับ
+#
+# ทำไมถึงทำแบบซิงโครนัส (รอจนเสร็จในคำขอเดียว)
+#     parse ใช้เวลาไม่กี่วินาทีต่อไฟล์ และหน้าเว็บส่งทีละไฟล์อยู่แล้ว
+#     การใส่คิวงาน (Celery / RQ / Redis) จะเพิ่มบริการที่ต้องดูแลอีกตัวโดยที่ยังไม่จำเป็น
+#     ถ้าวันหนึ่งเดโมใหญ่จนคำขอ timeout ให้ย้ายแค่สองบรรทัด parse + load ไปไว้ใน worker
+#     ส่วนที่เหลือของ endpoint นี้ไม่ต้องแก้เลย
+#
+# เส้นทางนี้ใช้ฟังก์ชันตัวเดียวกับ CLI ทั้งคู่ (parse_demo, load_match_json)
+# เดโมที่อัปผ่านเว็บกับที่โหลดด้วยมือจึงได้ข้อมูลเหมือนกันเป๊ะ ไม่มีทางเพี้ยนคนละทาง
+# ---------------------------------------------------------------------------
+class DemoParseError(Exception):
+    """แกะเดโมไม่สำเร็จ — ไฟล์ไม่ใช่เดโม CS2 หรือเสียหาย"""
+
+
+class DemoParserMissing(Exception):
+    """เครื่องนี้ยังไม่ได้ติดตั้ง awpy / demoparser2"""
+
+
+def parse_demo_isolated(path: Path) -> dict:
+    """เรียก parse_demo แล้วห่อความผิดพลาด "ทุกชนิด" ให้กลายเป็น Exception ธรรมดา
+
+    ทำไมต้องห่อในฟังก์ชันนี้ ไม่ใช่ห่อด้วย try ที่ endpoint
+        demoparser2 ข้างใน awpy เขียนด้วย Rust เจอไฟล์ที่ไม่ใช่เดโมเมื่อไรมันจะ panic
+        PyO3 แปลง panic นั้นเป็น pyo3_runtime.PanicException ซึ่งสืบทอดจาก
+        BaseException "ตรง ๆ" ไม่ผ่าน Exception  (mro: PanicException -> BaseException -> object)
+
+        ตัวฟังก์ชันนี้ถูกเรียกผ่าน run_in_threadpool คือรันอยู่คนละเธรดกับ event loop
+        พอ BaseException ที่ไม่ใช่ Exception ข้ามเธรดกลับมา anyio จะไม่ส่งต่อให้
+        โค้ดที่ await อยู่ แต่ยกขึ้นไปเป็น BaseExceptionGroup เหนือ endpoint ขึ้นไปอีกชั้น
+        เขียน except BaseException คร่อม await ไว้ก็ไม่มีทางเห็นมัน — กลายเป็น 500 ทุกครั้ง
+        และไฟล์ขยะค้างในดิสก์เพราะโค้ดเก็บกวาดไม่ได้ทำงาน
+
+        ดักตั้งแต่ยังอยู่ในเธรดเดียวกันกับที่ panic เกิด จึงเป็นที่เดียวที่ดักได้จริง
+
+    เคสจริงที่เจอ: ไฟล์ขนาด 15 ไบต์ -> PanicException: range end index 16 out of range
+    for slice of length 15  (Rust อ่าน header 16 ไบต์จากไฟล์ที่สั้นกว่านั้น)
+    """
+    try:
+        from pipeline.parser_service import parse_demo
+    except ImportError as e:
+        raise DemoParserMissing(f"ไม่พบ {e.name}") from None
+
+    try:
+        return parse_demo(path)
+    except (KeyboardInterrupt, SystemExit):     # สัญญาณสั่งปิดโปรแกรม ต้องปล่อยผ่าน ห้ามกลืน
+        raise
+    except BaseException as e:
+        raise DemoParseError(f"{type(e).__name__}: {e}") from None
+
+
+def save_upload(file: UploadFile, dest: Path) -> int:
+    """เขียนไฟล์ที่อัปโหลดลงดิสก์ทีละก้อน คืนขนาดเป็นไบต์
+
+    อ่านทีละ 1 MB ไม่ใช่ทีเดียวทั้งไฟล์ เพราะเดโมใหญ่หลายร้อยเมกะไบต์
+    ถ้าอ่านรวดเดียวจะกินแรมเท่าขนาดไฟล์ อัปพร้อมกันสองคนก็เริ่มเสี่ยงแล้ว
+
+    เขียนลงชื่อ .part ก่อนแล้วค่อยเปลี่ยนชื่อตอนจบ ไฟล์ที่อัปไม่สำเร็จ
+    จึงไม่มีทางถูกเข้าใจผิดว่าเป็นเดโมที่สมบูรณ์
+    """
+    limit = MAX_DEMO_MB * 1024 * 1024
+    part = dest.with_suffix(dest.suffix + ".part")
+    size = 0
+    try:
+        with open(part, "wb") as out:
+            while chunk := file.file.read(1024 * 1024):
+                size += len(chunk)
+                if size > limit:
+                    raise HTTPException(413, f"ไฟล์ใหญ่เกิน {MAX_DEMO_MB} MB")
+                out.write(chunk)
+        if size == 0:
+            raise HTTPException(400, "ไฟล์ว่าง")
+        part.replace(dest)          # .replace() = เปลี่ยนชื่อทับของเดิมได้ และเป็น atomic บนดิสก์เดียวกัน
+        return size
+    finally:
+        part.unlink(missing_ok=True)   # เหลือ .part ค้างอยู่ = อัปไม่สำเร็จ เก็บกวาดทิ้ง
+
+
+@app.post("/api/demos")
+async def api_upload_demo(
+    file: UploadFile = File(..., description="ไฟล์ .dem หนึ่งไฟล์"),
+    force: str = Form("0"),                     # "1" = แมตช์นี้เคยโหลดแล้วให้ลบของเดิมทิ้งแล้วโหลดใหม่
+    _: dict = Depends(require_login),
+    conn: asyncpg.Connection = Depends(db),
+):
+    """รับเดโมหนึ่งไฟล์ แกะ แล้วโหลดเข้าฐานข้อมูล ตอบกลับเป็นสรุปของแมตช์นั้น
+
+    ส่งทีละไฟล์ หน้าเว็บเป็นคนวนส่งเองถ้าผู้ใช้ลากมาหลายไฟล์
+    ทำแบบนี้เพื่อให้แต่ละไฟล์มีสถานะของตัวเอง ไฟล์หนึ่งพังก็ไม่ลากไฟล์อื่นล้มไปด้วย
+    """
+    replace = force == "1"
+
+    # ---- 1) ตรวจชื่อไฟล์ก่อนแตะดิสก์ ------------------------------------
+    # Path(...).name = ตัดพาธที่ติดมากับชื่อไฟล์ทิ้งให้เหลือแต่ชื่อจริง
+    # เบราว์เซอร์ปกติไม่ส่งพาธมาอยู่แล้ว แต่คนที่ยิง API ตรง ๆ ส่งอะไรมาก็ได้
+    name = Path(file.filename or "").name
+    if not DEMO_NAME_RE.match(name):
+        raise HTTPException(400, "รับเฉพาะไฟล์ .dem และชื่อไฟล์ใช้ได้แค่ตัวอักษร ตัวเลข . _ - ( )")
+
+    # ---- 2) เคยโหลดแมตช์นี้ไปแล้วหรือยัง --------------------------------
+    # เช็กก่อน parse เพราะ parse แพงกว่าการถามฐานข้อมูลหลายพันเท่า
+    existing = await conn.fetchrow("SELECT id FROM matches WHERE demo_file = $1;", name)
+    if existing and not replace:
+        raise HTTPException(409, f"แมตช์ {name} มีอยู่ในระบบแล้ว (Match ID: {existing['id']}) — ติ๊ก \"โหลดทับของเดิม\" ถ้าต้องการโหลดใหม่")
+
+    # ---- 3) เขียนไฟล์ลงดิสก์ --------------------------------------------
+    DEMOS_DIR.mkdir(parents=True, exist_ok=True)
+    JSON_DIR.mkdir(parents=True, exist_ok=True)
+    dem_path = DEMOS_DIR / name
+    size = await run_in_threadpool(save_upload, file, dem_path)
+
+    # ---- 4) แกะไฟล์ -----------------------------------------------------
+    try:
+        doc = await run_in_threadpool(parse_demo_isolated, dem_path)
+    except DemoParserMissing as e:
+        dem_path.unlink(missing_ok=True)
+        raise HTTPException(503, f"เซิร์ฟเวอร์นี้ยังแกะไฟล์ .dem ไม่ได้ ({e}) — ติดตั้งด้วย pip install -r requirements.txt")
+    except DemoParseError as e:
+        dem_path.unlink(missing_ok=True)
+        log(f"[UPLOAD] แกะ {name} ไม่สำเร็จ: {e}")
+        raise HTTPException(422, f"แกะไฟล์ไม่สำเร็จ — ไฟล์อาจไม่ใช่เดโม CS2 หรือเสียหาย ({e})")
+
+    json_path = JSON_DIR / (dem_path.stem + ".json")
+    json_path.write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")
+
+    # ---- 5) เข้าฐานข้อมูล -----------------------------------------------
+    try:
+        match_id = await load_match_json(conn, json_path, force=replace)
+    except Exception as e:
+        log(f"[UPLOAD] โหลด {name} เข้าฐานข้อมูลไม่สำเร็จ: {type(e).__name__}: {e}")
+        raise HTTPException(500, f"โหลดเข้าฐานข้อมูลไม่สำเร็จ ({type(e).__name__}) — ไฟล์ที่แกะแล้วยังอยู่ที่ output/json/{json_path.name}")
+
+    # ---- 6) ตอบกลับด้วยสรุปที่หน้าเว็บเอาไปโชว์ได้เลย ---------------------
+    row = await conn.fetchrow("SELECT * FROM match_summary WHERE id = $1;", match_id)
+    counts = doc.get("counts", {})
+    return {
+        "match_id": match_id,
+        "demo_file": name,
+        "size_mb": round(size / 1024 / 1024, 1),
+        "replaced": bool(existing),
+        "map_name": doc["match"]["map_name"],
+        "team_a": doc["match"]["team_a"],
+        "team_b": doc["match"]["team_b"],
+        "tickrate": doc["match"]["tickrate"],
+        "counts": counts,
+        "summary": dict(row) if row else None,
+    }
+
+
+# ---------------------------------------------------------------------------
+# ส่วนที่ 9 — สั่งเทรนโมเดลใหม่จากหน้าเว็บ
+#
+# โมเดลทั้งสองเป็นสคริปต์ที่รันจบในตัว (pipeline/round_win.py, pipeline/grid_ml.py)
+# จึงเรียกเป็นโปรเซสลูกด้วย interpreter ตัวเดียวกับเซิร์ฟเวอร์ ไม่ import เข้ามา เพราะ
+#   - สคริปต์พวกนั้นมีโค้ดระดับบนสุด import แล้วรันทันที
+#   - ใช้ matplotlib / sklearn หนัก แยกโปรเซสแล้วเสร็จก็คืนแรมทั้งหมด พังก็ไม่ลากเซิร์ฟเวอร์ล้ม
+#
+# --source=db บังคับให้อ่านจาก PostgreSQL = ทุกแมตช์ที่อัปโหลดเข้ามาถูกนับด้วย
+# เสร็จแล้วเขียนทับ output/*.json ซึ่ง /api/ml/* อ่านทุกครั้งที่ถูกเรียก หน้าเว็บจึงเห็นผลใหม่ทันที
+#
+# กันกดซ้ำด้วย lock ตัวเดียว — เทรนพร้อมกันสองรอบจะแย่งกันเขียนไฟล์ผลลัพธ์
+# ---------------------------------------------------------------------------
+import subprocess
+import threading
+
+RETRAIN_LOCK = threading.Lock()
+RETRAIN_SCRIPTS = ("pipeline/round_win.py", "pipeline/grid_ml.py")
+
+
+def run_training() -> list[dict]:
+    """รันสคริปต์โมเดลทีละตัวจากฐานข้อมูล คืน log ท้าย ๆ ของแต่ละตัว หยุดทันทีที่ตัวไหนล้ม"""
+    results = []
+    for script in RETRAIN_SCRIPTS:
+        proc = subprocess.run(
+            [sys.executable, script, "--source=db"],
+            cwd=ROOT, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=600,
+        )
+        results.append({"script": script, "ok": proc.returncode == 0,
+                        "log": (proc.stdout + proc.stderr)[-1500:]})
+        if proc.returncode != 0:
+            break
+    return results
+
+
+@app.post("/api/ml/retrain")
+async def api_ml_retrain(_: dict = Depends(require_login)):
+    """เทรนโมเดลทั้งสองใหม่จากทุกแมตช์ในฐานข้อมูล แล้วเขียนทับ output/*.json"""
+    if not RETRAIN_LOCK.acquire(blocking=False):
+        raise HTTPException(409, "กำลังเทรนอยู่ — รอให้รอบก่อนหน้าเสร็จก่อน")
+    try:
+        results = await run_in_threadpool(run_training)
+    finally:
+        RETRAIN_LOCK.release()
+
+    failed = next((r for r in results if not r["ok"]), None)
+    if failed:
+        log(f"[RETRAIN] {failed['script']} ล้มเหลว:\n{failed['log']}")
+        raise HTTPException(500, f"{failed['script']} ล้มเหลว — {failed['log'][-400:]}")
+    log(f"[RETRAIN] เทรนใหม่สำเร็จ: {', '.join(r['script'] for r in results)}")
+    return {"ok": True, "results": results}

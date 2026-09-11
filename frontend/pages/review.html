@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>รีวิวจุดพลาด · CS2 Analytics</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+
+<body>
+
+<header class="topbar" id="topbar"></header>
+
+<main class="wrap">
+
+  <!-- หัวเรื่อง: ชื่อทีม แมพ สกอร์ — JS เติมให้หลังโหลดข้อมูล -->
+  <div class="page-head" id="head">
+    <div><div class="eyebrow">Match review</div><h1>กำลังโหลด…</h1></div>
+  </div>
+
+  <div class="sub" id="modelNote" style="margin-bottom:16px"></div>
+
+  <div class="cols">
+    <!-- ซ้าย: ทุกคนในแมตช์ เรียงจากคนที่การตาย "แพง" ที่สุด กดแถวเพื่อดูรายละเอียด -->
+    <div class="box">
+      <div class="eyebrow">Players</div>
+      <h2>ใครทำโอกาสชนะรอบหายมากที่สุด</h2>
+      <div id="playerTable"></div>
+      <div class="sub" style="margin-top:10px">
+        เสียโอกาสรวม = ผลรวมของ "โอกาสชนะรอบที่ทีมหายไป" ทุกครั้งที่คนนั้นตาย หน่วยเป็นรอบ
+        (1.0 = เทียบเท่าโยนทิ้งหนึ่งรอบเต็ม)
+      </div>
+    </div>
+
+    <!-- ขวา: รายละเอียดของคนที่เลือก 3 ส่วน -->
+    <div class="rv-panel">
+      <div class="box">
+        <div class="eyebrow">A · Costliest deaths</div>
+        <h2 id="aTitle">การตายที่แพงที่สุด</h2>
+        <div id="aKpis" class="kpis" style="margin:12px 0 14px"></div>
+        <div id="aTable"></div>
+      </div>
+
+      <div class="box">
+        <div class="eyebrow">C · Free deaths</div>
+        <h2>ตายฟรี — ไม่มีใครเทรดคืน</h2>
+        <div id="cKpis" class="kpis" style="margin:12px 0 8px"></div>
+        <div id="cNote" class="sub"></div>
+      </div>
+
+      <div class="box">
+        <div class="eyebrow">B · Bad-spot duels</div>
+        <h2>ดวลในจุดที่สถิติบอกว่าฝั่งเราแพ้</h2>
+        <div id="bNote" class="sub" style="margin-bottom:8px"></div>
+        <div id="bTable"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="foot">CS2 Tactical Analysis · SP-404 Senior Project · UTCC STECH</div>
+</main>
+
+<script src="/static/common.js"></script>
+<script src="/static/review.js"></script>
+</body>
+</html>

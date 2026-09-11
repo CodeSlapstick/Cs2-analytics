@@ -542,3 +542,100 @@ select:focus { outline: none; border-color: var(--orange); }   /* คลิก�
   .nav a { padding: 8px 8px; font-size: 12.5px; }
   .wrap { padding: 18px 12px 50px; }
 }
+
+/* ---------- หน้าอัปโหลดเดโม ---------- */
+
+/* กล่องลากไฟล์ — เส้นประบอกว่า "ตรงนี้วางของได้" ไม่ใช่การ์ดข้อมูลธรรมดา */
+.drop {
+  border: 2px dashed rgba(77,139,255,.35);
+  border-radius: var(--radius);
+  background: rgba(77,139,255,.04);
+  padding: 40px 20px;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color .15s, background .15s;
+}
+.drop:hover { border-color: rgba(77,139,255,.6); background: rgba(77,139,255,.08); }
+.drop:focus-visible { outline: 2px solid var(--blue-400); outline-offset: 3px; }
+/* .over = คลาสที่ JS ใส่ให้ตอนกำลังลากไฟล์ค้างอยู่เหนือกล่อง */
+.drop.over { border-color: var(--orange); background: rgba(255,122,24,.09); }
+
+.drop-icon {
+  width: 46px; height: 46px; margin: 0 auto 14px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 50%;
+  background: rgba(77,139,255,.14);
+  color: var(--blue-400);
+  font-size: 22px; font-weight: 700;
+}
+.drop-title { font-size: 16px; font-weight: 600; margin-bottom: 6px; }
+.drop-title b { color: var(--orange-2); }
+.drop-sub { font-size: 12.5px; color: var(--muted); }
+
+/* แถวตัวเลือกใต้กล่องลากไฟล์ */
+.drop-opt {
+  display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+  margin: 14px 0 22px;
+}
+.check { display: flex; align-items: center; gap: 8px; font-size: 13px; cursor: pointer; }
+.check input { accent-color: var(--blue-400); width: 15px; height: 15px; cursor: pointer; }
+.drop-hint { font-size: 12px; color: var(--muted); }
+
+/* ---------- คิวไฟล์ ---------- */
+.q-count { font-weight: 400; color: var(--muted); font-size: 12.5px; }
+
+.q-row { padding: 11px 0; border-bottom: 1px solid var(--line); }
+.q-row:last-child { border-bottom: none; }
+.q-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.q-name {
+  font-size: 13px; font-weight: 600;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;   /* ชื่อไฟล์ยาวให้ตัดด้วย ... ไม่ดันแถวแตก */
+}
+.q-sub { font-size: 12px; color: var(--muted); margin-top: 3px; }
+.q-row .bar-bg { margin-top: 8px; }
+
+/* สีป้ายสถานะ — ใช้ชุดเดียวกับ .tag ที่มีอยู่แล้ว เพิ่มแค่สามสถานะของงานอัปโหลด */
+.tag.run { background: rgba(77,139,255,.16); color: var(--ct); }    /* กำลังทำงาน = น้ำเงิน */
+.tag.ok  { background: rgba(110,231,168,.14); color: #6ee7a8; }     /* สำเร็จ = เขียว (สีเดียวกับ .msg.ok) */
+.tag.bad { background: rgba(255,139,122,.14); color: #ff8b7a; }     /* ไม่สำเร็จ = แดงอมส้ม (สีเดียวกับ .err) */
+
+@media (max-width: 760px) {
+  .drop { padding: 30px 14px; }
+  .drop-opt { margin-bottom: 18px; }
+}
+
+/* ---------- หน้าไทม์ไลน์รายรอบ (/rounds/{id}) ---------- */
+/* หนึ่งรอบ = หนึ่งแถว: เลขรอบ | กราฟเส้น+คำอธิบาย | จังหวะตัดสิน  แล้วรายการคิลพับอยู่ใต้แถวเต็มความกว้าง */
+.rw-round {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) minmax(200px, 300px);
+  gap: 8px 16px;
+  align-items: center;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line);
+}
+.rw-round:last-child { border-bottom: none; }
+.rw-round svg { display: block; max-width: 100%; height: auto; color: var(--text); }
+.rw-dec { font-size: 13px; line-height: 1.7; }
+.rw-dec .eyebrow { margin-bottom: 2px; }
+.rw-kills { grid-column: 1 / -1; }                       /* กินเต็มแถว */
+.rw-kills summary { cursor: pointer; font-size: 12px; color: var(--muted); list-style: none; }
+.rw-kills summary::before { content: "▸ "; }
+.rw-kills[open] summary::before { content: "▾ "; }
+.rw-kills table { margin-top: 8px; }
+
+/* ป้าย Δ ของโอกาสชนะ — สีบอกฝั่งที่ได้เปรียบขึ้น ใช้กติกาเดียวกับทั้งเว็บ */
+.delta { font-weight: 700; font-variant-numeric: tabular-nums; }
+.delta.ct { color: var(--ct); }
+.delta.t  { color: var(--t); }
+
+a.btn-mini { text-decoration: none; display: inline-block; }   /* ลิงก์ที่หน้าตาเหมือนปุ่มเล็ก */
+
+@media (max-width: 760px) {
+  .rw-round { grid-template-columns: 34px minmax(0, 1fr); }
+  .rw-dec { grid-column: 2; }
+}
+
+/* ---------- หน้ารีวิวจุดพลาด (/review/{id}) ---------- */
+.rv-panel { display: flex; flex-direction: column; gap: 14px; }   /* กล่อง A / C / B ซ้อนกันลงมาในคอลัมน์ขวา */
+.rv-panel .box h2 { margin-bottom: 4px; }

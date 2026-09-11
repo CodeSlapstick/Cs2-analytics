@@ -21,9 +21,9 @@ Grid ML — แบ่งแมพเป็นตาราง แล้วให�
     2. ใช้แค่ตำแหน่งเป็นฟีเจอร์
        headshot / distance / weapon รู้ได้หลังดวลจบแล้ว ใส่เข้าไปคือโกงตัวเอง
 """
-import base64
-import io
-import json
+import base64   # Base64 encoding/decoding
+import io 
+import json 
 import sys
 from pathlib import Path
 
