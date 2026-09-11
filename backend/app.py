@@ -6,11 +6,10 @@ backend/app.py — "หลังบ้าน" (backend) ของเว็บ CS
   - หน้าเว็บ (frontend/) = ลูกค้าที่มายืนหน้าเคาน์เตอร์
   - ไฟล์นี้ = พนักงานที่คอยรับคำสั่ง ไปหยิบของจากคลัง (PostgreSQL) แล้วส่งกลับไปให้
 
-หน้าที่ของไฟล์นี้มี 4 อย่าง
-  1) ส่งหน้าเว็บ (ไฟล์ .html ใน backend/web/pages/) ให้เบราว์เซอร์
-  2) ล็อกอินด้วย username/password (backend/auth.py)
-  3) จำว่า "ใครล็อกอินอยู่" ด้วย JWT ในคุกกี้ httpOnly (JavaScript อ่านไม่ได้)
-  4) ตอบ /api/* — ดึงสถิติจากฐานข้อมูลแล้วส่งเป็น JSON ให้หน้าเว็บเอาไปวาด
+หน้าที่ของไฟล์นี้มี 3 อย่าง (หน้าเว็บทั้งหมดอยู่ที่ frontend/ — React)
+  1) ล็อกอินด้วย username/password (backend/auth.py)
+  2) จำว่า "ใครล็อกอินอยู่" ด้วย JWT ในคุกกี้ httpOnly (JavaScript อ่านไม่ได้)
+  3) ตอบ /api/* — ดึงสถิติจากฐานข้อมูลแล้วส่งเป็น JSON ให้หน้าเว็บเอาไปวาด
 
 ข้อมูลอยู่ใน PostgreSQL (ตาราง: backend/models.py + Alembic, view: backend/views.sql, โหลดผ่าน /api/demos หรือ backend/etl_loader.py)
 ไฟล์นี้ไม่อ่าน csv เองแล้ว — อ่านผ่าน SQL อย่างเดียว จะได้ filter/รวมข้อมูลได้เร็วโดยไม่ต้องโหลดทั้งตารางเข้าแรม
@@ -35,7 +34,7 @@ from pathlib import Path
 import asyncpg
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.concurrency import run_in_threadpool  # เอางานหนักที่ไม่ใช่ async ไปรันในเธรดแยก ไม่ให้เซิร์ฟเวอร์ค้าง
-from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -55,9 +54,6 @@ from backend.review import build_round_detail, build_round_list, grid_overlay, l
 # ส่วนที่ 1 — ค่าตั้งต้น (CONFIG) อยากแก้อะไรแก้ตรงนี้ที่เดียว
 # ---------------------------------------------------------------------------
 ROOT = Path(__file__).resolve().parent.parent   # โฟลเดอร์โปรเจกต์
-FRONTEND = ROOT / "backend" / "web"                    # โฟลเดอร์ของหน้าเว็บทั้งหมด
-PAGES_DIR = FRONTEND / "pages"                  # หน้า .html ที่ไฟล์นี้เสิร์ฟให้เบราว์เซอร์
-STATIC_DIR = FRONTEND / "static"                # ไฟล์นิ่ง ๆ (.css .js รูป)
 ASSETS_DIR = ROOT / "assets"                    # ภาพเรดาร์ของแต่ละแมพ + ค่าปรับเทียบพิกัด (radars.json)
 DEMOS_DIR = ROOT / "demos"                      # ไฟล์ .dem ที่ผู้ใช้อัปโหลดเข้ามา (ไม่ถูก commit — ดู .gitignore)
 JSON_DIR = ROOT / "output" / "json"             # ผลจาก parser ก่อนเข้าฐานข้อมูล เก็บไว้ตรวจย้อนหลังได้
@@ -111,40 +107,11 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="CS2 Analytics API", lifespan=lifespan)
-app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")  # URL ที่ขึ้นต้นด้วย /static ให้ไปหยิบไฟล์จริงใน backend/web/static/
 app.mount("/assets", StaticFiles(directory=ASSETS_DIR), name="assets")  # URL ที่ขึ้นต้นด้วย /assets ให้ไปหยิบไฟล์จริงใน assets/ (ภาพเรดาร์)
 
 # Windows บางเครื่องไม่รู้จักนามสกุล .webp ทำให้ส่งไฟล์ออกไปเป็น application/octet-stream
 # บอกชนิดไฟล์ให้ถูกต้องไว้ก่อน เบราว์เซอร์จะได้รู้แน่ ๆ ว่านี่คือรูปภาพ
 mimetypes.add_type("image/webp", ".webp")
-
-
-@app.middleware("http")
-async def no_stale_static(request: Request, call_next):
-    """บังคับให้เบราว์เซอร์ถามเซิร์ฟเวอร์ก่อนใช้ไฟล์ .css/.js/.html ที่แคชไว้
-
-    ทำไมต้องมี
-        FastAPI ส่ง etag กับ last-modified มาให้อยู่แล้ว แต่ "ไม่ส่ง" cache-control
-        พอไม่มี cache-control เบราว์เซอร์จะใช้ heuristic caching คือเดาอายุไฟล์เอง
-        จาก last-modified แล้วหยิบของในแคชมาใช้เลยโดยไม่ถามเซิร์ฟเวอร์ซ้ำ
-        ผลคือแก้ style.css แล้วรีเฟรชธรรมดาไม่เห็นการเปลี่ยนแปลง ต้อง Ctrl+Shift+R ทุกครั้ง
-        และอาการจะโผล่เฉพาะเครื่องที่เคยเปิดเว็บก่อนแก้ไฟล์ — เครื่องใหม่ดูปกติ หาสาเหตุยากมาก
-
-    no-cache ไม่ได้แปลว่า "ห้ามแคช"
-        แปลว่า "แคชได้ แต่ต้องถามก่อนใช้" ถ้าไฟล์ไม่เปลี่ยน etag จะตรงกัน
-        เซิร์ฟเวอร์ตอบ 304 Not Modified ตัวเปล่า ๆ ไม่ได้ส่งไฟล์ซ้ำ จึงแทบไม่เปลืองอะไร
-
-    รูปกับฟอนต์ไม่ต้องยุ่ง — พวกนั้นเปลี่ยนน้อย ปล่อยให้แคชยาว ๆ ได้เลย
-
-    ดูจาก content-type ไม่ใช่จากนามสกุลใน URL
-        เพราะหน้าเว็บของเราเป็น /upload /players /map ไม่มี .html ต่อท้ายสักอัน
-        ถ้าไล่เช็คนามสกุลจะหลุดทุกหน้าพอดี แต่ content-type บอกตรง ๆ ว่าไฟล์นี้คืออะไร
-    """
-    response = await call_next(request)
-    ctype = response.headers.get("content-type", "")
-    if ctype.startswith(("text/html", "text/css", "text/javascript", "application/javascript")):
-        response.headers["Cache-Control"] = "no-cache"
-    return response
 
 
 async def db(request: Request) -> asyncpg.Connection:
@@ -165,78 +132,6 @@ def require_login(request: Request) -> dict:
     if not user:
         raise HTTPException(401, "ยังไม่ได้ล็อกอิน หรือ session หมดอายุ")
     return user
-
-
-# ---------------------------------------------------------------------------
-# ส่วนที่ 4 — ส่งหน้าเว็บ
-# ---------------------------------------------------------------------------
-@app.get("/")
-def page_login():
-    """หน้าแรก = หน้าล็อกอิน"""
-    return FileResponse(PAGES_DIR / "login.html")
-
-
-# แต่ละหน้าเป็นไฟล์ .html ของตัวเองใน backend/web/pages/ (1 หน้า = 1 ไฟล์ html + 1 ไฟล์ js)
-# ตัว JS ในแต่ละหน้าจะเช็คเองว่าล็อกอินแล้วหรือยัง ถ้ายังจะเด้งกลับมาหน้า /
-
-@app.get("/upload")
-def page_upload():
-    """อัปโหลดเดโม — ลากไฟล์ .dem เข้ามา ระบบ parse แล้วโหลดเข้าฐานข้อมูลให้ในคำขอเดียว"""
-    return FileResponse(PAGES_DIR / "upload.html")
-
-
-@app.get("/overview")
-def page_overview():
-    """ที่อยู่เดิมของหน้าภาพรวม — หน้านั้นถูกแทนที่ด้วยหน้าอัปโหลด ลิงก์เก่าและบุ๊กมาร์กจะได้ไม่พัง"""
-    return RedirectResponse("/upload")
-
-
-@app.get("/matches")
-def page_matches():
-    """แมตช์ — ตารางแมตช์ + รายรอบ + สกอร์บอร์ด"""
-    return FileResponse(PAGES_DIR / "matches.html")
-
-
-@app.get("/rounds/{match_id}")
-def page_rounds(match_id: int):
-    """ไทม์ไลน์รายรอบของแมตช์เดียว — JS อ่านเลขแมตช์จาก URL เอง ไฟล์ html เดียวจึงใช้ได้ทุกแมตช์"""
-    return FileResponse(PAGES_DIR / "rounds.html")
-
-
-@app.get("/review/{match_id}")
-def page_review(match_id: int):
-    """รีวิวจุดพลาดรายคนของแมตช์เดียว — JS อ่านเลขแมตช์จาก URL เอง"""
-    return FileResponse(PAGES_DIR / "review.html")
-
-
-@app.get("/players")
-def page_players():
-    """นักแข่ง — อันดับ + รายละเอียดรายคน"""
-    return FileResponse(PAGES_DIR / "players.html")
-
-
-@app.get("/map")
-def page_map():
-    """แผนที่ — heatmap จุดที่คนตาย"""
-    return FileResponse(PAGES_DIR / "map.html")
-
-
-@app.get("/tactical")
-def page_tactical():
-    """แท็คติก — การดวลแรกของรอบ / จังหวะปะทะ / ผลของการปักระเบิด"""
-    return FileResponse(PAGES_DIR / "tactical.html")
-
-
-@app.get("/ml")
-def page_ml():
-    """โมเดล ML — โอกาสชนะรอบ + โมเดลกริด"""
-    return FileResponse(PAGES_DIR / "ml.html")
-
-
-@app.get("/main")
-def page_main():
-    """ที่อยู่เดิมสมัยยังเป็นหน้าเดียว — ส่งต่อไปหน้าแรกปัจจุบัน ลิงก์เก่าจะได้ไม่พัง"""
-    return RedirectResponse("/upload")
 
 
 # ---------------------------------------------------------------------------

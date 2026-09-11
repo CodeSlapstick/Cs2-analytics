@@ -23,9 +23,6 @@ function App() {
         </Link>
         <nav>
           <Link to="/matches">แมตช์</Link>
-          <a href="http://localhost:8000/upload" title="หน้าเว็บ Sprint 1 (vanilla) ที่ยังใช้ได้">
-            หน้าเดิม ↗
-          </a>
         </nav>
         <UserMenu />
       </header>
