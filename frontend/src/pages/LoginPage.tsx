@@ -3,7 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import { ApiError, auth } from "../api";
 
-export const DEFAULT_AFTER_LOGIN = "/";
+export const DEFAULT_AFTER_LOGIN = "/matches";
 
 /** ป้องกัน open redirect: รับเฉพาะ path ภายในเว็บเรา (ขึ้นต้น / แต่ไม่ใช่ //) */
 export function safeNext(next: string | null): string {

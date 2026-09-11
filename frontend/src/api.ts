@@ -280,3 +280,12 @@ export const auth = {
 };
 
 export const isBusy = (s: MatchStatus) => s === "queued" || s === "parsing";
+
+/** รายการแมตช์ — ใช้ร่วมกันทั้ง sidebar และหน้าหลัก (key เดียวกัน = ยิงครั้งเดียว)
+ *  poll ทุก 2 วินาทีเฉพาะตอนมีแมตช์ที่ยังแกะไม่เสร็จ เสร็จหมดแล้วหยุดถามเอง */
+export const matchesQuery = {
+  queryKey: ["matches"] as const,
+  queryFn: () => api.matches(),
+  refetchInterval: (query: { state: { data?: Match[] } }) =>
+    query.state.data?.some((m) => isBusy(m.status)) ? 2000 : (false as const),
+};
