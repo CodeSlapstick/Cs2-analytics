@@ -1,0 +1,71 @@
+/* โทนเดียวกับหน้าเว็บ Sprint 1: พื้นน้ำเงินเข้ม CT = น้ำเงิน T = ส้ม */
+:root {
+  --bg: #0b1220;
+  --card: #111a2c;
+  --line: #1f2b44;
+  --text: #e6edf7;
+  --muted: #8b99b3;
+  --accent: #ff8a1e;
+  --ct: #4f8cff;
+  --t: #ff8a1e;
+  --ok: #3ccb7f;
+  --err: #ff5c5c;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.5 system-ui, "Segoe UI", sans-serif; }
+a { color: var(--ct); text-decoration: none; }
+a:hover { text-decoration: underline; }
+h1 { font-size: 26px; margin: 4px 0 16px; }
+h2 { font-size: 17px; margin: 2px 0 12px; }
+.topbar { display: flex; align-items: center; gap: 24px; padding: 12px 28px; border-bottom: 1px solid var(--line); background: #0d1526; }
+.brand { font-weight: 800; letter-spacing: .5px; color: var(--text); display: flex; align-items: center; gap: 8px; }
+.dot { width: 12px; height: 12px; background: var(--accent); border-radius: 3px; display: inline-block; }
+.topbar nav { display: flex; gap: 18px; }
+.topbar nav a { color: var(--muted); }
+.page { max-width: 1140px; margin: 0 auto; padding: 24px 28px 60px; }
+.eyebrow { color: var(--accent); font-size: 11px; letter-spacing: 2px; font-weight: 700; margin: 0; }
+.muted { color: var(--muted); }
+.err { color: var(--err); }
+.small { font-size: 12px; }
+.mono { font-family: ui-monospace, Consolas, monospace; font-size: 12px; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 18px 20px; margin-top: 18px; }
+
+.dropzone { border: 2px dashed #2d4470; border-radius: 12px; padding: 34px; text-align: center; cursor: pointer; background: rgba(79,140,255,.04); transition: .15s; }
+.dropzone.drag, .dropzone:hover { border-color: var(--ct); background: rgba(79,140,255,.10); }
+.dz-icon { width: 44px; height: 44px; border-radius: 50%; margin: 0 auto 10px; background: #1c2a48; color: var(--ct); font-size: 22px; line-height: 44px; }
+.dz-title { font-size: 16px; }
+.dz-title b { color: var(--accent); }
+.dz-sub { color: var(--muted); font-size: 13px; margin-top: 4px; }
+.check { display: block; margin: 10px 2px; }
+.check input { margin-right: 8px; }
+
+.uplist { list-style: none; padding: 0; margin: 12px 0 0; }
+.uplist li { display: grid; grid-template-columns: 1fr 90px 2fr; gap: 12px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 8px; margin-bottom: 6px; background: var(--card); }
+.uplist .q-size { color: var(--muted); }
+.up-failed { border-color: rgba(255,92,92,.5) !important; }
+.up-queued { border-color: rgba(60,203,127,.5) !important; }
+
+.tbl { width: 100%; border-collapse: collapse; }
+.tbl th, .tbl td { padding: 9px 10px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+.tbl th { color: var(--muted); font-size: 11px; letter-spacing: 1px; text-transform: uppercase; }
+.tbl .num { text-align: right; font-variant-numeric: tabular-nums; }
+.tbl.compact td, .tbl.compact th { padding: 6px 8px; }
+.tbl tr.st-error td { background: rgba(255,92,92,.05); }
+.tbl tr.st-parsing td, .tbl tr.st-queued td { background: rgba(79,140,255,.05); }
+td.ct { color: var(--ct); }
+td.t { color: var(--t); }
+
+.badge { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 12px; font-weight: 700; }
+.b-ct { background: rgba(79,140,255,.18); color: var(--ct); }
+.b-t { background: rgba(255,138,30,.18); color: var(--t); }
+.b-done { background: rgba(60,203,127,.18); color: var(--ok); }
+.b-queued { background: rgba(139,153,179,.18); color: var(--muted); }
+.b-parsing { background: rgba(79,140,255,.18); color: var(--ct); }
+.b-error { background: rgba(255,92,92,.18); color: var(--err); }
+
+.scoreline { display: flex; gap: 10px; align-items: center; margin: -6px 0 6px; }
+.timeline { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
+.rbox { width: 34px; height: 34px; border-radius: 6px; display: grid; place-items: center; font-weight: 700; font-size: 13px; }
+.rbox.ct { background: var(--ct); color: #fff; }
+.rbox.t { background: var(--t); color: #1a0d00; }
+.rbox.none { background: var(--line); color: var(--muted); }

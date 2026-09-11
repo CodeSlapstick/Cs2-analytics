@@ -185,6 +185,11 @@ function drawQueue() {
 
 /** บรรทัดสรุปของไฟล์ที่โหลดสำเร็จ — เอาเลขจริงจากที่เซิร์ฟเวอร์แกะได้มาโชว์ */
 function resultLine(r) {
+  // Sprint 2: เซิร์ฟเวอร์ตอบ 202 แล้วให้ worker แกะในเบื้องหลัง — ยังไม่มีตัวเลขให้โชว์ตอนนี้
+  if (r.status === "queued") {
+    return `เข้าคิวแกะเดโมแล้ว (แมตช์ #${r.match_id}` + (r.replaced ? ", เขียนทับของเดิม" : "") + ") · "
+         + `<a href="/matches">ดูสถานะที่หน้าแมตช์ →</a>`;
+  }
   const c = r.counts || {};
   const teams = r.team_a && r.team_b ? `${esc(r.team_a)} vs ${esc(r.team_b)} · ` : "";
   return `${teams}${esc(r.map_name)} · ${fmt(c.rounds)} รอบ · ${fmt(c.kills)} คิล · ${fmt(c.players)} คน` +

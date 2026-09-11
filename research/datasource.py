@@ -52,6 +52,7 @@ ORDER BY m.demo_file, r.round_num, k.tick, k.id
 def _from_db(map_name: str | None) -> pd.DataFrame:
     sys.path.insert(0, str(ROOT))                 # ให้ import backend.db ได้แม้รันจาก research/
     import asyncpg
+
     from backend.db import DATABASE_URL, redacted_url
 
     async def go():

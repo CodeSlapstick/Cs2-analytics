@@ -20,7 +20,7 @@
 """
 import json
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import numpy as np
@@ -42,7 +42,7 @@ C_PENALTY = 1.0
 #   python research/round_win.py --source=csv    บังคับ csv (Docker ที่ไม่มี DB)
 SOURCE = next((a.split("=", 1)[1] for a in sys.argv[1:] if a.startswith("--source=")), "auto")
 sys.path.insert(0, str(ROOT))                   # ให้ import research.datasource ได้เมื่อรันเป็นสคริปต์
-from research.datasource import load_kills     # noqa: E402
+from research.datasource import load_kills  # noqa: E402
 
 # ช่วงเวลาในรอบ — ต้นรอบยังตั้งหลักกันอยู่ ท้ายรอบคือบีบเวลา คนละสถานการณ์กัน
 TIME_EDGES = [-1, 20, 40, 1e9]
@@ -153,7 +153,7 @@ def main() -> None:
 
     payload = {
         "map": MAP,
-        "trained_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),   # หน้าเว็บใช้บอกว่าผลเก่าแค่ไหน
+        "trained_at": datetime.now(UTC).isoformat(timespec="seconds"),   # หน้าเว็บใช้บอกว่าผลเก่าแค่ไหน
         "source": source_desc,                                                     # เทรนจาก DB หรือ csv
         "time_edges": TIME_EDGES[1:-1],
         "time_names": TIME_NAMES,

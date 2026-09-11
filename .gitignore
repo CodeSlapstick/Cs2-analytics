@@ -35,3 +35,4 @@ output/
 # frontend (React/Vite)
 node_modules/
 frontend/dist/
+*.tsbuildinfo

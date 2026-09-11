@@ -1,6 +1,7 @@
 import asyncio
-import asyncpg
 import os
+
+import asyncpg
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -10,7 +11,7 @@ DB_URL = os.getenv("DATABASE_URL", "postgresql://postgres:postgres@localhost:543
 async def seed():
     conn = await asyncpg.connect(DB_URL)
     print("เชื่อมต่อฐานข้อมูลเพื่อ Seed สำเร็จ")
-    
+
     # 1. Seed Players
     await conn.execute("""
         INSERT INTO players (steam_id, name) VALUES

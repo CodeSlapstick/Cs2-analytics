@@ -80,7 +80,7 @@ for train_idx, test_idx in GroupKFold(n_splits=5).split(X, y, groups):
     model.fit(X.iloc[train_idx], y.iloc[train_idx])
     pred.iloc[test_idx] = model.predict_proba(X.iloc[test_idx])[:, 1]
 
-print(f"\nผลวัดแบบ 5-fold แบ่งตามแมตช์")
+print("\nผลวัดแบบ 5-fold แบ่งตามแมตช์")
 print(f"  AUC   {roc_auc_score(y, pred):.3f}   (0.5 = เดาสุ่ม, 1.0 = ทายถูกหมด)")
 print(f"  Brier {brier_score_loss(y, pred):.4f} (ยิ่งต่ำยิ่งดี, เดาค่าเฉลี่ยได้ {brier_score_loss(y, [y.mean()] * len(y)):.4f})")
 

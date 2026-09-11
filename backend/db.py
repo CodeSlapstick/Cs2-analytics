@@ -10,7 +10,7 @@ backend/db.py — จุดเดียวที่คุยกับ PostgreSQL
     - DATABASE_URL   อ่านจาก .env ที่รากโปรเจกต์ (ค่าดีฟอลต์คือ postgres ในเครื่อง)
     - connect()      เปิด connection เดี่ยว ๆ ใช้กับสคริปต์ที่รันครั้งเดียวจบ เช่น load_kills.py
     - create_pool()  สร้าง "บ่อ" connection ให้เว็บเซิร์ฟเวอร์หยิบใช้/คืนได้ไม่ต้องต่อใหม่ทุก request
-    - apply_schema() รัน schema.sql (ปลอดภัย รันซ้ำได้ เพราะทุกคำสั่งเป็น IF NOT EXISTS)
+    - apply_schema() รัน views.sql สร้าง view ใหม่ทุกครั้ง (ตารางเป็นของ Alembic: alembic upgrade head)
 """
 import os
 from pathlib import Path
@@ -18,7 +18,7 @@ from pathlib import Path
 import asyncpg
 
 ROOT = Path(__file__).resolve().parent.parent
-SCHEMA_SQL = Path(__file__).resolve().parent / "schema.sql"
+VIEWS_SQL = Path(__file__).resolve().parent / "views.sql"
 
 
 def load_dotenv(path: Path) -> None:
@@ -52,8 +52,8 @@ async def create_pool(min_size: int = 1, max_size: int = 5) -> asyncpg.Pool:
 
 
 async def apply_schema(conn: asyncpg.Connection) -> None:
-    """สร้างตาราง/view ตาม schema.sql ถ้ายังไม่มี — รันซ้ำกี่ครั้งก็ไม่พัง"""
-    await conn.execute(SCHEMA_SQL.read_text(encoding="utf-8"))
+    """สร้าง/อัปเดต view ตาม views.sql — รันซ้ำกี่ครั้งก็ไม่พัง (ตารางต้องมีก่อน: alembic upgrade head)"""
+    await conn.execute(VIEWS_SQL.read_text(encoding="utf-8"))
 
 
 def redacted_url() -> str:

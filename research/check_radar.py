@@ -34,7 +34,7 @@ from PIL import Image
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
-from research.datasource import load_kills   # noqa: E402
+from research.datasource import load_kills  # noqa: E402
 
 RADARS = ROOT / "assets" / "radars.json"
 ASSETS = ROOT / "assets"

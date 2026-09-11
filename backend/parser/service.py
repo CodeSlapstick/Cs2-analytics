@@ -13,7 +13,7 @@ parser_service.py — อ่านไฟล์ .dem หนึ่งไฟล์ 
 
 "normalized" แปลว่าอะไร
     ไม่ใช่ตารางแบน ๆ ที่ชื่อผู้เล่นซ้ำทุกแถวเหมือน all_kills.csv
-    แต่แยกเป็น 7 ก้อนตามตารางใน backend/schema.sql แล้วอ้างถึงกันด้วยคีย์:
+    แต่แยกเป็น 7 ก้อนตามตารางใน backend/models.py แล้วอ้างถึงกันด้วยคีย์:
         match          1 ก้อน   ข้อมูลระดับแมตช์
         players        n แถว    steam_id -> ชื่อ (เก็บครั้งเดียว)
         rounds         n แถว    คีย์คือ round_num
@@ -22,7 +22,7 @@ parser_service.py — อ่านไฟล์ .dem หนึ่งไฟล์ 
         player_rounds  n แถว    หนึ่งแถวต่อคนต่อรอบ: ฝั่ง / มูลค่าอุปกรณ์ / รอดถึงจบรอบไหม — KAST, win rate, เศรษฐกิจ ใช้ตัวนี้
         grenades       n แถว    ระเบิดทุกลูกที่ขว้าง — utility per round ใช้ตัวนี้
     ETL loader (backend/) รับไฟล์นี้แล้ว INSERT ตามลำดับ players -> match -> rounds -> kills -> damages -> player_rounds -> grenades ได้เลย
-    ชื่อฟิลด์ตั้งให้ตรงกับคอลัมน์ใน schema.sql ทุกตัว จะได้ไม่ต้อง map ชื่ออีกรอบ
+    ชื่อฟิลด์ตั้งให้ตรงกับคอลัมน์ใน backend/models.py ทุกตัว จะได้ไม่ต้อง map ชื่ออีกรอบ
 
 หนึ่งเดโม = หนึ่งไฟล์ JSON
     เพราะ "แมตช์" คือหน่วยที่ ETL ใช้ตัดสินว่าโหลดแล้วหรือยัง (matches.demo_file UNIQUE)
@@ -37,7 +37,7 @@ import json
 import re
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import polars as pl
@@ -46,7 +46,12 @@ from awpy.parsers.rounds import apply_round_num, create_round_df
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(ROOT))      # ให้รัน python -m backend.parser.service จากรากโปรเจกต์ได้
-from backend.parser.constants import EVENTS, PLAYER_PROPS, GRENADE_TYPES   # noqa: E402  ชุด event/prop เดียวกับตัวสร้าง all_kills.csv
+from backend.parser.constants import (  # noqa: E402  ชุด event/prop เดียวกับตัวสร้าง all_kills.csv
+    EVENTS,
+    GRENADE_TYPES,
+    PLAYER_PROPS,
+)
+
 # GRENADE_TYPES อยู่ใน backend.parser.constants แล้ว      # noqa: E402  ตารางชื่อระเบิดชุดเดียวกับ grenades.parquet
 
 DEMO_DIR = ROOT / "demos"
@@ -57,7 +62,7 @@ SCHEMA_VERSION = 3      # ขยับเมื่อโครง JSON เปล
 # ชื่อไฟล์เดโมจาก HLTV มีแบบแผน "ทีมA-vs-ทีมB-แมพ.dem" (regex เดียวกับ backend/load_kills.py)
 TEAMS_RE = re.compile(r"^(?P<a>.+?)-vs-(?P<b>.+?)-[^-]+\.dem$", re.IGNORECASE)
 
-# คอลัมน์จาก awpy -> ชื่อคอลัมน์ในตาราง kills ของ schema.sql
+# คอลัมน์จาก awpy -> ชื่อคอลัมน์ในตาราง kills ของ backend/models.py
 KILL_COLUMNS = {
     "tick": "tick",
     "attacker_steamid": "attacker_id", "victim_steamid": "victim_id", "assister_steamid": "assister_id",
@@ -69,7 +74,7 @@ KILL_COLUMNS = {
     "victim_X": "victim_x", "victim_Y": "victim_y", "victim_Z": "victim_z", "victim_place": "victim_place",
 }
 
-# คอลัมน์จาก awpy -> ชื่อคอลัมน์ในตาราง damages ของ schema.sql
+# คอลัมน์จาก awpy -> ชื่อคอลัมน์ในตาราง damages ของ backend/models.py
 #   ใน player_hurt "คนโดน" ใช้ prefix user_ ไม่ใช่ victim_ เหมือน player_death
 #   health_lost ไม่ได้มาจากเดโมตรง ๆ แต่คำนวณเองใน parse_demo (ดูคอมเมนต์ตรงนั้น)
 DAMAGE_COLUMNS = {
@@ -231,7 +236,7 @@ def parse_demo(path: Path) -> dict:
     team_a, team_b = teams_from_filename(path.name)
     return {
         "schema_version": SCHEMA_VERSION,
-        "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "generated_at": datetime.now(UTC).isoformat(timespec="seconds"),
         "match": {
             "demo_file": path.name,
             "map_name": dem.header.get("map_name", "unknown"),

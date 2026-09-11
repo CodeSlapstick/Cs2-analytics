@@ -12,7 +12,7 @@ backend/app.py — "หลังบ้าน" (backend) ของเว็บ CS
   3) จำว่า "ใครล็อกอินอยู่" ด้วยคุกกี้ (cookie = บัตรคิวที่ติดตัวลูกค้าไว้)
   4) ตอบ /api/* — ดึงสถิติจากฐานข้อมูลแล้วส่งเป็น JSON ให้หน้าเว็บเอาไปวาด
 
-ข้อมูลอยู่ใน PostgreSQL (โครงอยู่ที่ backend/schema.sql โหลดด้วย backend/load_kills.py)
+ข้อมูลอยู่ใน PostgreSQL (ตาราง: backend/models.py + Alembic, view: backend/views.sql, โหลดผ่าน /api/demos หรือ backend/etl_loader.py)
 ไฟล์นี้ไม่อ่าน csv เองแล้ว — อ่านผ่าน SQL อย่างเดียว จะได้ filter/รวมข้อมูลได้เร็วโดยไม่ต้องโหลดทั้งตารางเข้าแรม
 
 รัน:  python -m uvicorn backend.app:app --reload
@@ -22,27 +22,33 @@ backend/app.py — "หลังบ้าน" (backend) ของเว็บ CS
 # ---------------------------------------------------------------------------
 # ส่วนที่ 0 — ขนเครื่องมือเข้ามาใช้
 # ---------------------------------------------------------------------------
-import asyncio
 import json
 import mimetypes
 import os
 import re
 import secrets
+import subprocess
 import sys
+import threading
 import urllib.parse
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 import asyncpg
-import httpx                   # httpx = โทรศัพท์ ใช้ "โทร" ไปถามเว็บอื่น (ที่นี่คือเซิร์ฟเวอร์ Steam)
+import httpx  # httpx = โทรศัพท์ ใช้ "โทร" ไปถามเว็บอื่น (ที่นี่คือเซิร์ฟเวอร์ Steam)
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, Request, UploadFile
-from fastapi.concurrency import run_in_threadpool   # เอางานหนักที่ไม่ใช่ async ไปรันในเธรดแยก ไม่ให้เซิร์ฟเวอร์ค้าง
+from fastapi.concurrency import run_in_threadpool  # เอางานหนักที่ไม่ใช่ async ไปรันในเธรดแยก ไม่ให้เซิร์ฟเวอร์ค้าง
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
-from itsdangerous import BadSignature, URLSafeSerializer   # เครื่อง "เซ็นชื่อ" ข้อมูลในคุกกี้ กันคนปลอมแปลง
+from itsdangerous import BadSignature, URLSafeSerializer  # เครื่อง "เซ็นชื่อ" ข้อมูลในคุกกี้ กันคนปลอมแปลง
 
-from backend.db import DATABASE_URL, apply_schema, create_pool, redacted_url  # noqa: F401  (load_dotenv ทำงานตอน import)
-from backend.etl_loader import load_match_json   # ตัวเดียวกับที่ CLI ใช้ — เดโมที่อัปโหลดจึงเข้าฐานข้อมูลด้วยเส้นทางเดิมเป๊ะ
+from backend.db import (  # noqa: F401  (load_dotenv ทำงานตอน import)
+    DATABASE_URL,
+    apply_schema,
+    create_pool,
+    redacted_url,
+)
+from backend.queue import QueueUnavailable, enqueue_parse, job_state, queue_health  # คิวงาน parse (Sprint 2)
 
 # ---------------------------------------------------------------------------
 # ส่วนที่ 1 — ค่าตั้งต้น (CONFIG) อยากแก้อะไรแก้ตรงนี้ที่เดียว
@@ -390,7 +396,7 @@ async def api_health(request: Request):
         async with pool.acquire() as conn:
             n = await conn.fetchrow(
                 "SELECT (SELECT COUNT(*) FROM matches) AS matches, (SELECT COUNT(*) FROM kills) AS kills")
-        return {"ok": True, "db": "ต่อได้", "matches": n["matches"], "kills": n["kills"]}
+        return {"queue": await run_in_threadpool(queue_health), "ok": True, "db": "ต่อได้", "matches": n["matches"], "kills": n["kills"]}
     except Exception as e:
         return JSONResponse({"ok": False, "db": str(e)}, status_code=503)
 
@@ -639,6 +645,25 @@ def model_info(model: dict, map_name: str) -> dict:
         "same_map": model["map"] == map_name,       # ฟีเจอร์คือคนเหลือ/ระเบิด/เวลา ใช้ข้ามแมพได้ แต่ต้องบอกผู้ใช้
         "p_start": model["table"].get(f"5v5|0|{model['time_names'][0]}"),
     }
+
+
+@app.get("/api/matches/{match_id}/status")
+async def api_match_status(match_id: int, _: dict = Depends(require_login), conn: asyncpg.Connection = Depends(db)):
+    """สถานะงานแกะเดโมของแมตช์ — หน้าเว็บ poll ตัวนี้จนกว่าจะ done หรือ error
+
+    status        queued -> parsing -> done | error   (worker เป็นคนขยับ)
+    error_message สาเหตุตอน error (ทุก error ใน worker ลงที่นี่)
+    job           สถานะฝั่งคิว RQ ถ้าถามได้ (queued/started/finished/failed) ไว้ดูว่า worker หยิบไปหรือยัง
+    """
+    row = await conn.fetchrow("""
+        SELECT id, demo_file, status, error_message, job_id, imported_at, started_at, finished_at
+        FROM matches WHERE id = $1;
+    """, match_id)
+    if not row:
+        raise HTTPException(404, "ไม่พบแมตช์นี้")
+    d = dict(row)
+    d["job"] = await run_in_threadpool(job_state, d["job_id"])
+    return d
 
 
 @app.get("/api/matches/{match_id}/rounds")
@@ -1147,7 +1172,10 @@ def save_upload(file: UploadFile, dest: Path) -> int:
                 out.write(chunk)
         if size == 0:
             raise HTTPException(400, "ไฟล์ว่าง")
-        part.replace(dest)          # .replace() = เปลี่ยนชื่อทับของเดิมได้ และเป็น atomic บนดิสก์เดียวกัน
+        try:
+            part.replace(dest)      # .replace() = เปลี่ยนชื่อทับของเดิมได้ และเป็น atomic บนดิสก์เดียวกัน
+        except PermissionError:     # Windows: ไฟล์ปลายทางถูกเปิดอยู่ (เช่น worker กำลังแกะไฟล์เดิม) — ไม่ใช่ 500
+            raise HTTPException(409, "ไฟล์ชื่อนี้กำลังถูกใช้งานอยู่ (อาจกำลังถูกแกะ) — รอให้เสร็จแล้วลองใหม่")
         return size
     finally:
         part.unlink(missing_ok=True)   # เหลือ .part ค้างอยู่ = อัปไม่สำเร็จ เก็บกวาดทิ้ง
@@ -1160,7 +1188,7 @@ async def api_upload_demo(
     _: dict = Depends(require_login),
     conn: asyncpg.Connection = Depends(db),
 ):
-    """รับเดโมหนึ่งไฟล์ แกะ แล้วโหลดเข้าฐานข้อมูล ตอบกลับเป็นสรุปของแมตช์นั้น
+    """รับเดโมหนึ่งไฟล์ เก็บลงดิสก์ แล้วส่งงานแกะเข้าคิว — ตอบ 202 ทันที ไม่รอแกะ
 
     ส่งทีละไฟล์ หน้าเว็บเป็นคนวนส่งเองถ้าผู้ใช้ลากมาหลายไฟล์
     ทำแบบนี้เพื่อให้แต่ละไฟล์มีสถานะของตัวเอง ไฟล์หนึ่งพังก็ไม่ลากไฟล์อื่นล้มไปด้วย
@@ -1175,53 +1203,50 @@ async def api_upload_demo(
         raise HTTPException(400, "รับเฉพาะไฟล์ .dem และชื่อไฟล์ใช้ได้แค่ตัวอักษร ตัวเลข . _ - ( )")
 
     # ---- 2) เคยโหลดแมตช์นี้ไปแล้วหรือยัง --------------------------------
-    # เช็กก่อน parse เพราะ parse แพงกว่าการถามฐานข้อมูลหลายพันเท่า
-    existing = await conn.fetchrow("SELECT id FROM matches WHERE demo_file = $1;", name)
-    if existing and not replace:
-        raise HTTPException(409, f"แมตช์ {name} มีอยู่ในระบบแล้ว (Match ID: {existing['id']}) — ติ๊ก \"โหลดทับของเดิม\" ถ้าต้องการโหลดใหม่")
+    # เช็กก่อนแตะดิสก์ — แมตช์ที่เคยพัง (error) ยอมให้ส่งใหม่ได้เลยโดยไม่ต้องติ๊ก "โหลดทับ"
+    existing = await conn.fetchrow("SELECT id, status FROM matches WHERE demo_file = $1;", name)
+    if existing and not replace and existing["status"] != "error":
+        raise HTTPException(409, f"แมตช์ {name} มีอยู่ในระบบแล้ว (Match ID: {existing['id']}, สถานะ {existing['status']}) "
+                                 "— ติ๊ก \"โหลดทับของเดิม\" ถ้าต้องการโหลดใหม่")
 
     # ---- 3) เขียนไฟล์ลงดิสก์ --------------------------------------------
     DEMOS_DIR.mkdir(parents=True, exist_ok=True)
-    JSON_DIR.mkdir(parents=True, exist_ok=True)
     dem_path = DEMOS_DIR / name
     size = await run_in_threadpool(save_upload, file, dem_path)
 
-    # ---- 4) แกะไฟล์ -----------------------------------------------------
+    # ---- 4) สร้าง/รีเซ็ตแถว matches เป็น queued แล้วส่งงานเข้าคิว ------------
+    # ตัวเซิร์ฟเวอร์ไม่แกะเดโมเองอีกแล้ว (เดโมใหญ่แกะเป็นนาที request จะค้าง)
+    # worker (python -m backend.worker) หยิบงานไปทำ แล้วหน้าเว็บ poll ที่ /api/matches/{id}/status
+    if existing:
+        match_id = existing["id"]     # เก็บ id เดิมไว้ ลิงก์/บุ๊กมาร์กเก่าจะได้ไม่พัง
+        await conn.execute("""
+            UPDATE matches SET status = 'queued', error_message = NULL, job_id = NULL,
+                               started_at = NULL, finished_at = NULL
+            WHERE id = $1;
+        """, match_id)
+    else:
+        match_id = await conn.fetchval(
+            "INSERT INTO matches (demo_file, status) VALUES ($1, 'queued') RETURNING id;", name)
+
     try:
-        doc = await run_in_threadpool(parse_demo_isolated, dem_path)
-    except DemoParserMissing as e:
-        dem_path.unlink(missing_ok=True)
-        raise HTTPException(503, f"เซิร์ฟเวอร์นี้ยังแกะไฟล์ .dem ไม่ได้ ({e}) — ติดตั้งด้วย pip install -r requirements.txt")
-    except DemoParseError as e:
-        dem_path.unlink(missing_ok=True)
-        log(f"[UPLOAD] แกะ {name} ไม่สำเร็จ: {e}")
-        raise HTTPException(422, f"แกะไฟล์ไม่สำเร็จ — ไฟล์อาจไม่ใช่เดโม CS2 หรือเสียหาย ({e})")
+        job_id = await run_in_threadpool(enqueue_parse, match_id)
+    except QueueUnavailable as e:
+        await conn.execute("UPDATE matches SET status = 'error', error_message = $2 WHERE id = $1;", match_id, str(e))
+        log(f"[UPLOAD] {name}: {e}")
+        raise HTTPException(503, f"รับไฟล์แล้วแต่ส่งงานเข้าคิวไม่ได้ — เปิด Redis ด้วย docker compose up -d redis ({e})")
+    await conn.execute("UPDATE matches SET job_id = $2 WHERE id = $1;", match_id, job_id)
+    log(f"[UPLOAD] {name} ({size / 1024 / 1024:.1f} MB) -> match {match_id} เข้าคิว job {job_id}")
 
-    json_path = JSON_DIR / (dem_path.stem + ".json")
-    json_path.write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")
-
-    # ---- 5) เข้าฐานข้อมูล -----------------------------------------------
-    try:
-        match_id = await load_match_json(conn, json_path, force=replace)
-    except Exception as e:
-        log(f"[UPLOAD] โหลด {name} เข้าฐานข้อมูลไม่สำเร็จ: {type(e).__name__}: {e}")
-        raise HTTPException(500, f"โหลดเข้าฐานข้อมูลไม่สำเร็จ ({type(e).__name__}) — ไฟล์ที่แกะแล้วยังอยู่ที่ output/json/{json_path.name}")
-
-    # ---- 6) ตอบกลับด้วยสรุปที่หน้าเว็บเอาไปโชว์ได้เลย ---------------------
-    row = await conn.fetchrow("SELECT * FROM match_summary WHERE id = $1;", match_id)
-    counts = doc.get("counts", {})
-    return {
+    # 202 Accepted = รับเรื่องแล้ว แต่ยังทำไม่เสร็จ ไปถามต่อที่ status_url
+    return JSONResponse(status_code=202, content={
         "match_id": match_id,
         "demo_file": name,
         "size_mb": round(size / 1024 / 1024, 1),
         "replaced": bool(existing),
-        "map_name": doc["match"]["map_name"],
-        "team_a": doc["match"]["team_a"],
-        "team_b": doc["match"]["team_b"],
-        "tickrate": doc["match"]["tickrate"],
-        "counts": counts,
-        "summary": dict(row) if row else None,
-    }
+        "status": "queued",
+        "job_id": job_id,
+        "status_url": f"/api/matches/{match_id}/status",
+    })
 
 
 # ---------------------------------------------------------------------------
@@ -1237,9 +1262,6 @@ async def api_upload_demo(
 #
 # กันกดซ้ำด้วย lock ตัวเดียว — เทรนพร้อมกันสองรอบจะแย่งกันเขียนไฟล์ผลลัพธ์
 # ---------------------------------------------------------------------------
-import subprocess
-import threading
-
 RETRAIN_LOCK = threading.Lock()
 RETRAIN_SCRIPTS = ("research/round_win.py", "research/grid_ml.py")
 

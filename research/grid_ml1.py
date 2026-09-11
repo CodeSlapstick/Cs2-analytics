@@ -29,9 +29,10 @@ import json
 import sys
 from pathlib import Path
 
+import matplotlib
 import numpy as np
 import pandas as pd
-import matplotlib
+
 matplotlib.use("Agg")            # วาดลงไฟล์ ไม่ต้องมีหน้าจอ
 import matplotlib.pyplot as plt
 from matplotlib.patches import Circle, Patch
@@ -184,7 +185,7 @@ labels, centers = find_hotspots(df)
 # เรียงยอดตามจำนวนดวล มาก -> น้อย แล้วให้เบอร์ใหม่ เบอร์ 1 ในรูปคือจุดที่ปะทะหนักสุดเสมอ
 order = np.argsort(-np.bincount(labels[labels >= 0]))
 remap = {old: new for new, old in enumerate(order)}
-df["hotspot"] = np.array([remap.get(l, -1) for l in labels])
+df["hotspot"] = np.array([remap.get(lab, -1) for lab in labels])
 centers = centers[order]
 
 rows = []
@@ -282,7 +283,7 @@ km = fit_kmeans(Z, k_best)
 # เรียงกลุ่มตามเวลาเฉลี่ยในรอบ ต้นรอบ -> ท้ายรอบ เบอร์กลุ่มจะได้อ่านเป็นลำดับเหตุการณ์ได้
 order = np.argsort(km.cluster_centers_[:, FEATURES.index("t_mean")])
 remap = {old: new for new, old in enumerate(order)}
-cells["cluster"] = [remap[l] for l in km.labels_]
+cells["cluster"] = [remap[lab] for lab in km.labels_]
 centers_z = km.cluster_centers_[order]   # ค่ากลางแต่ละกลุ่มในหน่วย z-score (0 = เท่าค่าเฉลี่ยของทุกช่อง)
 
 # ตั้งชื่อกลุ่มจากสองฟีเจอร์ที่เบี่ยงจากค่าเฉลี่ยมากสุด — ชื่อมาจากตัวเลข ไม่ได้นั่งตั้งเอง
