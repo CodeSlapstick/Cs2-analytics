@@ -31,3 +31,7 @@ output/
 # ค่าตั้งของ editor แต่ละคน ไม่ใช่ของโปรเจกต์
 .vscode/
 .idea/
+
+# frontend (React/Vite)
+node_modules/
+frontend/dist/

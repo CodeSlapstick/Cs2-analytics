@@ -14,7 +14,7 @@
     4. kills    — ทุกแถวของ csv ยัดทีเดียวด้วย COPY (เร็วกว่า INSERT ทีละแถวหลายสิบเท่า)
 
 รันซ้ำได้ — แมตช์ที่มีอยู่แล้วจะถูกข้าม (ดูจาก demo_file) จึงใช้ต่อจาก
-pipeline/demoparser.py ได้เลยตอนเพิ่มเดโมใหม่: parse -> csv -> รันไฟล์นี้
+research/demoparser.py ได้เลยตอนเพิ่มเดโมใหม่: parse -> csv -> รันไฟล์นี้
 """
 import argparse
 import asyncio
@@ -67,7 +67,7 @@ async def main() -> None:
     args = ap.parse_args()
 
     if not args.csv.exists():
-        sys.exit(f"ไม่พบ {args.csv} — รัน python pipeline/demoparser.py ก่อน")
+        sys.exit(f"ไม่พบ {args.csv} — รัน python research/demoparser.py ก่อน")
 
     # SteamID64 มี 17 หลัก เกินที่ float64 เก็บได้แม่น (ราว 15-16 หลัก) ถ้าปล่อยให้ pandas
     # เดาชนิดเอง คอลัมน์ที่มีช่องว่าง (attacker/assister) จะกลายเป็น float แล้วเลขท้ายเพี้ยน
@@ -76,7 +76,7 @@ async def main() -> None:
     df = pd.read_csv(args.csv, dtype=steamid_cols)
     need = {"demo_file", "round_num", "round_winner", "victim_steamid", "map_name", "tickrate"}
     if missing := need - set(df.columns):
-        sys.exit(f"csv ขาดคอลัมน์ {sorted(missing)} — รัน python pipeline/demoparser.py --force ให้ได้ csv รุ่นใหม่")
+        sys.exit(f"csv ขาดคอลัมน์ {sorted(missing)} — รัน python research/demoparser.py --force ให้ได้ csv รุ่นใหม่")
     print(f"อ่าน {args.csv.name}: {len(df):,} คิล จาก {df['demo_file'].nunique()} เดโม")
 
     print(f"ต่อ {redacted_url()}")

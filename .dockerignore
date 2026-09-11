@@ -17,3 +17,7 @@ venv/
 # ของที่ไม่เกี่ยวกับตอนรัน
 .vscode/
 .idea/
+
+# frontend build ทำใน image ของตัวเอง ไม่ต้องเข้า image ของ backend
+node_modules/
+frontend/

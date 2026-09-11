@@ -7,7 +7,7 @@ backend/app.py — "หลังบ้าน" (backend) ของเว็บ CS
   - ไฟล์นี้ = พนักงานที่คอยรับคำสั่ง ไปหยิบของจากคลัง (PostgreSQL) แล้วส่งกลับไปให้
 
 หน้าที่ของไฟล์นี้มี 4 อย่าง
-  1) ส่งหน้าเว็บ (ไฟล์ .html ใน frontend/pages/) ให้เบราว์เซอร์
+  1) ส่งหน้าเว็บ (ไฟล์ .html ใน backend/web/pages/) ให้เบราว์เซอร์
   2) พาผู้ใช้ไปล็อกอินที่ Steam แล้วรับผลกลับมา
   3) จำว่า "ใครล็อกอินอยู่" ด้วยคุกกี้ (cookie = บัตรคิวที่ติดตัวลูกค้าไว้)
   4) ตอบ /api/* — ดึงสถิติจากฐานข้อมูลแล้วส่งเป็น JSON ให้หน้าเว็บเอาไปวาด
@@ -48,7 +48,7 @@ from backend.etl_loader import load_match_json   # ตัวเดียวก�
 # ส่วนที่ 1 — ค่าตั้งต้น (CONFIG) อยากแก้อะไรแก้ตรงนี้ที่เดียว
 # ---------------------------------------------------------------------------
 ROOT = Path(__file__).resolve().parent.parent   # โฟลเดอร์โปรเจกต์
-FRONTEND = ROOT / "frontend"                    # โฟลเดอร์ของหน้าเว็บทั้งหมด
+FRONTEND = ROOT / "backend" / "web"                    # โฟลเดอร์ของหน้าเว็บทั้งหมด
 PAGES_DIR = FRONTEND / "pages"                  # หน้า .html ที่ไฟล์นี้เสิร์ฟให้เบราว์เซอร์
 STATIC_DIR = FRONTEND / "static"                # ไฟล์นิ่ง ๆ (.css .js รูป)
 ASSETS_DIR = ROOT / "assets"                    # ภาพเรดาร์ของแต่ละแมพ + ค่าปรับเทียบพิกัด (radars.json)
@@ -114,7 +114,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="CS2 Analytics API", lifespan=lifespan)
-app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")  # URL ที่ขึ้นต้นด้วย /static ให้ไปหยิบไฟล์จริงใน frontend/static/
+app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")  # URL ที่ขึ้นต้นด้วย /static ให้ไปหยิบไฟล์จริงใน backend/web/static/
 app.mount("/assets", StaticFiles(directory=ASSETS_DIR), name="assets")  # URL ที่ขึ้นต้นด้วย /assets ให้ไปหยิบไฟล์จริงใน assets/ (ภาพเรดาร์)
 
 # Windows บางเครื่องไม่รู้จักนามสกุล .webp ทำให้ส่งไฟล์ออกไปเป็น application/octet-stream
@@ -201,7 +201,7 @@ def page_login():
     return FileResponse(PAGES_DIR / "login.html")
 
 
-# แต่ละหน้าเป็นไฟล์ .html ของตัวเองใน frontend/pages/ (1 หน้า = 1 ไฟล์ html + 1 ไฟล์ js)
+# แต่ละหน้าเป็นไฟล์ .html ของตัวเองใน backend/web/pages/ (1 หน้า = 1 ไฟล์ html + 1 ไฟล์ js)
 # ตัว JS ในแต่ละหน้าจะเช็คเองว่าล็อกอินแล้วหรือยัง ถ้ายังจะเด้งกลับมาหน้า /
 
 @app.get("/upload")
@@ -547,7 +547,7 @@ ROUND_KILLS_SQL = """
 
 def load_round_win_model() -> dict:
     """ตาราง P(CT ชนะรอบ) ที่ round_win.py เขียนไว้ — ไม่มีก็บอกวิธีสร้าง"""
-    return read_output_json("round_win.json", "python pipeline/round_win.py")
+    return read_output_json("round_win.json", "python research/round_win.py")
 
 
 def annotate_rounds(rows_, model: dict) -> list[dict]:
@@ -1032,10 +1032,10 @@ async def api_tactical(
 # ===========================================================================
 # ส่วนที่ 7 — ผลจากโมเดล ML
 #
-# เราไม่เทรนโมเดลในเซิร์ฟเวอร์นี้ (ช้าและกินแรม) สคริปต์ใน pipeline/ เทรนเสร็จ
+# เราไม่เทรนโมเดลในเซิร์ฟเวอร์นี้ (ช้าและกินแรม) สคริปต์ใน research/ เทรนเสร็จ
 # แล้วเขียนคำตอบทั้งหมดลงไฟล์ json ไว้ให้ เซิร์ฟเวอร์แค่หยิบไฟล์นั้นส่งต่อ
-#     python pipeline/round_win.py   ->  output/round_win.json
-#     python pipeline/grid_ml.py     ->  output/grid_ml.json
+#     python research/round_win.py   ->  output/round_win.json
+#     python research/grid_ml.py     ->  output/grid_ml.json
 # ===========================================================================
 
 def read_output_json(filename: str, how_to_make: str) -> dict:
@@ -1052,7 +1052,7 @@ def api_ml_round_win(_: dict = Depends(require_login)):
 
     คีย์ในตารางหน้าตาแบบ "3v2|0|20-40s" = CT เหลือ 3, T เหลือ 2, ยังไม่ปักระเบิด, วินาทีที่ 20-40
     """
-    return read_output_json("round_win.json", "python pipeline/round_win.py")
+    return read_output_json("round_win.json", "python research/round_win.py")
 
 
 @app.get("/api/ml/grid")
@@ -1062,7 +1062,7 @@ def api_ml_grid(_: dict = Depends(require_login)):
     ตัดฟิลด์หนัก ๆ ออกก่อนส่ง (ภาพ mask กับจุดตายดิบ 7 พันจุด) เพราะหน้าเว็บไม่ได้ใช้
     เหลือแต่คะแนนโมเดลกับค่ารายช่อง ไฟล์จะได้เล็กลงจาก 160 KB เหลือ ~40 KB
     """
-    d = read_output_json("grid_ml.json", "python pipeline/grid_ml.py")
+    d = read_output_json("grid_ml.json", "python research/grid_ml.py")
     for heavy in ("play_mask", "kills"):
         d.pop(heavy, None)          # .pop(คีย์, None) = ลบคีย์นี้ทิ้ง ถ้าไม่มีก็ไม่ต้องพัง
     d["cells"] = sorted(d["cells"], key=lambda c: -c["kills"])[:40]
@@ -1114,7 +1114,7 @@ def parse_demo_isolated(path: Path) -> dict:
     for slice of length 15  (Rust อ่าน header 16 ไบต์จากไฟล์ที่สั้นกว่านั้น)
     """
     try:
-        from pipeline.parser_service import parse_demo
+        from backend.parser.service import parse_demo
     except ImportError as e:
         raise DemoParserMissing(f"ไม่พบ {e.name}") from None
 
@@ -1227,7 +1227,7 @@ async def api_upload_demo(
 # ---------------------------------------------------------------------------
 # ส่วนที่ 9 — สั่งเทรนโมเดลใหม่จากหน้าเว็บ
 #
-# โมเดลทั้งสองเป็นสคริปต์ที่รันจบในตัว (pipeline/round_win.py, pipeline/grid_ml.py)
+# โมเดลทั้งสองเป็นสคริปต์ที่รันจบในตัว (research/round_win.py, research/grid_ml.py)
 # จึงเรียกเป็นโปรเซสลูกด้วย interpreter ตัวเดียวกับเซิร์ฟเวอร์ ไม่ import เข้ามา เพราะ
 #   - สคริปต์พวกนั้นมีโค้ดระดับบนสุด import แล้วรันทันที
 #   - ใช้ matplotlib / sklearn หนัก แยกโปรเซสแล้วเสร็จก็คืนแรมทั้งหมด พังก็ไม่ลากเซิร์ฟเวอร์ล้ม
@@ -1241,7 +1241,7 @@ import subprocess
 import threading
 
 RETRAIN_LOCK = threading.Lock()
-RETRAIN_SCRIPTS = ("pipeline/round_win.py", "pipeline/grid_ml.py")
+RETRAIN_SCRIPTS = ("research/round_win.py", "research/grid_ml.py")
 
 
 def run_training() -> list[dict]:

@@ -3,7 +3,7 @@
 #   docker build -t cs2-analytics .
 #   docker run --rm -v "${PWD}/output:/app/output" cs2-analytics
 #
-# คำสั่งข้างบนรัน pipeline/grid_ml.py ได้ทันทีโดยไม่ต้องมีไฟล์ .dem
+# คำสั่งข้างบนรัน research/grid_ml.py ได้ทันทีโดยไม่ต้องมีไฟล์ .dem
 # เพราะชุดคิลที่ parse แล้ว (data/all_kills.csv) ติดมากับรีโปอยู่แล้ว
 
 FROM python:3.12-slim
@@ -31,4 +31,4 @@ ENV MPLBACKEND=Agg \
 # ผลลัพธ์ลงที่นี่ — mount ออกมาด้วย -v ไม่งั้นไฟล์หายไปพร้อม container
 VOLUME ["/app/output"]
 
-CMD ["python", "pipeline/grid_ml.py"]
+CMD ["python", "research/grid_ml.py"]

@@ -72,7 +72,7 @@ Swagger UI อยู่ที่ http://localhost:8000/docs กดลองย�
 
 ```bash
 # วาง .dem ใน demos/ แล้ว
-python pipeline/demoparser.py           # -> data/all_kills.csv (อ่านเฉพาะไฟล์ที่ยังไม่เคยอ่าน)
+python research/demoparser.py           # -> data/all_kills.csv (อ่านเฉพาะไฟล์ที่ยังไม่เคยอ่าน)
 python backend/load_kills.py            # โหลดเฉพาะแมตช์ที่ยังไม่มีใน DB
 python backend/load_kills.py --force    # หรือลบทั้งหมดแล้วโหลดใหม่
 ```
