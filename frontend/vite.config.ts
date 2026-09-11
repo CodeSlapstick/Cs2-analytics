@@ -8,6 +8,11 @@ const API = process.env.VITE_API_TARGET ?? "http://127.0.0.1:8000";
 
 export default defineConfig({
   plugins: [react()],
+  build: {
+    // ค่าปกติของ Vite คือ "assets" ซึ่งชนกับ /assets/ ของ backend (ภาพเรดาร์) ที่ nginx ส่งต่อไปให้ api
+    // ถ้าใช้ชื่อเดิม ไฟล์ JS/CSS ของหน้าเว็บจะถูกส่งไปถาม api แล้วได้ 404 -> หน้าขาวทั้งหน้า
+    assetsDir: "_app",
+  },
   server: {
     port: 5173,
     proxy: {
