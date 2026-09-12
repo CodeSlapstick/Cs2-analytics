@@ -131,14 +131,8 @@ def _clean(df: pl.DataFrame) -> pl.DataFrame:
     return df.with_columns([pl.col(c).fill_nan(None) for c, t in df.schema.items() if t in (pl.Float32, pl.Float64)])
 
 
-def parse_demo(path: Path) -> dict:
-    """อ่านเดโมหนึ่งไฟล์ คืน dict โครง normalized พร้อม json.dumps"""
-    dem = Demo(path)
-    dem.events = dem.parse_events([*EVENTS, "player_hurt"], player_props=PLAYER_PROPS)
-    dem.rounds = create_round_df(dem.events)
-    tickrate = int(dem.tickrate)
-
-    # --- rounds: เอาจากตารางรอบโดยตรง จะได้ครบแม้รอบที่ไม่มีคิลเลย ---
+def _round_table(dem) -> pl.DataFrame:
+    """ตารางรอบ + จุดที่วางบอมบ์ — เอาจากตารางรอบโดยตรง จะได้ครบแม้รอบที่ไม่มีคิลเลย"""
     rounds = _clean(dem.rounds.select(
         pl.col("round_num").cast(pl.Int32),
         # start_tick = จังหวะ freeze time จบ ถ้าไม่มี event นั้นถอยไปใช้ round_start
@@ -149,19 +143,22 @@ def parse_demo(path: Path) -> dict:
         pl.col("reason").alias("end_reason"),
         pl.col("bomb_site").cast(pl.Utf8).alias("bomb_site"),
     )).sort("round_num")
+
     # จุดที่วางบอมบ์ = ตำแหน่งคนวาง ณ event bomb_planted (ไอคอนบอมบ์บนแผนที่หน้า Round Review)
     bp = dem.events.get("bomb_planted") if isinstance(dem.events, dict) else None
-    if bp is not None and len(bp):
-        plant = (bp.select(pl.col("tick").cast(pl.Int32).alias("bomb_plant_tick"),
-                           pl.col("user_X").cast(pl.Float64).alias("bomb_plant_x"),
-                           pl.col("user_Y").cast(pl.Float64).alias("bomb_plant_y"))
-                 .unique("bomb_plant_tick", keep="first"))
-        rounds = rounds.join(plant, on="bomb_plant_tick", how="left")
-    else:
-        rounds = rounds.with_columns(pl.lit(None, pl.Float64).alias("bomb_plant_x"), pl.lit(None, pl.Float64).alias("bomb_plant_y"))
+    if bp is None or not len(bp):
+        return rounds.with_columns(pl.lit(None, pl.Float64).alias("bomb_plant_x"),
+                                   pl.lit(None, pl.Float64).alias("bomb_plant_y"))
+    plant = (bp.select(pl.col("tick").cast(pl.Int32).alias("bomb_plant_tick"),
+                       pl.col("user_X").cast(pl.Float64).alias("bomb_plant_x"),
+                       pl.col("user_Y").cast(pl.Float64).alias("bomb_plant_y"))
+             .unique("bomb_plant_tick", keep="first"))
+    return rounds.join(plant, on="bomb_plant_tick", how="left")
 
-    # --- kills: เปลี่ยนชื่อคอลัมน์ให้ตรง schema ตัดคอลัมน์ที่ DB ไม่เก็บ ---
-    kills = _clean(
+
+def _kill_table(dem) -> pl.DataFrame:
+    """คิล — เปลี่ยนชื่อคอลัมน์ให้ตรง schema ตัดคอลัมน์ที่ DB ไม่เก็บ"""
+    return _clean(
         dem.kills.select(["round_num", *KILL_COLUMNS])
                  .rename(KILL_COLUMNS)
                  .with_columns(
@@ -174,18 +171,22 @@ def parse_demo(path: Path) -> dict:
                  .sort(["round_num", "tick"])
     )
 
-    # --- damages: player_hurt ไม่มีเลขรอบติดมา ต้องปะเองจากขอบเขต tick ของแต่ละรอบ ---
-    #   apply_round_num คือฟังก์ชันเดียวกับที่ awpy ใช้ปะเลขรอบให้ตาราง kills เกณฑ์จึงตรงกันแน่นอน
-    #   แถวที่ปะไม่ได้ (round_num ว่าง) คือดาเมจตอน warmup หรือระหว่างพักรอบ — ตัดทิ้ง
-    #   ส่วน user_steamid ว่างแปลว่าหาคนโดนไม่เจอ ซึ่ง damages.victim_id เป็น NOT NULL จึงตัดทิ้งเหมือนกัน
-    #
-    #   ทำไมไม่ใช้ dmg_health ที่เดโมให้มา
-    #   dmg_health คือ "ดาเมจดิบของกระสุน" — AWP เข้าตัวขึ้น 148 ทั้งที่คนโดนเหลือเลือดแค่ 7
-    #   เอาไปรวมแล้ว ADR จะพองเกินจริง (ทดลองแล้วได้ 148 ต่อรอบ ทั้งที่โปรระดับโลกอยู่ 70-100)
-    #   ADR ตามเกณฑ์ HLTV นับเฉพาะเลือดที่เสียจริง = เลือดก่อนโดน - เลือดหลังโดน
-    #   health ในอีเวนต์คือเลือด "หลังโดน" ส่วนเลือดก่อนโดนคือ health ของนัดก่อนหน้าของคนเดิมในรอบเดิม
-    #   (ไม่มีนัดก่อนหน้า = ยังไม่เคยโดนในรอบนี้ = 100)
-    damages = _clean(
+
+def _damage_table(dem) -> pl.DataFrame:
+    """ดาเมจ — player_hurt ไม่มีเลขรอบติดมา ต้องปะเองจากขอบเขต tick ของแต่ละรอบ
+
+    apply_round_num คือฟังก์ชันเดียวกับที่ awpy ใช้ปะเลขรอบให้ตาราง kills เกณฑ์จึงตรงกันแน่นอน
+    แถวที่ปะไม่ได้ (round_num ว่าง) คือดาเมจตอน warmup หรือระหว่างพักรอบ — ตัดทิ้ง
+    ส่วน user_steamid ว่างแปลว่าหาคนโดนไม่เจอ ซึ่ง damages.victim_id เป็น NOT NULL จึงตัดทิ้งเหมือนกัน
+
+    ทำไมไม่ใช้ dmg_health ที่เดโมให้มา
+    dmg_health คือ "ดาเมจดิบของกระสุน" — AWP เข้าตัวขึ้น 148 ทั้งที่คนโดนเหลือเลือดแค่ 7
+    เอาไปรวมแล้ว ADR จะพองเกินจริง (ทดลองแล้วได้ 148 ต่อรอบ ทั้งที่โปรระดับโลกอยู่ 70-100)
+    ADR ตามเกณฑ์ HLTV นับเฉพาะเลือดที่เสียจริง = เลือดก่อนโดน - เลือดหลังโดน
+    health ในอีเวนต์คือเลือด "หลังโดน" ส่วนเลือดก่อนโดนคือ health ของนัดก่อนหน้าของคนเดิมในรอบเดิม
+    (ไม่มีนัดก่อนหน้า = ยังไม่เคยโดนในรอบนี้ = 100)
+    """
+    return _clean(
         apply_round_num(dem.events["player_hurt"], dem.rounds)
         .drop_nulls(["round_num", "user_steamid"])
         .sort(["round_num", "tick"])
@@ -203,9 +204,13 @@ def parse_demo(path: Path) -> dict:
         .sort(["round_num", "tick"])
     )
 
-    # --- player_rounds: หนึ่งแถวต่อคนต่อรอบ — ฝั่ง / มูลค่าอุปกรณ์ / รอดถึงจบรอบไหม ---
-    #   tick "start" = freeze จบ (ฝั่ง + เงิน)   tick "end" = round_end (ใครยังรอด)
-    #   ใช้ end ไม่ใช่ official_end เพราะช่วงหลัง round_end ยังยิงกันได้ คนที่ตายตอนนั้นไม่นับว่าเสียรอบ
+
+def _wanted_ticks(dem, tickrate: int) -> tuple[dict[int, tuple[int, str]], dict[int, int]]:
+    """tick ที่ต้องขอจาก parser คืน (tick ของ player_rounds, tick ของ positions)
+
+    tick "start" = freeze จบ (ฝั่ง + เงิน)   tick "end" = round_end (ใครยังรอด)
+    ใช้ end ไม่ใช่ official_end เพราะช่วงหลัง round_end ยังยิงกันได้ คนที่ตายตอนนั้นไม่นับว่าเสียรอบ
+    """
     want: dict[int, tuple[int, str]] = {}
     pos_want: dict[int, int] = {}          # tick -> round_num ของตำแหน่ง 1 Hz (ห้ามเก็บทุก tick — ดูคอมเมนต์ positions)
     for r in dem.rounds.iter_rows(named=True):
@@ -218,17 +223,12 @@ def parse_demo(path: Path) -> dict:
         if fe is not None and en is not None:
             for t in range(int(fe), int(en), tickrate):      # วินาทีละครั้ง ตั้งแต่ freeze จบถึงรอบจบ
                 pos_want[t] = int(r["round_num"])
-    # ขอ parser ทีเดียวทั้ง tick ของ player_rounds และของ positions — parser (Rust) ข้าม tick ที่ไม่ขอให้เอง
-    all_ticks = pl.from_pandas(dem.parser.parse_ticks(wanted_props=TICK_PROPS, ticks=sorted(set(want) | set(pos_want))))
-    ticks = all_ticks.join(
-        pl.DataFrame({"tick": list(want), "round_num": [v[0] for v in want.values()], "at": [v[1] for v in want.values()]}),
-        on="tick",
-    )
-    # ตอน freeze จบ "ผู้เล่นจริง" ทุกคนต้องมีชีวิต — โค้ชอยู่ในทีมเดียวกัน (team_name เหมือนกัน) แต่ is_alive = False
-    # ถ้าไม่กรอง โค้ชจะโผล่เป็นผู้เล่นคนที่ 11-12 ของรอบ แล้วไปดึงค่าเฉลี่ย KAST/rating ของทั้งชุดลง
-    at_start = ticks.filter((pl.col("at") == "start") & pl.col("is_alive"))
-    at_end = ticks.filter(pl.col("at") == "end").select("round_num", "steamid", pl.col("is_alive").alias("survived"))
-    player_rounds = _clean(
+    return want, pos_want
+
+
+def _player_round_table(at_start: pl.DataFrame, at_end: pl.DataFrame) -> pl.DataFrame:
+    """หนึ่งแถวต่อคนต่อรอบ — ฝั่ง / มูลค่าอุปกรณ์ / รอดถึงจบรอบไหม"""
+    return _clean(
         at_start.join(at_end, on=["round_num", "steamid"], how="left")
         .select(
             pl.col("round_num").cast(pl.Int32),
@@ -242,11 +242,15 @@ def parse_demo(path: Path) -> dict:
         .sort(["round_num", "steam_id"])
     )
 
-    # --- positions: ตำแหน่งผู้เล่น 1 Hz เฉพาะช่วงที่รอบกำลังเล่นและคนนั้นยังมีชีวิต ---
-    #   เดโมบันทึก 64-128 tick/วินาที ถ้าเก็บทุก tick จะได้ ~2.7 ล้านแถวต่อแมตช์ และ 99% ซ้ำกัน
-    #   วินาทีละครั้งเหลือ ~21,000 แถว ยังพอบอกได้ว่าใครไปทางไหน โรเทตตอนไหน
-    #   คนตายแล้วยังมีพิกัดค้างตรงที่ตาย ถ้าไม่กรอง is_alive จะกลายเป็น "ยืนนิ่งตรงนั้นทั้งรอบ"
-    positions = _clean(
+
+def _position_table(all_ticks: pl.DataFrame, pos_want: dict[int, int]) -> pl.DataFrame:
+    """ตำแหน่งผู้เล่น 1 Hz เฉพาะช่วงที่รอบกำลังเล่นและคนนั้นยังมีชีวิต
+
+    เดโมบันทึก 64-128 tick/วินาที ถ้าเก็บทุก tick จะได้ ~2.7 ล้านแถวต่อแมตช์ และ 99% ซ้ำกัน
+    วินาทีละครั้งเหลือ ~21,000 แถว ยังพอบอกได้ว่าใครไปทางไหน โรเทตตอนไหน
+    คนตายแล้วยังมีพิกัดค้างตรงที่ตาย ถ้าไม่กรอง is_alive จะกลายเป็น "ยืนนิ่งตรงนั้นทั้งรอบ"
+    """
+    return _clean(
         all_ticks.join(pl.DataFrame({"tick": list(pos_want), "round_num": list(pos_want.values())}), on="tick")
         .filter(pl.col("is_alive"))
         .select(
@@ -263,10 +267,15 @@ def parse_demo(path: Path) -> dict:
         .sort(["round_num", "tick", "steam_id"])
     )
 
-    # --- grenades: ระเบิดทุกลูก จาก weapon_fire (grenade_thrown ไม่มีในเดโม 14 จาก 50 ไฟล์ — ดู parse_grenades.py) ---
+
+def _grenade_rows(dem, tickrate: int) -> list[dict]:
+    """ระเบิดทุกลูก จาก weapon_fire พร้อมจุดตกและเวลาที่ควัน/ไฟหมด
+
+    ใช้ weapon_fire เพราะ grenade_thrown ไม่มีในเดโม 14 จาก 50 ไฟล์
+    """
     fired = dem.parser.parse_event("weapon_fire", player=["team_name", "X", "Y"])
     if hasattr(fired, "columns") and len(fired):
-        grenades = (
+        thrown = (
             apply_round_num(pl.from_pandas(fired).with_columns(pl.col("weapon").str.replace("^weapon_", "")), dem.rounds)
             .filter(pl.col("weapon").is_in(list(GRENADE_TYPES)))
             .drop_nulls(["round_num"])
@@ -282,18 +291,25 @@ def parse_demo(path: Path) -> dict:
             .sort(["round_num", "tick"])
         )
     else:
-        grenades = pl.DataFrame(schema={"round_num": pl.Int32, "tick": pl.Int32, "thrower_id": pl.Int64, "side": pl.Utf8,
-                                        "type": pl.Utf8, "throw_x": pl.Float32, "throw_y": pl.Float32})
+        thrown = pl.DataFrame(schema={"round_num": pl.Int32, "tick": pl.Int32, "thrower_id": pl.Int64, "side": pl.Utf8,
+                                      "type": pl.Utf8, "throw_x": pl.Float32, "throw_y": pl.Float32})
     # จุดที่แต่ละลูกตก + เวลาที่ควัน/ไฟหมด (หน้ารอบวาดบนแผนที่พร้อมชื่อคนขว้าง)
-    grenades = attach_landings(grenades.to_dicts(), read_detonations(dem.parser), tickrate)
+    return attach_landings(thrown.to_dicts(), read_detonations(dem.parser), tickrate)
 
-    # --- players: ทุก steam_id ที่โผล่ ชื่อล่าสุดที่เห็นชนะ ---
-    #   รวมคนจาก tick ด้วย จะได้ครบ 10 คนแม้บางคนไม่เคยฆ่าหรือตายเลย (FK ของ player_rounds/grenades ต้องการ)
-    players = (
+
+def _player_table(dem, at_start: pl.DataFrame) -> pl.DataFrame:
+    """ทุก steam_id ที่โผล่ ชื่อล่าสุดที่เห็นชนะ
+
+    รวมคนจาก tick ด้วย จะได้ครบ 10 คนแม้บางคนไม่เคยฆ่าหรือตายเลย (FK ของ player_rounds/grenades ต้องการ)
+    """
+    def ids(col: str, name: str) -> pl.DataFrame:
+        return dem.kills.select(pl.col(col).cast(pl.Int64).alias("steam_id"), pl.col(name).alias("name"))
+
+    return (
         pl.concat([
-            dem.kills.select(pl.col("attacker_steamid").cast(pl.Int64).alias("steam_id"), pl.col("attacker_name").alias("name")),
-            dem.kills.select(pl.col("victim_steamid").cast(pl.Int64).alias("steam_id"), pl.col("victim_name").alias("name")),
-            dem.kills.select(pl.col("assister_steamid").cast(pl.Int64).alias("steam_id"), pl.col("assister_name").alias("name")),
+            ids("attacker_steamid", "attacker_name"),
+            ids("victim_steamid", "victim_name"),
+            ids("assister_steamid", "assister_name"),
             at_start.select(pl.col("steamid").cast(pl.Int64).alias("steam_id"), pl.col("name")),
         ])
         .drop_nulls("steam_id")
@@ -301,6 +317,34 @@ def parse_demo(path: Path) -> dict:
         .unique(subset="steam_id", keep="last", maintain_order=True)
         .sort("steam_id")
     )
+
+
+def parse_demo(path: Path) -> dict:
+    """อ่านเดโมหนึ่งไฟล์ คืน dict โครง normalized พร้อม json.dumps"""
+    dem = Demo(path)
+    dem.events = dem.parse_events([*EVENTS, "player_hurt"], player_props=PLAYER_PROPS)
+    dem.rounds = create_round_df(dem.events)
+    tickrate = int(dem.tickrate)
+
+    # ขอ parser ทีเดียวทั้ง tick ของ player_rounds และของ positions — parser (Rust) ข้าม tick ที่ไม่ขอให้เอง
+    want, pos_want = _wanted_ticks(dem, tickrate)
+    all_ticks = pl.from_pandas(dem.parser.parse_ticks(wanted_props=TICK_PROPS, ticks=sorted(set(want) | set(pos_want))))
+    ticks = all_ticks.join(
+        pl.DataFrame({"tick": list(want), "round_num": [v[0] for v in want.values()], "at": [v[1] for v in want.values()]}),
+        on="tick",
+    )
+    # ตอน freeze จบ "ผู้เล่นจริง" ทุกคนต้องมีชีวิต — โค้ชอยู่ในทีมเดียวกัน (team_name เหมือนกัน) แต่ is_alive = False
+    # ถ้าไม่กรอง โค้ชจะโผล่เป็นผู้เล่นคนที่ 11-12 ของรอบ แล้วไปดึงค่าเฉลี่ย KAST/rating ของทั้งชุดลง
+    at_start = ticks.filter((pl.col("at") == "start") & pl.col("is_alive"))
+    at_end = ticks.filter(pl.col("at") == "end").select("round_num", "steamid", pl.col("is_alive").alias("survived"))
+
+    rounds = _round_table(dem)
+    kills = _kill_table(dem)
+    damages = _damage_table(dem)
+    player_rounds = _player_round_table(at_start, at_end)
+    positions = _position_table(all_ticks, pos_want)
+    grenades = _grenade_rows(dem, tickrate)
+    players = _player_table(dem, at_start)
 
     team_a, team_b = teams_from_filename(path.name)
     return {

@@ -112,7 +112,27 @@ def test_grenades_have_throw_and_landing_positions(doc):
     landed = [g for g in nades if g["land_x"] is not None]
     assert len(landed) / len(nades) >= 0.8
     assert all(g["throw_x"] is not None for g in nades)
-    assert all(g["tick"] <= g["land_tick"] <= g["end_tick"] for g in landed)
+    assert all(g["tick"] <= g["land_tick"] for g in landed)
+
+    # end_tick ว่างได้เฉพาะควัน/โมโลตอฟ และต้องเป็นเพราะรอบจบก่อนมันหมดอายุ
+    # เดโมไม่มี event ปิดให้ parser จึงบันทึก None ตามความจริงแทนการเดาเวลาดับ
+    # (แฟลชกับ HE ทำงานทันทีที่แตก parser จึงตั้ง end_tick = land_tick ให้เสมอ)
+    for g in landed:
+        if g["end_tick"] is None:
+            assert g["type"] in ("smoke", "molotov"), f"{g['type']} ต้องมี end_tick เสมอ"
+        else:
+            assert g["land_tick"] <= g["end_tick"]
+
+    # ลูกที่ค้างต้องเป็นลูกท้าย ๆ ของรอบตัวเอง ถ้าโผล่กลางรอบแปลว่าจับคู่ event พลาด ไม่ใช่รอบจบ
+    last_throw_in_round: dict[int, int] = {}
+    for g in doc["grenades"]:
+        r = g["round_num"]
+        last_throw_in_round[r] = max(last_throw_in_round.get(r, 0), g["tick"])
+
+    unfinished = [g for g in landed if g["end_tick"] is None]
+    for g in unfinished:
+        assert g["tick"] >= last_throw_in_round[g["round_num"]] - 128 * 15
+    assert len(unfinished) / len(landed) <= 0.15
 
 
 def test_grenade_throw_is_matched_to_its_own_landing():

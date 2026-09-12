@@ -55,3 +55,8 @@ skills-lock.json
 
 # ของที่ skill impeccable สร้างระหว่างออกแบบ (สรุปที่ใช้จริงอยู่ใน DESIGN.md แล้ว)
 .impeccable/
+
+# แคชของเครื่องมือ dev — สร้างใหม่ทุกครั้งที่รัน
+.pytest_cache/
+.ruff_cache/
+*.bak            # ไฟล์สำรองชั่วคราว เช่น .env.bak — ห้ามเข้า git เด็ดขาด

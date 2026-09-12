@@ -319,19 +319,11 @@ NADE_DEFAULT_SEC = {"smoke": 20.0, "molotov": 7.0}
 NADE_RADIUS = {"smoke": 144, "molotov": 120}
 
 
-def build_round_detail(*, match: dict, rnd: dict, roster: list[dict], in_round: list[dict], kills: list[dict],
-                       frame: RadarFrame | None, model: GridModel | None, grenades: list[dict] = ()) -> dict:
-    """payload ของหนึ่งรอบ
+def _person_factory(roster: list[dict], in_round: list[dict]):
+    """คืน (person, info, side_now, colours) — person(sid, name, side) ประกอบข้อมูลคนหนึ่งคนให้หน้าเว็บ
 
-    match    {id, demo_file, map_name, tickrate, team_a, team_b}
-    rnd      {round_num, start_tick, winner_side, end_reason, bomb_plant_tick, bomb_plant_x, bomb_plant_y, bomb_site}
-    roster   ทุกคนในแมตช์ [{steam_id, name, team}]  — ใช้ให้สีคงที่ทั้งแมตช์
-    in_round คนที่เล่นรอบนี้ [{steam_id, side, survived}]
-    kills    การตายในรอบนี้ เรียงตาม tick แล้ว (คอลัมน์ตามตาราง kills + attacker_name/victim_name/assister_name)
-    grenades ระเบิดในรอบนี้ (คอลัมน์ตามตาราง grenades + thrower_name) — ใครขว้างอะไร จากไหน ตกที่ไหน
+    สีมาจาก roster ทั้งแมตช์ ไม่ใช่เฉพาะรอบนี้ คนคนเดิมจึงได้สีเดิมทุกรอบ
     """
-    tickrate = int(match["tickrate"] or 128)
-    start = rnd["start_tick"]
     colours = player_colours(roster)
     info = {int(r["steam_id"]): r for r in roster}
     side_now = {int(p["steam_id"]): p["side"] for p in in_round}
@@ -344,6 +336,12 @@ def build_round_detail(*, match: dict, rnd: dict, roster: list[dict], in_round: 
                 "side": side or side_now.get(sid), "team": info.get(sid, {}).get("team"),
                 "color": colours.get(sid, UNKNOWN_COLOUR)}
 
+    return person, info, side_now, colours
+
+
+def _death_rows(kills: list[dict], person, *, start, tickrate: int,
+                frame: RadarFrame | None, model: GridModel | None) -> list[dict]:
+    """การตายทุกครั้งในรอบ พร้อมพิกเซลบนเรดาร์และบริบทจาก grid_ml1"""
     deaths = []
     for i, k in enumerate(kills, 1):
         victim = person(k["victim_id"], k.get("victim_name"), k.get("victim_side"))
@@ -368,8 +366,11 @@ def build_round_detail(*, match: dict, rnd: dict, roster: list[dict], in_round: 
             "place": k.get("victim_place"), "attacker_place": k.get("attacker_place"),
             **ctx,
         })
+    return deaths
 
-    # ---- ระเบิด: จุดตก (วาดวง) + จุดขว้าง (เส้นประ) เป็นพิกเซล และช่วงเวลาที่มีผล ----
+
+def _nade_rows(grenades: list[dict], person, *, start, tickrate: int, frame: RadarFrame | None) -> list[dict]:
+    """ระเบิด: จุดตก (วาดวง) + จุดขว้าง (เส้นประ) เป็นพิกเซล และช่วงเวลาที่มีผล"""
     nades = []
     for g in grenades:
         land_t, end_t = _t(g.get("land_tick"), start, tickrate), _t(g.get("end_tick"), start, tickrate)
@@ -384,8 +385,12 @@ def build_round_detail(*, match: dict, rnd: dict, roster: list[dict], in_round: 
             "land_px": world_to_pixel(lx, ly, frame) if frame and None not in (lx, ly) else None,
             "r_px": round(NADE_RADIUS.get(g["type"], 0) / frame.scale, 1) if frame else 0,
         })
+    return nades
 
-    # ---- ทีม: จัดตาม team_clan ไม่ใช่ side; หัวกล่องบอก side ของรอบนี้ ----
+
+def _team_rows(side_now: dict[int, str], info: dict[int, dict], colours: dict[int, str],
+               deaths: list[dict]) -> list[dict]:
+    """จัดกล่องทีมตาม team_clan ไม่ใช่ side; หัวกล่องบอก side ของรอบนี้ CT อยู่ซ้าย/บน"""
     teams: dict[str, dict] = {}
     for sid in sorted(side_now):
         p = info.get(sid, {"name": str(sid), "team": None})
@@ -402,21 +407,25 @@ def build_round_detail(*, match: dict, rnd: dict, roster: list[dict], in_round: 
             "death_order": death["order"] if death else None,
             "kills": sum(1 for d in deaths if d["is_duel"] and d["attacker"] and d["attacker"]["steamid"] == str(sid)),
         })
-    team_list = sorted(teams.values(), key=lambda t: (t["side_this_round"] != "ct", t["clan"]))   # CT ซ้าย/บน
+    return sorted(teams.values(), key=lambda t: (t["side_this_round"] != "ct", t["clan"]))
 
-    bomb = None
-    if rnd.get("bomb_plant_x") is not None and rnd.get("bomb_plant_y") is not None:
-        px = world_to_pixel(rnd["bomb_plant_x"], rnd["bomb_plant_y"], frame) if frame else None
-        bomb = {"x": rnd["bomb_plant_x"], "y": rnd["bomb_plant_y"], "px": px, "site": rnd.get("bomb_site")}
 
-    # ---- สรุปรอบ ----
-    winner = rnd.get("winner_side")
+def _bomb_marker(rnd: dict, frame: RadarFrame | None) -> dict | None:
+    """ไอคอนบอมบ์บนแผนที่ — None ถ้ารอบนั้นไม่มีการวาง"""
+    if rnd.get("bomb_plant_x") is None or rnd.get("bomb_plant_y") is None:
+        return None
+    px = world_to_pixel(rnd["bomb_plant_x"], rnd["bomb_plant_y"], frame) if frame else None
+    return {"x": rnd["bomb_plant_x"], "y": rnd["bomb_plant_y"], "px": px, "site": rnd.get("bomb_site")}
+
+
+def _round_summary(deaths: list[dict], winner: str | None) -> dict:
+    """สรุปรอบ: ใครตายคนแรก ฝั่งนั้นแพ้ไหม และการตายแบบเสียเปรียบของแต่ละฝั่ง"""
     first = deaths[0] if deaths else None
     disadv = {"ct": 0, "t": 0}
     for d in deaths:
         if d["disadvantaged"] and d["victim"] and d["victim"]["side"] in disadv:
             disadv[d["victim"]["side"]] += 1
-    summary = {
+    return {
         "first_death": None if not first else {
             "order": 1, "name": first["victim"]["name"], "side": first["victim"]["side"],
             "place": first["place"], "t_round": first["t_round"],
@@ -429,17 +438,37 @@ def build_round_detail(*, match: dict, rnd: dict, roster: list[dict], in_round: 
         "deaths_with_context": sum(d["cell"] is not None for d in deaths),
     }
 
+
+def build_round_detail(*, match: dict, rnd: dict, roster: list[dict], in_round: list[dict], kills: list[dict],
+                       frame: RadarFrame | None, model: GridModel | None, grenades: list[dict] = ()) -> dict:
+    """payload ของหนึ่งรอบ
+
+    match    {id, demo_file, map_name, tickrate, team_a, team_b}
+    rnd      {round_num, start_tick, winner_side, end_reason, bomb_plant_tick, bomb_plant_x, bomb_plant_y, bomb_site}
+    roster   ทุกคนในแมตช์ [{steam_id, name, team}]  — ใช้ให้สีคงที่ทั้งแมตช์
+    in_round คนที่เล่นรอบนี้ [{steam_id, side, survived}]
+    kills    การตายในรอบนี้ เรียงตาม tick แล้ว (คอลัมน์ตามตาราง kills + attacker_name/victim_name/assister_name)
+    grenades ระเบิดในรอบนี้ (คอลัมน์ตามตาราง grenades + thrower_name) — ใครขว้างอะไร จากไหน ตกที่ไหน
+    """
+    tickrate = int(match["tickrate"] or 128)
+    start = rnd["start_tick"]
+    winner = rnd.get("winner_side")
+    person, info, side_now, colours = _person_factory(roster, in_round)
+
+    deaths = _death_rows(kills, person, start=start, tickrate=tickrate, frame=frame, model=model)
+    nades = _nade_rows(grenades, person, start=start, tickrate=tickrate, frame=frame)
+
     return {
         "match": {k: match.get(k) for k in ("id", "demo_file", "map_name", "tickrate", "team_a", "team_b")},
         "round": {"num": rnd["round_num"], "winner_side": winner, "end_reason": rnd.get("end_reason"),
-                  "bomb_planted_t": _t(rnd.get("bomb_plant_tick"), start, tickrate), "bomb": bomb},
+                  "bomb_planted_t": _t(rnd.get("bomb_plant_tick"), start, tickrate), "bomb": _bomb_marker(rnd, frame)},
         "radar": None if not frame else {"image": "/assets" + frame.image, "size": frame.size, "map": frame.map_name},
         "grid": None if not model or not frame or model.map_name != frame.map_name else {
             "source": model.source, "ct_win_overall": model.ct_win_overall, "min_kills": model.min_kills},
-        "teams": team_list,
+        "teams": _team_rows(side_now, info, colours, deaths),
         "deaths": deaths,
         "grenades": nades,
-        "summary": summary,
+        "summary": _round_summary(deaths, winner),
     }
 
 

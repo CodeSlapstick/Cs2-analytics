@@ -51,18 +51,51 @@ async def _upsert_players(conn, players: list[dict]) -> None:
         """, [(int(p["steam_id"]), str(p["name"])) for p in players])
 
 
-async def _replace_children(conn, match_id: int, doc: dict) -> dict:
-    """ลบลูก ๆ เดิมของแมตช์แล้วใส่ใหม่ทั้งชุด — ต้องเรียกภายใน conn.transaction()"""
-    rounds = doc.get("rounds", [])
-    kills = doc.get("kills", [])
-    damages = doc.get("damages", [])
-    grenades = doc.get("grenades", [])             # schema_version >= 3
-    positions = doc.get("positions", [])           # schema_version >= 4 (1 Hz)
+# SQL ของตารางลูกแต่ละตัว — วางไว้ระดับโมดูลเพื่อให้ฟังก์ชันสร้างแถวอ่านสั้นลง
+SQL_KILLS = """
+    INSERT INTO kills (
+        round_id, tick, attacker_id, victim_id, assister_id, attacker_side, victim_side, weapon,
+        headshot, hitgroup, attacker_blind, thru_smoke, noscope, assisted_flash, penetrated,
+        distance, attacker_x, attacker_y, attacker_z, attacker_place, victim_x, victim_y, victim_z, victim_place
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15,
+              $16, $17, $18, $19, $20, $21, $22, $23, $24);
+"""
+SQL_DAMAGES = """
+    INSERT INTO damages (round_id, tick, attacker_id, victim_id, weapon, damage, hitgroup)
+    VALUES ($1, $2, $3, $4, $5, $6, $7);
+"""
+SQL_PLAYER_ROUNDS = """
+    INSERT INTO player_rounds (
+        round_id, steam_id, side, equip_value, balance, survived,
+        buy_type, kills, deaths, assists, headshots, damage,
+        opening_kill, opening_death, trade_kills, was_traded, clutch_vs, clutch_won, kast, features_version
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
+    ON CONFLICT (round_id, steam_id) DO NOTHING;
+"""
+SQL_MATCH_PLAYERS = """
+    INSERT INTO match_players (match_id, steam_id, start_side, rounds, team_clan) VALUES ($1, $2, $3, $4, $5)
+    ON CONFLICT (match_id, steam_id) DO NOTHING;
+"""
+SQL_GRENADES = """
+    INSERT INTO grenades (round_id, tick, thrower_id, side, type,
+                          throw_x, throw_y, land_x, land_y, land_tick, end_tick)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11);
+"""
+SQL_POSITIONS = """
+    INSERT INTO player_positions (match_id, round_num, tick, steam_id, side, x, y, z, health, place)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10);
+"""
 
-    await conn.execute("DELETE FROM rounds WHERE match_id = $1;", match_id)            # cascade ไปทุกตารางลูก
-    await conn.execute("DELETE FROM match_players WHERE match_id = $1;", match_id)     # สองตารางนี้ผูกกับ match ตรง ๆ
-    await conn.execute("DELETE FROM player_positions WHERE match_id = $1;", match_id)
 
+async def _insert_many(conn, sql: str, rows: list[tuple]) -> int:
+    """executemany ที่ข้ามให้เองเมื่อไม่มีแถว คืนจำนวนแถวที่ใส่ (ไว้ทำสรุปท้ายฟังก์ชัน)"""
+    if rows:
+        await conn.executemany(sql, rows)
+    return len(rows)
+
+
+async def _insert_rounds(conn, match_id: int, rounds: list[dict]) -> dict[int, int]:
+    """ใส่ตารางรอบทีละแถวเพื่อเก็บ id ที่ DB คืนมา คืน map round_num -> rounds.id"""
     round_id_map: dict[int, int] = {}
     for r in rounds:
         rid = await conn.fetchval("""
@@ -73,11 +106,11 @@ async def _replace_children(conn, match_id: int, doc: dict) -> dict:
            r.get("winner_side"), r.get("end_reason"),
            _float(r.get("bomb_plant_x")), _float(r.get("bomb_plant_y")), r.get("bomb_site"))
         round_id_map[int(r["round_num"])] = rid
+    return round_id_map
 
-    def rid_of(row) -> int | None:
-        return round_id_map.get(int(row.get("round_num", 1)))
 
-    kill_rows = [
+def _kill_rows(kills: list[dict], rid_of) -> list[tuple]:
+    return [
         (rid_of(k), int(k["tick"]), _int(k.get("attacker_id")), int(k["victim_id"]), _int(k.get("assister_id")),
          k.get("attacker_side"), k.get("victim_side"), k.get("weapon", "unknown"),
          bool(k.get("headshot", False)), k.get("hitgroup"),
@@ -88,86 +121,81 @@ async def _replace_children(conn, match_id: int, doc: dict) -> dict:
          k.get("victim_place"))
         for k in kills if rid_of(k)
     ]
-    if kill_rows:
-        await conn.executemany("""
-            INSERT INTO kills (
-                round_id, tick, attacker_id, victim_id, assister_id, attacker_side, victim_side, weapon,
-                headshot, hitgroup, attacker_blind, thru_smoke, noscope, assisted_flash, penetrated,
-                distance, attacker_x, attacker_y, attacker_z, attacker_place, victim_x, victim_y, victim_z, victim_place
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15,
-                      $16, $17, $18, $19, $20, $21, $22, $23, $24);
-        """, kill_rows)
 
-    dmg_rows = [
+
+def _damage_rows(damages: list[dict], rid_of) -> list[tuple]:
+    return [
         (rid_of(d), int(d["tick"]), _int(d.get("attacker_id")), int(d["victim_id"]),
          d.get("weapon"), int(d.get("damage", 0)), d.get("hitgroup"))
         for d in damages if rid_of(d)
     ]
-    if dmg_rows:
-        await conn.executemany("""
-            INSERT INTO damages (round_id, tick, attacker_id, victim_id, weapon, damage, hitgroup)
-            VALUES ($1, $2, $3, $4, $5, $6, $7);
-        """, dmg_rows)
 
-    # ผู้เล่นรายรอบ + ฟีเจอร์ — compute_features คืนหนึ่งแถวต่อคนต่อรอบจาก doc["player_rounds"]
-    feats = compute_features(doc)
-    pr_rows = [
+
+def _player_round_rows(feats, round_id_map: dict[int, int]) -> list[tuple]:
+    return [
         (round_id_map[f.round_num], f.steam_id, f.side, f.equip_value, f.balance, f.survived,
          f.buy_type, f.kills, f.deaths, f.assists, f.headshots, f.damage,
          f.opening_kill, f.opening_death, f.trade_kills, f.was_traded, f.clutch_vs, f.clutch_won, f.kast,
          f.features_version)
         for f in feats if f.round_num in round_id_map
     ]
-    if pr_rows:
-        await conn.executemany("""
-            INSERT INTO player_rounds (
-                round_id, steam_id, side, equip_value, balance, survived,
-                buy_type, kills, deaths, assists, headshots, damage,
-                opening_kill, opening_death, trade_kills, was_traded, clutch_vs, clutch_won, kast, features_version
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
-            ON CONFLICT (round_id, steam_id) DO NOTHING;
-        """, pr_rows)
 
-    # ใครเล่นในแมตช์นี้ + อยู่ทีมไหน (ชื่อทีมคงที่ทั้งแมตช์ ไม่ใช่ side ที่สลับกันทุกครึ่ง)
+
+def _match_player_rows(feats, doc: dict, match_id: int) -> list[tuple]:
+    """ใครเล่นในแมตช์นี้ + อยู่ทีมไหน (ชื่อทีมคงที่ทั้งแมตช์ ไม่ใช่ side ที่สลับกันทุกครึ่ง)
+
+    start_side มาจากรอบแรกสุดที่คนนั้นลงเล่น จึงต้องไล่ feats ตามลำดับ round_num
+    """
     team_of = assign_teams([{"steam_id": x["steam_id"], "round_num": x["round_num"], "side": x["side"],
                              "clan": x.get("team_clan")} for x in doc.get("player_rounds", [])])
-    mp: dict[int, dict] = {}
+    played: dict[int, dict] = {}
     for f in sorted(feats, key=lambda f: f.round_num):
-        m = mp.setdefault(f.steam_id, {"start_side": f.side, "rounds": 0})
-        m["rounds"] += 1
-    if mp:
-        await conn.executemany("""
-            INSERT INTO match_players (match_id, steam_id, start_side, rounds, team_clan) VALUES ($1, $2, $3, $4, $5)
-            ON CONFLICT (match_id, steam_id) DO NOTHING;
-        """, [(match_id, sid, m["start_side"], m["rounds"], team_of.get(sid)) for sid, m in mp.items()])
+        entry = played.setdefault(f.steam_id, {"start_side": f.side, "rounds": 0})
+        entry["rounds"] += 1
+    return [(match_id, sid, e["start_side"], e["rounds"], team_of.get(sid)) for sid, e in played.items()]
 
-    g_rows = [
+
+def _grenade_rows(grenades: list[dict], rid_of) -> list[tuple]:
+    return [
         (rid_of(g), int(g["tick"]), _int(g.get("thrower_id")), g.get("side"), g["type"],
          _float(g.get("throw_x")), _float(g.get("throw_y")), _float(g.get("land_x")), _float(g.get("land_y")),
          _int(g.get("land_tick")), _int(g.get("end_tick")))
         for g in grenades if rid_of(g)
     ]
-    if g_rows:
-        await conn.executemany("""
-            INSERT INTO grenades (round_id, tick, thrower_id, side, type,
-                                  throw_x, throw_y, land_x, land_y, land_tick, end_tick)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11);
-        """, g_rows)
 
-    pos_rows = [
+
+def _position_rows(positions: list[dict], match_id: int, round_id_map: dict[int, int]) -> list[tuple]:
+    return [
         (match_id, int(p["round_num"]), int(p["tick"]), int(p["steam_id"]), p.get("side"),
          float(p["x"]), float(p["y"]), _float(p.get("z")), _int(p.get("health")), p.get("place"))
         for p in positions if int(p.get("round_num", 0)) in round_id_map
     ]
-    if pos_rows:
-        await conn.executemany("""
-            INSERT INTO player_positions (match_id, round_num, tick, steam_id, side, x, y, z, health, place)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10);
-        """, pos_rows)
 
-    return {"rounds": len(round_id_map), "kills": len(kill_rows), "damages": len(dmg_rows),
-            "player_rounds": len(pr_rows), "match_players": len(mp), "grenades": len(g_rows),
-            "positions": len(pos_rows)}
+
+async def _replace_children(conn, match_id: int, doc: dict) -> dict:
+    """ลบลูก ๆ เดิมของแมตช์แล้วใส่ใหม่ทั้งชุด — ต้องเรียกภายใน conn.transaction()"""
+    await conn.execute("DELETE FROM rounds WHERE match_id = $1;", match_id)            # cascade ไปทุกตารางลูก
+    await conn.execute("DELETE FROM match_players WHERE match_id = $1;", match_id)     # สองตารางนี้ผูกกับ match ตรง ๆ
+    await conn.execute("DELETE FROM player_positions WHERE match_id = $1;", match_id)
+
+    round_id_map = await _insert_rounds(conn, match_id, doc.get("rounds", []))
+
+    def rid_of(row) -> int | None:
+        return round_id_map.get(int(row.get("round_num", 1)))
+
+    # ผู้เล่นรายรอบ + ฟีเจอร์ — compute_features คืนหนึ่งแถวต่อคนต่อรอบจาก doc["player_rounds"]
+    feats = compute_features(doc)
+
+    return {
+        "rounds": len(round_id_map),
+        "kills": await _insert_many(conn, SQL_KILLS, _kill_rows(doc.get("kills", []), rid_of)),
+        "damages": await _insert_many(conn, SQL_DAMAGES, _damage_rows(doc.get("damages", []), rid_of)),
+        "player_rounds": await _insert_many(conn, SQL_PLAYER_ROUNDS, _player_round_rows(feats, round_id_map)),
+        "match_players": await _insert_many(conn, SQL_MATCH_PLAYERS, _match_player_rows(feats, doc, match_id)),
+        # grenades / positions มีเฉพาะ schema_version >= 3 และ >= 4 — ไฟล์เก่าจะได้ list ว่างแล้วข้ามไปเอง
+        "grenades": await _insert_many(conn, SQL_GRENADES, _grenade_rows(doc.get("grenades", []), rid_of)),
+        "positions": await _insert_many(conn, SQL_POSITIONS, _position_rows(doc.get("positions", []), match_id, round_id_map)),
+    }
 
 
 async def load_match_doc(conn, doc: dict, *, match_id: int | None = None, force: bool = False) -> int:
