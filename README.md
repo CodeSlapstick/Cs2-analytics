@@ -10,7 +10,7 @@
                                                                            ▼  │                       │
                                                                          Redis ──► worker ── parse_demo(match_id) ── awpy/demoparser2
                                                                                    │
-                                                                                   └── backend/features  (opening / trade / buy / clutch / KAST)
+                                                                                   └── backend/features.py  (opening / trade / buy / clutch / KAST)
 ```
 
 ใช้งานที่เดียวคือหน้าเว็บ — API อยู่หลังหน้าเว็บเสมอ ไม่เปิดพอร์ตของตัวเองออกมานอกเครื่อง
@@ -46,8 +46,11 @@ docker compose up -d          # db + redis + api + worker + frontend
 | `dev` | `cs2dev1234` |
 
 เปลี่ยนได้ที่ `DEV_USERNAME` / `DEV_PASSWORD` ใน `.env` หรือกด "สมัครสมาชิก" ในหน้า login (ปิดได้ด้วย `ALLOW_REGISTER=0`)
+หรือกดปุ่ม **เข้าสู่ระบบด้วย Steam** — ล็อกอินผ่าน Steam (OpenID 2.0) ระบบไม่เห็นรหัสผ่าน Steam ของใครเลย
+ครั้งแรกจะสร้างบัญชีให้เองจาก SteamID64 (ชื่อ/รูปโปรไฟล์ต้องตั้ง `STEAM_API_KEY` ใน `.env` ไม่ตั้งก็ล็อกอินได้ ชื่อจะเป็น `steam_<SteamID64>`)
+**ค่าเริ่มต้นคือใครมีบัญชี Steam ก็เข้าได้** — จำกัดเฉพาะทีมได้ด้วย `STEAM_ALLOWED_IDS=76561198...,76561198...` ใน `.env`
 รหัสผ่านเก็บเป็น PBKDF2 hash ส่วน session เป็น JWT ในคุกกี้ httpOnly อายุ 7 วัน (`backend/auth.py`) — ตั้ง `SECRET_KEY` ใน `.env` ไว้ ไม่งั้นทุกคนหลุดเมื่อ api รีสตาร์ต
-ลืมรหัส dev: `python -m backend.seed_user --reset` (ในเครื่อง) หรือ `docker compose exec api python -m backend.seed_user --reset`
+ลืมรหัส dev: `python -m backend.auth --reset` (ในเครื่อง) หรือ `docker compose exec api python -m backend.auth --reset`
 
 ### หน้าเว็บ
 
@@ -56,9 +59,11 @@ docker compose up -d          # db + redis + api + worker + frontend
 - **sidebar ซ้าย** — ฟอร์มอัปโหลดที่หัวแถบ + รายการแมตช์ทั้งหมด กดแล้วไปรอบ 1 ของแมตช์นั้น ย่อเก็บได้
 - **หัวแมตช์** — สกอร์ + ปุ่มเปิดสกอร์บอร์ดทั้งแมตช์ (K/D, ADR, KAST, opening, trade, clutch)
 - **แถบรอบ** — เท่าจำนวนรอบจริง กดหรือใช้ปุ่ม ← / → บนคีย์บอร์ด
-- **เนื้อหารอบ** — รายชื่อทีม / แผนที่จุดตาย / ไทม์ไลน์ / บริบทจาก grid_ml1
+- **เนื้อหารอบ** — รายชื่อทีม / แผนที่ (ชื่อคนตายใต้วง · ระเบิดทุกลูกพร้อมชื่อคนขว้างและเส้นทางที่ขว้างมา) / ไทม์ไลน์ / บริบทจาก grid_ml1
+  กดจุดตาย = แผนที่เหลือเฉพาะระเบิดที่มีผลอยู่ ณ วินาทีนั้น (ควัน/ไฟที่ยังไม่หมด แฟลช/HE ที่เพิ่งแตก) และขึ้นชื่อคนยิง
+  ซูมแผนที่ด้วยล้อเมาส์หรือปุ่ม + / − (ลากเพื่อเลื่อนดู · ปุ่ม "เต็มแมพ" กลับมุมมองเดิม) · เปิด/ปิดระเบิดแยกทีละชนิด (สโมค · แฟลช · HE · โมโลตอฟ — decoy ไม่มีเพราะเดโมไม่บันทึกจุดตก)
 
-state ทั้งหมดอยู่บน URL (`?sb=0` ย่อ sidebar, `board=1` สกอร์บอร์ด, `cells=1` `hs=1` ชั้นซ้อน, `p=` ผู้เล่นที่ไฮไลต์, `d=` การตายที่เลือก)
+state ทั้งหมดอยู่บน URL (`?sb=0` ย่อ sidebar, `board=1` สกอร์บอร์ด, `g=smoke,flash` ชนิดระเบิดที่แสดง (`g=none` = ไม่แสดงเลย), `z=2.5` `c=x,y` ซูม/จุดที่มองอยู่บนแผนที่, `cells=1` `hs=1` ชั้นซ้อน, `pb=1` โหมดเล่นย้อน + `t=12.5` วินาทีในรอบที่ดูค้างไว้, `p=` ผู้เล่นที่ไฮไลต์, `d=` การตายที่เลือก)
 refresh แล้วอยู่ที่เดิม และแชร์ลิงก์ให้คนอื่นเห็นแบบเดียวกันได้ · `/matches` พาไปแมตช์ล่าสุด · แมตช์/รอบที่ไม่มีจริงขึ้นหน้า 404 ที่มีปุ่มกลับ
 
 ```bash
@@ -73,9 +78,9 @@ docker compose down -v                # ปิดแล้วลบข้อม�
 docker compose up -d db redis                  # ฐานข้อมูล + คิว ใน Docker
 pip install -r requirements-dev.txt
 alembic upgrade head                           # สร้าง/อัปเดตตาราง
-python -m backend.seed_user                    # dev user
+python -m backend.auth                         # dev user
 python -m uvicorn backend.app:app --reload     # API
-python -m backend.worker                       # worker (อีกหน้าต่าง) — บน Windows ใช้ SimpleWorker ให้เอง
+python -m backend.jobs                         # worker (อีกหน้าต่าง) — บน Windows ใช้ SimpleWorker ให้เอง
 cd frontend && npm install && npm run dev      # หน้าเว็บที่ http://localhost:5173 (ส่งต่อ /api /auth /assets ไปที่ API ให้)
 ```
 
@@ -90,7 +95,7 @@ cd frontend && npm install && npm run dev      # หน้าเว็บที�
 2. **ผ่าน API** — `POST /api/demos` (multipart `file`, `force=1` ถ้าจะโหลดทับ) ตอบ 202 พร้อม `status_url`
 3. **ผ่าน CLI** (ไม่ผ่านคิว) — วางไฟล์ใน `demos/` แล้ว
    ```bash
-   python -m backend.parser.service demos/X.dem     # -> output/json/X.json
+   python -m backend.parser demos/X.dem              # -> output/json/X.json
    python backend/etl_loader.py output/json/X.json  # -> PostgreSQL (--force = โหลดทับ + คำนวณฟีเจอร์ใหม่)
    ```
 
@@ -111,16 +116,18 @@ cd frontend && npm install && npm run dev      # หน้าเว็บที�
 | GET | `/api/matches/{id}/status` | `queued / parsing / done / error` + `error_message` + สถานะงานในคิว |
 | GET | `/api/review/{demo_file}/rounds` | รายรอบ (ผู้ชนะ / จบด้วยอะไร / ตายกี่คน / คนแรกตายวินาทีที่เท่าไหร่) |
 | GET | `/api/review/{demo_file}/rounds/{n}` | ทีม / การตายทุกครั้งพร้อมพิกเซลบนเรดาร์ / บริบทจาก grid_ml1 / สรุปรอบ |
+| GET | `/api/review/{demo_file}/rounds/{n}/positions` | ตำแหน่งผู้เล่นรายวินาทีของรอบ (โหมดเล่นย้อน) ~9 KB |
 | GET | `/api/review/grid?map=de_mirage` | ช่องกริดที่จัดกลุ่มแล้ว + วง hotspot เป็นพิกเซล (toggle ซ้อนบนแผนที่) |
+| GET | `/api/players/{me\|steamid64}/summary` | สถิติรายคน: ภาพรวม + entry แยกฝั่ง + clutch 1v1–1v5 + Rating 2.0 (ประมาณการ) |
+| GET | `/api/players/{…}/matches` · `/maps` · `/weapons` | แมตช์ล่าสุด (แพ้/ชนะ + rating) · รวมรายแมพ · อาวุธที่ฆ่าบ่อย |
 | GET | `/api/health` | DB ต่อได้ไหม คิวยาวแค่ไหน มี worker กี่ตัว |
 
-Round Review ใช้ `/api/review/` ไม่ใช่ `/api/matches/` เพราะ `/api/matches/{id}/rounds` เดิมรับเลข id
 บริบทของการตายอ่านจาก `output/grid_ml1.json` (cache ในหน่วยความจำ ไม่รันโมเดลตอน request) — ยังไม่เคยรัน `python research/grid_ml1.py` หน้าเว็บจะบอกว่าไม่มีข้อมูล
-พิกัดทุกจุดแปลงที่ `backend/geo.py` ที่เดียว (grid_ml1.py import สูตรเดียวกัน) frontend ไม่มีสูตรแปลงพิกัดของตัวเอง
+พิกัดทุกจุดแปลงที่ `backend/review.py` ที่เดียว (grid_ml1.py import สูตรเดียวกัน) frontend ไม่มีสูตรแปลงพิกัดของตัวเอง
 
-endpoint ของหน้าเว็บ Sprint 1 ที่ลบไปแล้ว (`/api/players` `/api/heatmap` `/api/tactical` `/api/ml/*` …) ยังเก็บไว้สำหรับทำหน้า React ทีหลัง — รายการอยู่ใน `backend/README.md`
+มีเฉพาะ endpoint ที่หน้าเว็บเรียกจริง — endpoint ของหน้าเว็บ Sprint 1 (`/api/players` `/api/heatmap` `/api/tactical` `/api/ml/*` …) ลบไปแล้ว ดูย้อนหลังได้ใน git
 
-## นิยามที่ใช้ทั้งระบบ — `backend/features/definitions.py`
+## นิยามที่ใช้ทั้งระบบ — `backend/features.py`
 
 | ฟีเจอร์ | นิยาม |
 |---|---|
@@ -130,7 +137,7 @@ endpoint ของหน้าเว็บ Sprint 1 ที่ลบไปแล�
 | clutch | เหลือคนเดียวฝั่งตัวเอง เจอศัตรู ≥ 1 และรอบยังไม่จบ (1v1 นับทั้งสองฝั่ง) |
 | ADR / KAST | ดาเมจใส่ศัตรูต่อรอบ · % รอบที่มี Kill / Assist / Survived / Traded |
 
-คำนวณครั้งเดียวตอนโหลด (`backend/features/compute.py`) แล้วเก็บลง `player_rounds` — `features_version` บอกรุ่นนิยาม
+คำนวณครั้งเดียวตอนโหลด (`backend/features.py`) แล้วเก็บลง `player_rounds` — `features_version` บอกรุ่นนิยาม
 เปลี่ยนนิยามเมื่อไร ขยับเลขนั้นแล้ว `python backend/etl_loader.py --force` เพื่อ backfill
 
 ## ฐานข้อมูล (PostgreSQL · SQLAlchemy models ใน `backend/models.py` · migration ใน `backend/alembic/`)
@@ -145,7 +152,8 @@ endpoint ของหน้าเว็บ Sprint 1 ที่ลบไปแล�
 | `player_rounds` (= player_round_stats) | คนหนึ่งในรอบหนึ่ง | `side` `equip_value` `survived` + ฟีเจอร์: `buy_type` `kills` `deaths` `assists` `damage` `opening_kill/death` `trade_kills` `was_traded` `clutch_vs` `clutch_won` `kast` |
 | `kills` | การฆ่าหนึ่งครั้ง | `round_id` `tick` `attacker_id` `victim_id` `assister_id` ฝั่ง อาวุธ headshot พิกัดและ callout ของทั้งคู่ |
 | `player_positions` | คนหนึ่ง ณ วินาทีหนึ่ง (1 Hz) | `match_id` `round_num` `tick` `steam_id` `side` `x y z` `health` `place` — เฉพาะช่วงที่รอบเล่นและคนยังมีชีวิต |
-| `damages` `grenades` | ดาเมจแต่ละครั้ง · ระเบิดแต่ละลูก | (จาก Sprint 1) |
+| `grenades` | ระเบิดหนึ่งลูก | `thrower_id` `type` (smoke/flash/he/molotov/decoy) `tick` · `throw_x/y` จุดขว้าง · `land_x/y` `land_tick` จุดตก · `end_tick` ควัน/ไฟหมด |
+| `damages` | ดาเมจแต่ละครั้ง | (จาก Sprint 1) |
 | `users` | ผู้ใช้จาก Steam login เดิม | เลิกใช้แล้ว เก็บตารางไว้ไม่ลบ |
 
 view สรุป (`backend/views.sql`): `match_summary` `match_scoreboard` `player_stats` `player_round_facts` `player_clutches` `round_economy`
@@ -156,7 +164,7 @@ alembic downgrade -1        # ถอยหนึ่งรุ่น
 alembic history
 ```
 
-`player_positions` เก็บที่ 1 Hz เท่านั้น — เดโมบันทึก 64–128 tick/วินาที ถ้าเก็บทุก tick จะได้ ~2.7 ล้านแถวต่อแมตช์ (`backend/parser/service.py`)
+`player_positions` เก็บที่ 1 Hz เท่านั้น — เดโมบันทึก 64–128 tick/วินาที ถ้าเก็บทุก tick จะได้ ~2.7 ล้านแถวต่อแมตช์ (`backend/parser.py`)
 
 ## ทดสอบและ CI
 
@@ -176,22 +184,25 @@ GitHub Actions (`.github/workflows/ci.yml`) รัน ruff · pytest · migratio
 ## โครงโปรเจกต์
 
 ```
-frontend/           หน้าเว็บทั้งหมด — React + TypeScript + Vite + TanStack Query, nginx ใน Docker
-  src/pages/          LoginPage · MatchPage (หน้าหลักหน้าเดียว) · NotFound
-  src/components/     MatchSidebar · MatchScoreboard · ProtectedRoute · UserMenu · review/ (RoundView, MapView, …)
-  src/review/         urlState.ts (state บน URL) · format.ts
-backend/            API + worker + parser + feature layer (Python 3.11) — รายละเอียดใน backend/README.md
+frontend/src/       หน้าเว็บ — React + TypeScript + Vite + TanStack Query (nginx ใน Docker)
+  main.tsx            เส้นทางของหน้า + ต้องล็อกอินก่อน + เมนูผู้ใช้
+  LoginPage.tsx       หน้า /login
+  MatchPage.tsx       หน้าหลัก: sidebar อัปโหลด/รายการแมตช์ · หัวแมตช์ · สกอร์บอร์ด · แถบรอบ
+  RoundView.tsx       เนื้อหาของรอบ: รายชื่อทีม · แผนที่เรดาร์ · ไทม์ไลน์ · บริบทจาก grid_ml1
+  api.ts · utils.tsx  เรียก backend · ตัวช่วยจัดรูปแบบ + state บน URL + หน้า 404
+backend/            API + worker (Python 3.11)
   app.py              FastAPI: /auth/* /api/* /assets
-  auth.py             ล็อกอิน (PBKDF2 + JWT ในคุกกี้ httpOnly) · seed_user.py dev user
-  jobs.py             parse_demo(match_id): queued -> parsing -> done | error
-  jobqueue.py         คิว RQ/Redis (หรือ thread)     worker.py  โปรเซสที่หยิบงาน
-  parser/service.py   .dem -> dict (awpy 2.0.2 / demoparser2 0.41.4 — pin ไว้ เพราะ CS2 อัปเดตแล้ว parser พังบ่อย)
-  features/           definitions.py (นิยาม) · compute.py (คำนวณ) · teams.py (ผูกทีม)
-  models.py · alembic/ · views.sql · etl_loader.py · db.py · database.py · geo.py · review.py
-  tests/              pytest + fixtures/
-research/           สคริปต์วิเคราะห์/ML ของ Sprint 1 (grid_ml, grid_ml1, round_win, …) — ไม่ใช่ส่วนหนึ่งของระบบที่รัน
+  auth.py             ล็อกอิน (PBKDF2 + JWT ในคุกกี้ httpOnly) + สร้าง dev user
+  jobs.py             คิว RQ/Redis + งาน parse_demo(match_id) + โปรเซส worker
+  parser.py           .dem -> dict (awpy 2.0.2 / demoparser2 0.41.4 — pin ไว้ เพราะ CS2 อัปเดตแล้ว parser พังบ่อย)
+  etl_loader.py       dict -> PostgreSQL (รันซ้ำได้ ข้อมูลไม่ซ้ำ)
+  features.py         นิยาม opening / trade / buy / clutch + ผูกทีม + ตัวคำนวณ
+  review.py           ข้อมูลหน้ารอบ + สูตรแปลงพิกัดชุดเดียวของรีโป
+  db.py · models.py · views.sql · alembic/     ต่อฐานข้อมูล · ตาราง · view สรุป · migration
+  tests/              pytest (auth · features · review · parser) + fixtures/
+research/           demoparser.py · grid_ml1.py · check_radar.py — สคริปต์ ML ที่หน้าเว็บใช้ผล (ดู research/README.md)
 assets/             ภาพเรดาร์ + radars.json (แหล่งความจริงของค่าปรับเทียบพิกัด)
-data/               all_kills.csv ชุดคิล 50 แมตช์ที่สคริปต์วิจัยใช้
+data/               all_kills.csv ชุดคิล 50 แมตช์ที่ grid_ml1 ใช้
 demos/ output/      ไฟล์ .dem ที่อัปโหลด · ผล parse (json) · ผลของ research — ไม่เข้า git
 ```
 
@@ -199,7 +210,7 @@ demos/ output/      ไฟล์ .dem ที่อัปโหลด · ผล p
 
 - **พอร์ต 5432 ชน** (มี PostgreSQL ในเครื่อง): ตั้ง `POSTGRES_PORT=5433` ใน `.env` และแก้ `DATABASE_URL` ให้ตรง
 - **อัปโหลดแล้ว 503 "ส่งงานเข้าคิวไม่ได้"**: Redis ไม่ได้เปิด — `docker compose up -d redis` หรือใช้ `QUEUE_BACKEND=thread`
-- **แถวค้าง `รอคิว` ไม่ขยับ**: ไม่มี worker — `python -m backend.worker` หรือ `docker compose up -d worker` (`/api/health` บอกจำนวน worker)
+- **แถวค้าง `รอคิว` ไม่ขยับ**: ไม่มี worker — `python -m backend.jobs` หรือ `docker compose up -d worker` (`/api/health` บอกจำนวน worker)
 - **แมตช์ `พัง`**: สาเหตุขึ้นในเนื้อหาหลักเมื่อเปิดแมตช์นั้น ส่งไฟล์ซ้ำได้เลยโดยไม่ต้องติ๊กโหลดทับ
 - **ล็อกอินหลุดทุกครั้งที่ api รีสตาร์ต**: ยังไม่ได้ตั้ง `SECRET_KEY` ใน `.env`
 - **เปลี่ยนภาพแมพแล้วแผนที่หาย**: `assets/radars.json` ต้องชี้ไปไฟล์ที่มีจริงและขนาดเดิม (1024×1024)

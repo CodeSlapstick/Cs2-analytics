@@ -1,0 +1,23 @@
+# ตั้งค่าเครื่องมือฝั่ง Python ไฟล์เดียว — ruff (lint) + pytest (CI รันทั้งสองตัว ต้องผ่าน)
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+extend-exclude = ["frontend", "backend/alembic/versions", "output", "demos"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP"]
+ignore = [
+    "E501",   # ความยาวบรรทัด — คอมเมนต์ไทยยาวเป็นเรื่องปกติของรีโปนี้
+    "B008",   # Depends(...) ใน default argument คือแบบแผนของ FastAPI
+    "UP009",  # เก็บบรรทัด coding: utf-8 ไว้ (ไฟล์มีไทยและถูกเปิดบน Windows)
+    "B904",   # raise ... from None ใช้โดยตั้งใจหลายที่
+    "B905",   # zip(strict=) — โค้ดวิจัยเดิม ไม่ได้ตั้งใจให้เป็น error
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["backend", "research"]
+
+[tool.pytest.ini_options]
+testpaths = ["backend/tests"]
+addopts = "-q"

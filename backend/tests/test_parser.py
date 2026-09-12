@@ -21,12 +21,13 @@ def _demo_path() -> Path | None:
 
 
 DEMO = _demo_path()
-pytestmark = pytest.mark.skipif(DEMO is None, reason="ไม่มีไฟล์ .dem ให้ทดสอบ (ตั้ง CS2_TEST_DEMO)")
 
 
 @pytest.fixture(scope="module")
 def doc():
-    from backend.parser.service import SCHEMA_VERSION, parse_demo
+    if DEMO is None:
+        pytest.skip("ไม่มีไฟล์ .dem ให้ทดสอบ (ตั้ง CS2_TEST_DEMO)")
+    from backend.parser import SCHEMA_VERSION, parse_demo
     d = parse_demo(DEMO)
     assert d["schema_version"] == SCHEMA_VERSION
     return d
@@ -99,6 +100,42 @@ def test_team_clan_and_bomb_position(doc):
 
 
 def test_feature_layer_runs_on_real_parse(doc):
-    from backend.features.compute import compute_features
+    from backend.features import compute_features
     rows = compute_features(doc)
     assert len(rows) == len(doc["player_rounds"])
+
+
+def test_grenades_have_throw_and_landing_positions(doc):
+    """schema 6: ลูกที่ตก/แตกได้จริงเกือบทุกลูกต้องหาจุดตกเจอ และจุดตกต้องมาหลังตอนขว้าง"""
+    nades = [g for g in doc["grenades"] if g["type"] in ("smoke", "flash", "he", "molotov")]
+    assert nades
+    landed = [g for g in nades if g["land_x"] is not None]
+    assert len(landed) / len(nades) >= 0.8
+    assert all(g["throw_x"] is not None for g in nades)
+    assert all(g["tick"] <= g["land_tick"] <= g["end_tick"] for g in landed)
+
+
+def test_grenade_throw_is_matched_to_its_own_landing():
+    """จับคู่ลูกที่ขว้างกับจุดตก: คนเดียวกัน ชนิดเดียวกัน ตามลำดับเวลา และไม่ข้ามหน้าต่างเวลา (ไม่ต้องมีเดโม)"""
+    from backend.parser import attach_landings
+    throws = [
+        {"tick": 100, "thrower_id": 1, "type": "smoke"},
+        {"tick": 110, "thrower_id": 2, "type": "smoke"},
+        {"tick": 500, "thrower_id": 1, "type": "smoke"},
+        {"tick": 120, "thrower_id": 1, "type": "flash"},
+        {"tick": 130, "thrower_id": 1, "type": "decoy"},
+    ]
+    dets = {
+        "smoke": [{"tick": 150, "thrower_id": 2, "x": 5.0, "y": 6.0, "end_tick": 1500},
+                  {"tick": 160, "thrower_id": 1, "x": 1.0, "y": 2.0, "end_tick": 1600},
+                  {"tick": 5000, "thrower_id": 1, "x": 9.0, "y": 9.0, "end_tick": 6000}],
+        "flash": [{"tick": 140, "thrower_id": 1, "x": 3.0, "y": 4.0, "end_tick": None}],
+    }
+    by = {(g["thrower_id"], g["tick"]): g for g in attach_landings(throws, dets, 64)}
+    assert (by[(1, 100)]["land_x"], by[(1, 100)]["end_tick"]) == (1.0, 1600)
+    assert by[(2, 110)]["land_x"] == 5.0
+    assert by[(1, 500)]["land_x"] is None              # ตกหลังขว้าง 70 วินาที = ไม่ใช่ลูกนี้
+    assert by[(1, 120)]["land_tick"] == by[(1, 120)]["end_tick"] == 140   # แฟลชหมดทันทีที่แตก
+    assert by[(1, 130)]["land_x"] is None              # decoy ไม่มี event ตอนตก แต่ยังนับเป็นหนึ่งลูก
+    assert len(by) == len(throws)
+

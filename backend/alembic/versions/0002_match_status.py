@@ -11,7 +11,7 @@ Create Date: 2026-09-11
 แถวเก่าจาก Sprint 1 ที่มีข้อมูลครบอยู่แล้ว ให้ถือว่า done ทั้งหมด (DEFAULT ตอนเพิ่มคอลัมน์)
 แถวใหม่หลังจากนี้เริ่มที่ queued
 """
-from backend.migrate_util import execute_script
+from backend.db import execute_script
 
 revision = "0002"
 down_revision = "0001"

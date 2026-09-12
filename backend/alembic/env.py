@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Alembic environment — ต่อฐานข้อมูลด้วย SQLAlchemy async engine (asyncpg) ตัวเดียวกับ backend/database.py"""
+"""Alembic environment — ต่อฐานข้อมูลด้วย SQLAlchemy async engine (asyncpg) ตัวเดียวกับ backend/db.py"""
 import asyncio
 from logging.config import fileConfig
 
@@ -7,7 +7,7 @@ from alembic import context
 from sqlalchemy import pool
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
-from backend.database import sqlalchemy_url
+from backend.db import sqlalchemy_url
 from backend.models import Base
 
 config = context.config

@@ -8,7 +8,7 @@ Create Date: 2026-09-11
 username ไม่สนตัวพิมพ์เล็กใหญ่ (unique index บน lower(username))
 ตาราง users เดิมของ Steam login ไม่ลบ — เก็บไว้ตามกฎห้ามลบของเก่า แต่ไม่มีโค้ดไหนเขียนลงแล้ว
 """
-from backend.migrate_util import execute_script
+from backend.db import execute_script
 
 revision = "0005"
 down_revision = "0004"

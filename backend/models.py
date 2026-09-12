@@ -46,11 +46,16 @@ class Account(Base):
     __tablename__ = "accounts"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     username: Mapped[str] = mapped_column(Text, nullable=False)          # ไม่สนตัวพิมพ์ (unique บน lower(username))
-    password_hash: Mapped[str] = mapped_column(Text, nullable=False)     # pbkdf2_sha256$รอบ$salt$hash — ไม่เก็บรหัสจริง
+    password_hash: Mapped[str | None] = mapped_column(Text)              # pbkdf2_sha256$รอบ$salt$hash — NULL = บัญชีที่ล็อกอินด้วย Steam
+    steam_id: Mapped[int | None] = mapped_column(BigInteger)             # SteamID64 (migration 0007) — NULL = บัญชี username/password
+    avatar: Mapped[str | None] = mapped_column(Text)                     # URL รูปโปรไฟล์จาก Steam (ว่างได้)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
     last_login: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
-    __table_args__ = (Index("accounts_username_lower_idx", text("lower(username)"), unique=True),)
+    __table_args__ = (
+        Index("accounts_username_lower_idx", text("lower(username)"), unique=True),
+        Index("accounts_steam_id_idx", "steam_id", unique=True),
+    )
 
 
 class User(Base):
@@ -188,7 +193,7 @@ class PlayerRound(Base):
     """ผู้เล่นรายรอบ (= player_round_stats ในเอกสารดีไซน์)
 
     ครึ่งแรกมาจาก parser ตรง ๆ (ฝั่ง / มูลค่าอุปกรณ์ / รอดไหม)
-    ครึ่งหลังคือฟีเจอร์ที่ backend/features/compute.py คำนวณตอนโหลด ตามนิยามใน definitions.py
+    ครึ่งหลังคือฟีเจอร์ที่ backend/features.py คำนวณตอนโหลด ตามนิยามใน definitions.py
     """
     __tablename__ = "player_rounds"
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
@@ -254,6 +259,13 @@ class Grenade(Base):
     thrower_id: Mapped[int | None] = mapped_column(ForeignKey("players.steam_id"))
     side: Mapped[str | None] = mapped_column(Text)
     type: Mapped[str] = mapped_column(Text, nullable=False)   # flash / smoke / he / molotov / decoy
+    # migration 0006: ขว้างจากไหน ตกที่ไหน ควัน/ไฟหมดเมื่อไร (NULL = แกะด้วย parser รุ่นก่อน schema 6)
+    throw_x: Mapped[float | None] = mapped_column(REAL)
+    throw_y: Mapped[float | None] = mapped_column(REAL)
+    land_x: Mapped[float | None] = mapped_column(REAL)
+    land_y: Mapped[float | None] = mapped_column(REAL)
+    land_tick: Mapped[int | None] = mapped_column(Integer)
+    end_tick: Mapped[int | None] = mapped_column(Integer)
 
     __table_args__ = (
         CheckConstraint("side IN ('ct', 't')", name="grenades_side_check"),

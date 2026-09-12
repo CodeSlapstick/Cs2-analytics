@@ -8,9 +8,11 @@ backend/db.py — จุดเดียวที่คุยกับ PostgreSQL
     from backend.db import connect, create_pool, DATABASE_URL
 
     - DATABASE_URL   อ่านจาก .env ที่รากโปรเจกต์ (ค่าดีฟอลต์คือ postgres ในเครื่อง)
-    - connect()      เปิด connection เดี่ยว ๆ ใช้กับสคริปต์ที่รันครั้งเดียวจบ เช่น etl_loader.py / seed_user.py
+    - connect()      เปิด connection เดี่ยว ๆ ใช้กับสคริปต์ที่รันครั้งเดียวจบ เช่น etl_loader.py / auth.py (สร้าง dev user)
     - create_pool()  สร้าง "บ่อ" connection ให้เว็บเซิร์ฟเวอร์หยิบใช้/คืนได้ไม่ต้องต่อใหม่ทุก request
     - apply_schema() รัน views.sql สร้าง view ใหม่ทุกครั้ง (ตารางเป็นของ Alembic: alembic upgrade head)
+    - sqlalchemy_url()  URL เดียวกันในรูปที่ SQLAlchemy / Alembic ต้องการ (postgresql+asyncpg://)
+    - execute_script()  ให้ migration รัน SQL หลายคำสั่งต่อกันได้
 """
 import os
 from pathlib import Path
@@ -64,3 +66,43 @@ def redacted_url() -> str:
     creds, host = rest.rsplit("@", 1)
     user = creds.split(":", 1)[0]
     return f"{scheme}://{user}:***@{host}"
+
+
+# ---------------------------------------------------------------------------
+# SQLAlchemy / Alembic — ใช้ DATABASE_URL ตัวเดียวกัน ต่างกันแค่ scheme
+# ---------------------------------------------------------------------------
+def sqlalchemy_url(url: str = DATABASE_URL) -> str:
+    """แปลง postgresql://... (รูปแบบที่ asyncpg/psql ใช้) เป็น postgresql+asyncpg://... ที่ SQLAlchemy ต้องการ"""
+    if url.startswith("postgresql+"):
+        return url
+    for prefix in ("postgresql://", "postgres://"):
+        if url.startswith(prefix):
+            return "postgresql+asyncpg://" + url[len(prefix):]
+    return url
+
+
+# ---------------------------------------------------------------------------
+# รัน SQL หลายคำสั่งใน migration ของ Alembic
+#   driver asyncpg ส่งทุกคำสั่งเป็น prepared statement ซึ่งรับได้ "คำสั่งเดียว" ต่อครั้ง
+#   op.execute("A; B; C") จึงพังด้วย "cannot insert multiple commands into a prepared statement"
+#   ตัดสคริปต์เป็นคำสั่ง ๆ (บรรทัดที่ลงท้ายด้วย ;) แล้วส่งทีละคำสั่งผ่าน exec_driver_sql
+#   ซึ่งส่งข้อความตรงไปที่ driver โดยไม่ผ่าน text() — คอมเมนต์ที่มี ":" จึงไม่ถูกตีความเป็น bind parameter
+# ---------------------------------------------------------------------------
+def split_statements(sql: str) -> list[str]:
+    out, buf = [], []
+    for line in sql.splitlines():
+        buf.append(line)
+        if line.rstrip().endswith(";"):
+            stmt = "\n".join(buf).strip()
+            buf = []
+            if any(ln.strip() and not ln.strip().startswith("--") for ln in stmt.splitlines()):
+                out.append(stmt)
+    return out
+
+
+def execute_script(sql: str) -> None:
+    from alembic import op  # import ตอนเรียก — เว็บเซิร์ฟเวอร์กับ worker ไม่ต้องโหลด alembic
+
+    bind = op.get_bind()
+    for stmt in split_statements(sql):
+        bind.exec_driver_sql(stmt)

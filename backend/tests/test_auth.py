@@ -3,6 +3,7 @@
 import base64
 import json
 from datetime import UTC, datetime, timedelta
+from urllib.parse import parse_qs, urlparse
 
 import jwt
 import pytest
@@ -85,6 +86,14 @@ def test_cookie_is_httponly_lax_and_clearable():
     assert "max-age=0" in r2.headers["set-cookie"].lower()
 
 
+def test_cookie_without_remember_me_is_a_session_cookie():
+    """ไม่ติ๊ก "จดจำการเข้าสู่ระบบ" = ไม่มี Max-Age/Expires คุกกี้จึงหายเมื่อปิดเบราว์เซอร์ แต่ยัง httpOnly"""
+    r = JSONResponse({})
+    auth.set_auth_cookie(r, "tok", persistent=False)
+    h = r.headers["set-cookie"].lower()
+    assert "httponly" in h and "max-age" not in h and "expires" not in h
+
+
 def _request(cookie: str | None) -> Request:
     headers = [(b"cookie", cookie.encode())] if cookie else []
     return Request({"type": "http", "method": "GET", "path": "/", "headers": headers})
@@ -100,10 +109,124 @@ def test_require_login_uses_the_cookie():
         assert e.value.status_code == 401
 
 
-def test_auth_routes_are_jwt_only():
+def test_auth_routes_are_password_or_steam_only():
+    """ล็อกอินมีสองทางเท่านั้น: username/password กับ Steam OpenID — ห้ามมี dev-login ที่พิมพ์ SteamID เข้าเองได้อีก"""
     from backend import app as appmod
     routes = {(m, r.path) for r in appmod.app.routes for m in getattr(r, "methods", ()) or ()}
-    for expected in [("POST", "/auth/register"), ("POST", "/auth/login"), ("GET", "/auth/me"), ("POST", "/auth/logout")]:
+    for expected in [("POST", "/auth/register"), ("POST", "/auth/login"), ("GET", "/auth/me"), ("POST", "/auth/logout"),
+                     ("GET", "/auth/steam/login"), ("GET", "/auth/steam/callback")]:
         assert expected in routes
     paths = {p for _, p in routes}
-    assert not any(p.startswith("/auth/steam") or p == "/auth/dev-login" for p in paths)
+    assert "/auth/dev-login" not in paths
+
+
+# ---- ล็อกอินด้วย Steam (ตรวจเฉพาะส่วนที่ไม่ต้องต่อเน็ต) ----------------------------------------
+def test_steam_login_url_asks_steam_to_return_to_us():
+    url = auth.steam_login_url("http://localhost:3000/auth/steam/callback?next=/matches", "http://localhost:3000/")
+    assert url.startswith("https://steamcommunity.com/openid/login?")
+    q = parse_qs(urlparse(url).query)
+    assert q["openid.mode"] == ["checkid_setup"]
+    assert q["openid.return_to"] == ["http://localhost:3000/auth/steam/callback?next=/matches"]
+    assert q["openid.realm"] == ["http://localhost:3000/"]
+    assert q["openid.identity"] == ["http://specs.openid.net/auth/2.0/identifier_select"]
+
+
+@pytest.mark.parametrize("claimed", [
+    None, "", "7656119801234567",
+    "https://steamcommunity.com/openid/id/123",                        # สั้นเกิน
+    "https://evil.example.com/openid/id/76561198012345678",            # คนละโดเมน
+    "https://steamcommunity.com.evil.example/openid/id/76561198012345678",
+    "https://steamcommunity.com/openid/id/76561198012345678/../x",
+])
+def test_bad_claimed_ids_are_rejected(claimed):
+    assert auth.steamid_from_claimed_id(claimed) is None
+
+
+def test_good_claimed_id_gives_the_steamid():
+    assert auth.steamid_from_claimed_id("https://steamcommunity.com/openid/id/76561198012345678") == "76561198012345678"
+
+
+def test_openid_reply_is_only_trusted_when_steam_says_is_valid(monkeypatch):
+    """พารามิเตอร์ที่ปลอมมาเองต้องไม่ผ่าน แม้ claimed_id จะถูกรูปแบบ — ต้องรอคำตอบ is_valid:true จาก Steam"""
+    good = {"openid.mode": "id_res", "openid.claimed_id": "https://steamcommunity.com/openid/id/76561198012345678",
+            "openid.sig": "x", "other": "ignored"}
+    sent = {}
+
+    class FakeResponse:
+        def __init__(self, text): self.text = text
+        def read(self): return self.text.encode()
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+
+    def fake_urlopen(req, timeout=None):
+        sent["url"] = req.full_url
+        sent["body"] = req.data.decode()
+        return FakeResponse(fake_urlopen.answer)
+
+    monkeypatch.setattr(auth.urllib.request, "urlopen", fake_urlopen)
+    fake_urlopen.answer = "ns:http://specs.openid.net/auth/2.0\nis_valid:true\n"
+    assert auth.verify_steam_openid(dict(good)) == "76561198012345678"
+    assert "openid.mode=check_authentication" in sent["body"] and "other" not in sent["body"]
+    fake_urlopen.answer = "is_valid:false\n"
+    assert auth.verify_steam_openid(dict(good)) is None
+    assert auth.verify_steam_openid({**good, "openid.mode": "cancel"}) is None
+
+    def boom(req, timeout=None):
+        raise OSError("steam unreachable")
+
+    monkeypatch.setattr(auth.urllib.request, "urlopen", boom)
+    assert auth.verify_steam_openid(dict(good)) is None
+
+
+def test_allowlist_empty_means_everyone(monkeypatch):
+    monkeypatch.setattr(auth, "STEAM_ALLOWED_IDS", set())
+    assert auth.steam_id_allowed("76561198012345678")
+    monkeypatch.setattr(auth, "STEAM_ALLOWED_IDS", {"76561198000000001"})
+    assert auth.steam_id_allowed("76561198000000001")
+    assert not auth.steam_id_allowed("76561198012345678")
+
+
+@pytest.mark.parametrize("persona,expected", [
+    ("ZywOo", "ZywOo"), ("s1mple.", "s1mple."), ("  dev  ", "dev"),
+    ("ลูกทีม", "steam_76561198012345678"),        # ชื่อไทยล้วน -> ไม่เหลือตัวอักษรที่ใช้ได้
+    ("a", "steam_76561198012345678"),             # สั้นกว่า 3 ตัว
+    ("", "steam_76561198012345678"),
+])
+def test_username_from_steam_persona(persona, expected):
+    assert auth.username_for_steam(persona, "76561198012345678") == expected
+
+
+def test_steam_persona_without_api_key_does_not_invent_a_name(monkeypatch):
+    monkeypatch.setattr(auth, "STEAM_API_KEY", "")
+    assert auth.steam_persona("76561198012345678") == {"name": "steam_76561198012345678", "avatar": None}
+
+
+def _get(headers: list[tuple[bytes, bytes]]) -> Request:
+    return Request({"type": "http", "method": "GET", "path": "/auth/steam/login", "query_string": b"",
+                    "headers": headers, "scheme": "http", "server": ("api", 8000), "client": ("test", 1)})
+
+
+def test_public_base_keeps_the_port_the_browser_used():
+    """Steam ส่งผู้ใช้กลับมาตาม return_to — พลาดพอร์ตเมื่อไรคือล็อกอินไม่สำเร็จ"""
+    from backend import app as appmod
+    assert appmod._public_base(_get([(b"host", b"localhost:3000")])) == "http://localhost:3000"
+    assert appmod._public_base(_get([(b"host", b"cs2.example.com"), (b"x-forwarded-proto", b"https")])) == "https://cs2.example.com"
+
+
+def test_public_base_prefers_the_configured_url(monkeypatch):
+    from backend import app as appmod
+    monkeypatch.setattr(appmod, "PUBLIC_URL", "https://scouting.example.com")
+    assert appmod._public_base(_get([(b"host", b"localhost:3000")])) == "https://scouting.example.com"
+
+
+@pytest.mark.parametrize("given,expected", [
+    ("/matches/X.dem/rounds/3", "/matches/X.dem/rounds/3"),
+    (None, "/matches"), ("", "/matches"),
+    ("//evil.example/steal", "/matches"),          # open redirect
+    ("https://evil.example", "/matches"),
+    ("/login?next=/matches", "/matches"),          # วนกลับหน้า login
+])
+def test_safe_next_only_allows_paths_inside_this_site(given, expected):
+    from backend import app as appmod
+    assert appmod._safe_next(given) == expected
+

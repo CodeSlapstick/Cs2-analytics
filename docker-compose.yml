@@ -70,17 +70,20 @@ services:
       SECRET_KEY: ${SECRET_KEY:-}              # กุญแจเซ็น JWT — ไม่ตั้ง = สุ่มใหม่ทุกครั้งที่ api รีสตาร์ต (ทุกคนต้องล็อกอินใหม่)
       ALLOW_REGISTER: ${ALLOW_REGISTER:-1}     # 1 = สมัครสมาชิกเองได้ที่หน้า /login
       COOKIE_SECURE: ${COOKIE_SECURE:-0}       # 1 = คุกกี้ส่งเฉพาะ HTTPS
-      DEV_USERNAME: ${DEV_USERNAME:-dev}       # user สำหรับ dev ที่ backend.seed_user สร้างให้ตอนสตาร์ต
+      DEV_USERNAME: ${DEV_USERNAME:-dev}       # user สำหรับ dev ที่ backend.auth สร้างให้ตอนสตาร์ต
       DEV_PASSWORD: ${DEV_PASSWORD:-cs2dev1234}
+      STEAM_API_KEY: ${STEAM_API_KEY:-}           # ล็อกอินด้วย Steam: ไม่ใส่ก็ยังล็อกอินได้ แค่ไม่ได้ชื่อ/รูป
+      STEAM_ALLOWED_IDS: ${STEAM_ALLOWED_IDS:-}   # ว่าง = ใครมี Steam ก็เข้าได้
+      PUBLIC_URL: ${PUBLIC_URL:-}                 # ว่าง = เดาจาก Host ของคำขอ (ผ่าน nginx ของ compose ถูกต้องอยู่แล้ว)
     # ไม่เปิดพอร์ตออกนอก container — ผู้ใช้เข้าทางหน้าเว็บ :3000 ซึ่ง nginx ส่ง /api /auth /assets มาที่นี่
-    command: sh -c "alembic upgrade head && python -m backend.seed_user && python -m uvicorn backend.app:app --host 0.0.0.0 --port 8000"
+    command: sh -c "alembic upgrade head && python -m backend.auth && python -m uvicorn backend.app:app --host 0.0.0.0 --port 8000"
 
   # ตัวแกะเดโมในเบื้องหลัง — งานเดียวคือ backend.jobs.parse_demo(match_id)
   worker:
     <<: *backend
     container_name: cs2-worker
     restart: unless-stopped
-    command: python -m backend.worker
+    command: python -m backend.jobs
 
   # หน้าเว็บ Sprint 2 (React) — nginx เสิร์ฟไฟล์ที่ build แล้ว และส่งต่อ /api ไปที่ api  ->  http://localhost:3000
   frontend:

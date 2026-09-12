@@ -76,13 +76,11 @@ a.rbox:hover { outline: 2px solid #fff; text-decoration: none; }
 .review .review-head { display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap; }
 .review h1 { display: flex; align-items: center; gap: 12px; }
 .badge.big { font-size: 14px; padding: 4px 12px; }
-.round-strip { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; margin: 6px 0 16px; }
+.round-strip { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; margin: 4px 0 10px; }
 .round-strip .rbox { width: 30px; height: 30px; font-size: 12px; }
 .round-strip .rbox.active { outline: 3px solid #fff; outline-offset: 1px; }
 .round-strip button { background: var(--card); color: var(--text); border: 1px solid var(--line); border-radius: 6px; width: 30px; height: 30px; cursor: pointer; }
 .round-strip button:disabled { opacity: .3; cursor: default; }
-.review-grid { display: grid; grid-template-columns: 250px minmax(0, 1fr) 380px; gap: 16px; align-items: start; }
-@media (max-width: 1250px) { .review-grid { grid-template-columns: 1fr; } }
 .page:has(.review) { max-width: 1500px; }
 
 .roster { display: flex; flex-direction: column; gap: 12px; }
@@ -99,18 +97,18 @@ a.rbox:hover { outline: 2px solid #fff; text-decoration: none; }
 .pstat .alive { color: var(--ok); }
 .link-btn { background: none; border: 0; color: var(--ct); cursor: pointer; margin-top: 8px; padding: 0; }
 
-.map-col { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 10px; }
-.toggles { display: flex; gap: 18px; margin-bottom: 8px; font-size: 13px; }
-.toggles input { margin-right: 6px; }
-svg.radar { width: 100%; height: auto; display: block; background: #0a0f1a; border-radius: 6px; }
 .death-dot { cursor: pointer; }
 .death-num { font-size: 22px; font-weight: 800; fill: #0b1220; pointer-events: none; }
 .hs-label { font-size: 22px; font-weight: 800; fill: #fff; paint-order: stroke; stroke: #0b1220; stroke-width: 5px; }
 .bomb-label { font-size: 13px; font-weight: 800; fill: #fff; }
+.dot-name { font-size: 20px; font-weight: 700; fill: #fff; paint-order: stroke; stroke: #0b1220; stroke-width: 5px; pointer-events: none; }
+.dot-name.atk { font-size: 17px; }
+.nade-label { font-size: 16px; font-weight: 700; paint-order: stroke; stroke: #0b1220; stroke-width: 4px; pointer-events: none; }
+.timeline-list li.tl-nade { cursor: default; color: var(--muted); font-size: 12px; padding: 3px 4px; }
+.nade-dot { width: 10px; height: 10px; border-radius: 50%; align-self: center; justify-self: center; }
 .legend { display: flex; flex-wrap: wrap; gap: 14px; font-size: 12px; margin-top: 8px; }
 .legend i { width: 12px; height: 12px; display: inline-block; border-radius: 3px; vertical-align: -1px; margin-right: 4px; }
 
-.breakdown { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; max-height: calc(100vh - 120px); overflow: auto; }
 .timeline-list { list-style: none; margin: 6px 0 14px; padding: 0; }
 .timeline-list li { display: grid; grid-template-columns: 24px 40px 1fr; gap: 6px; padding: 6px 4px; border-bottom: 1px solid var(--line); font-size: 13px; cursor: pointer; border-radius: 6px; }
 .timeline-list li.sel, .ctx-list li.sel { background: rgba(79,140,255,.14); }
@@ -121,7 +119,7 @@ svg.radar { width: 100%; height: auto; display: block; background: #0a0f1a; bord
 .tl-meta { color: var(--muted); }
 .who { white-space: nowrap; }
 .who .pdot { width: 8px; height: 8px; margin-right: 3px; }
-.summary { border-top: 1px solid var(--line); padding-top: 10px; font-size: 13px; }
+.summary { border-top: 1px solid var(--line); padding-top: 10px; margin-top: 4px; font-size: 13px; }
 .summary p { margin: 4px 0; }
 .ctx { border-top: 1px solid var(--line); padding-top: 10px; margin-top: 10px; }
 .ctx-source { font-size: 12px; color: var(--muted); margin: 4px 0 8px; }
@@ -129,26 +127,20 @@ svg.radar { width: 100%; height: auto; display: block; background: #0a0f1a; bord
 .ctx-list li { padding: 8px 6px; border-bottom: 1px solid var(--line); cursor: pointer; border-radius: 6px; }
 .ctx-list p { margin: 4px 0 0; }
 .ctx-head { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; font-size: 13px; }
-.ctype { border-left: 4px solid; padding-left: 5px; font-weight: 700; }
+.ctype { font-weight: 700; display: inline-flex; align-items: center; gap: 5px; }
+.ctype i { width: 9px; height: 9px; border-radius: 2px; flex: none; }
 .tag-warn { margin-left: auto; font-size: 11px; background: rgba(255,92,92,.15); color: #fca5a5; padding: 2px 8px; border-radius: 999px; }
 
-/* ---------------- Login ---------------- */
-.login-wrap { min-height: calc(100vh - 140px); display: grid; place-items: center; }
-.login-card { width: min(380px, 100%); background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 26px 26px 18px; display: flex; flex-direction: column; gap: 12px; }
-.login-card h1 { margin: 0 0 4px; }
-.login-card label { display: flex; flex-direction: column; gap: 5px; font-size: 13px; color: var(--muted); }
-.login-card input { background: #0b1220; border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; color: var(--text); font: inherit; }
-.login-card input:focus { outline: 2px solid var(--ct); border-color: transparent; }
+/* ---------------- ปุ่มหลักทั่วแอป (หน้า 404) ---------------- */
 .btn-primary { background: var(--accent); color: #1a0d00; border: 0; border-radius: 8px; padding: 10px 14px; font-weight: 800; cursor: pointer; font: inherit; font-weight: 800; }
 .btn-primary:disabled { opacity: .6; cursor: default; }
-.login-card .link-btn { align-self: center; }
 .usermenu { margin-left: auto; display: flex; align-items: center; gap: 12px; font-size: 13px; }
 .usermenu button { background: none; border: 1px solid var(--line); color: var(--text); border-radius: 6px; padding: 5px 10px; cursor: pointer; }
 .usermenu button:hover { border-color: var(--ct); }
 
 /* ---------------- หน้าหลักหน้าเดียว: sidebar + เนื้อหารอบ ---------------- */
 .page:has(.match-layout) { max-width: none; padding: 0; }
-.match-layout { display: grid; grid-template-columns: 290px minmax(0, 1fr); min-height: calc(100vh - 49px); }
+.match-layout { display: grid; grid-template-columns: 290px minmax(0, 1fr); height: calc(100dvh - 49px); }
 .match-layout.sb-collapsed { grid-template-columns: 46px minmax(0, 1fr); }
 .sidebar { border-right: 1px solid var(--line); background: #0d1526; padding: 12px; position: sticky; top: 0; height: calc(100vh - 49px); overflow-y: auto; }
 .sidebar.collapsed { padding: 10px 7px; }
@@ -171,7 +163,8 @@ svg.radar { width: 100%; height: auto; display: block; background: #0a0f1a; bord
 .sb-meta .ct { color: var(--ct); font-weight: 700; }
 .sb-meta .t { color: var(--t); font-weight: 700; }
 .sb-meta .badge { font-size: 10px; padding: 1px 7px; margin-left: auto; }
-.match-main { padding: 16px 24px 60px; min-width: 0; }
+/* match-main สูงเท่าจอพอดีและเลื่อนในตัวเอง — หน้ารอบจึงรู้ว่าเหลือความสูงเท่าไร (ดูส่วนหน้ารอบด้านล่าง) */
+.match-main { padding: 12px 20px 14px; min-width: 0; display: flex; flex-direction: column; overflow-y: auto; container: main / inline-size; }
 .match-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 4px; }
 .match-head h1 { margin: 0; }
 .btn-ghost { margin-left: auto; background: none; border: 1px solid var(--line); color: var(--text); border-radius: 8px; padding: 6px 12px; cursor: pointer; font: inherit; font-size: 13px; }
@@ -183,4 +176,382 @@ svg.radar { width: 100%; height: auto; display: block; background: #0a0f1a; bord
 .progress-bar { width: min(420px, 90%); height: 6px; margin: 18px auto; background: var(--line); border-radius: 999px; overflow: hidden; }
 .progress-bar i { display: block; height: 100%; width: 40%; background: var(--ct); animation: cs2-slide 1.2s infinite ease-in-out; }
 @keyframes cs2-slide { from { transform: translateX(-100%); } to { transform: translateX(250%); } }
-@media (max-width: 1500px) { .match-main .review-grid { grid-template-columns: 1fr; } }
+
+/* ---------------- หน้ารอบ: แผนที่ + ข้อมูลรอบข้างเห็นพร้อมกันในจอเดียว (laptop 1366–1536 px / projector) ----------------
+   .review กินความสูงที่เหลือใต้หัวแมตช์และแถบรอบ · แผนที่เป็นจัตุรัส = ด้านที่สั้นกว่าของช่อง (container query units)
+   รายชื่อทีมกับไทม์ไลน์เลื่อนในช่องของตัวเอง · จำนวนคอลัมน์ดูจากความกว้างจริงของเนื้อหา ไม่ใช่ขนาดจอ
+   (ย่อ/ขยาย sidebar แล้วจัดใหม่เอง): < 640 px เรียงลงมา · 640–1149 px สองคอลัมน์ · ≥ 1150 px สามคอลัมน์
+   laptop 1366 ที่เปิด sidebar ได้สองคอลัมน์ — แผนที่ใหญ่กว่าสามคอลัมน์ ~40% เพราะรายชื่อทีมย้ายไปอยู่เหนือไทม์ไลน์ */
+.review-head { display: flex; align-items: baseline; gap: 6px 16px; flex-wrap: wrap; margin-bottom: 8px; }
+.review-head .toggles { margin-left: auto; display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 13px; }
+.toggles label { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; white-space: nowrap; }
+.toggles input { margin: 0; accent-color: var(--ct); }
+.toggle-group { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 4px 10px; }
+.nade-toggle { display: inline-flex; align-items: center; gap: 5px; padding: 2px 8px 2px 6px; border: 1px solid var(--line);
+  border-radius: 999px; cursor: pointer; opacity: .55; transition: opacity .15s, border-color .15s; }
+.nade-toggle.on { opacity: 1; border-color: #3a4a6b; }
+.nade-toggle:has(input:disabled) { opacity: .3; cursor: default; }
+.nade-toggle:has(input:focus-visible) { outline: 2px solid var(--ct); outline-offset: 2px; }
+.nade-toggle i { width: 9px; height: 9px; border-radius: 50%; }
+.map-play { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; font-size: 12px; }
+.pb-mode { background: var(--card); color: var(--text); border: 1px solid var(--line); border-radius: 999px;
+  padding: 4px 12px; font: inherit; font-size: 12px; cursor: pointer; }
+.pb-mode:hover { border-color: var(--ct); }
+.pb-mode.on { background: rgba(79, 140, 255, .16); border-color: #3a4a6b; color: #fff; }
+.pb-play { width: 28px; height: 28px; display: grid; place-items: center; border-radius: 50%;
+  border: 1px solid var(--line); background: var(--card); color: var(--text); cursor: pointer; }
+.pb-play:hover { border-color: var(--ct); }
+.pb-range { flex: 1 1 150px; min-width: 110px; accent-color: var(--ct); }
+.pb-clock { font-variant-numeric: tabular-nums; color: var(--muted); }
+.pb-speed { background: none; border: 1px solid var(--line); color: var(--muted); border-radius: 6px;
+  padding: 2px 7px; font: inherit; font-size: 12px; cursor: pointer; }
+.pb-speed.on { border-color: #3a4a6b; color: var(--text); }
+.pb-note { margin: 0; }
+.map-zoom { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+.map-zoom button:not(.link-btn) { width: 28px; height: 28px; border-radius: 6px; border: 1px solid var(--line);
+  background: var(--card); color: var(--text); font-size: 16px; line-height: 1; cursor: pointer; }
+.map-zoom button:not(.link-btn):hover:not(:disabled) { border-color: var(--ct); }
+.map-zoom button:disabled { opacity: .35; cursor: default; }
+.review-grid { display: grid; gap: 12px; grid-template-columns: minmax(0, 1fr); grid-template-areas: "map" "roster" "panel"; }
+.roster-col { grid-area: roster; min-width: 0; }
+.map-col { grid-area: map; min-width: 0; display: flex; flex-direction: column; gap: 6px; background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 8px; }
+.map-stage { container-type: size; aspect-ratio: 1; display: grid; place-items: center; }
+svg.radar { width: 100cqmin; height: 100cqmin; display: block; background: #0a0f1a; border-radius: 6px; touch-action: none; }
+svg.radar.zoomed { cursor: grab; }
+svg.radar.zoomed:active { cursor: grabbing; }
+.map-col .legend { margin-top: 0; gap: 4px 14px; }
+.breakdown { grid-area: panel; min-width: 0; background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; }
+.panel-h { font-size: 13px; font-weight: 700; color: var(--text); margin: 0 0 4px; }
+.summary .panel-h, .ctx .panel-h { margin-top: 2px; }
+
+@container main (min-width: 640px) {
+  .review { flex: 1 0 auto; min-height: 440px; display: flex; flex-direction: column; }
+  .review-grid {
+    flex: 1 1 0; min-height: 0; align-items: stretch;
+    grid-template-columns: minmax(0, 1fr) minmax(270px, 330px);
+    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-areas: "map roster" "map panel";
+  }
+  .map-stage { flex: 1 1 0; min-height: 0; aspect-ratio: auto; }
+  .roster-col, .breakdown { min-height: 0; overflow-y: auto; }
+  /* สองคอลัมน์: สองทีมเคียงกัน เหลือชื่อ + คิล (รายละเอียดการตายอยู่ในไทม์ไลน์ใต้ลงไปแล้ว) */
+  .roster-col .roster { flex-direction: row; gap: 8px; }
+  .roster-col .team-box { flex: 1 1 0; min-width: 0; padding: 6px 8px; }
+  .roster-col .team-box li { padding: 3px 0; }
+  .roster-col .pstat { display: none; }
+}
+@container main (min-width: 1150px) {
+  .review-grid {
+    grid-template-columns: minmax(200px, 250px) minmax(0, 1fr) minmax(320px, 400px);
+    grid-template-rows: minmax(0, 1fr);
+    grid-template-areas: "roster map panel";
+  }
+  .roster-col .roster { flex-direction: column; gap: 10px; }
+  .roster-col .team-box { flex: none; padding: 8px 10px; }
+  .roster-col .team-box li { padding: 5px 0; }
+  .roster-col .pstat { display: block; }
+}
+
+/* พื้นผิวของเบราว์เซอร์ให้เข้าโทนเดียวกัน: แถบเลื่อน + วงโฟกัสคีย์บอร์ด */
+.match-main, .sidebar, .roster-col, .breakdown { scrollbar-width: thin; scrollbar-color: #2a3a5c transparent; }
+.review :is(button, input, [role="button"]):focus-visible { outline: 2px solid var(--ct); outline-offset: 2px; border-radius: 6px; }
+.timeline-list li:hover, .ctx-list li:hover { background: rgba(79,140,255,.07); }
+.timeline-list li.tl-nade:hover, .timeline-list li.tl-bomb:hover { background: none; }
+
+/* จอแคบ (มือถือ): sidebar ย้ายขึ้นไปอยู่บนเนื้อหา ไม่แย่งความกว้างของแผนที่ */
+@media (max-width: 700px) {
+  .match-layout, .match-layout.sb-collapsed { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
+  .sidebar { position: static; height: auto; max-height: 34dvh; border-right: 0; border-bottom: 1px solid var(--line); }
+  .match-main { padding: 10px 12px; }
+}
+
+/* ---------------- หน้าสถิติรายคน /player ---------------- */
+.player { max-width: 1280px; margin: 0 auto; }
+.pl-head { display: flex; align-items: center; gap: 16px; margin-bottom: 8px; }
+.pl-head h1 { margin: 0; }
+.pl-head p { margin: 2px 0 0; font-size: 13px; }
+.pl-avatar { width: 64px; height: 64px; border-radius: 10px; border: 1px solid var(--line); object-fit: cover; flex: none; }
+.pl-avatar.ph { background: linear-gradient(160deg, #1c2a48, #111a2c); display: block; }
+.pl-mode { margin-left: auto; }
+.pl-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 14px; margin-top: 14px; }
+.pl-card { margin: 0; display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; }
+.pl-card h2 { margin: 0; font-size: 13px; letter-spacing: .04em; color: var(--muted); text-transform: uppercase; }
+.pl-card p { margin: 0; }
+.pl-wide { grid-column: span 2; }
+@media (max-width: 780px) { .pl-wide { grid-column: span 1; } }
+.pl-gauge { width: 128px; height: 128px; }
+.pl-track { fill: none; stroke: var(--line); stroke-width: 10; }
+.pl-arc { fill: none; stroke: var(--ct); stroke-width: 10; stroke-linecap: round; }
+.pl-gauge-v { fill: var(--text); font-size: 26px; font-weight: 800; }
+.pl-gauge-s { fill: var(--muted); font-size: 14px; }
+.pl-nums { list-style: none; margin: 4px 0 0; padding: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 10px 14px; width: 100%; }
+.pl-nums b { display: block; font-size: 22px; }
+.pl-nums span { color: var(--muted); font-size: 12px; }
+.pl-clutches, .pl-donuts { display: flex; flex-wrap: wrap; justify-content: center; gap: 14px; width: 100%; }
+.pl-pie, .pl-donut { display: flex; flex-direction: column; align-items: center; gap: 2px; font-size: 12px; }
+.pl-pie svg { width: 68px; height: 68px; }
+.pl-pie.none .pl-arc { stroke: var(--line); }
+.pl-donut svg { width: 104px; height: 104px; }
+.pl-donut.t .pl-arc { stroke: var(--t); }
+.pl-donut.ct .pl-arc { stroke: var(--ct); }
+.pl-panels { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; align-items: start; }
+.pl-panels h2 { font-size: 14px; margin: 0 0 10px; }
+.pl-matches { list-style: none; margin: 0; padding: 0; }
+.pl-matches a { display: grid; grid-template-columns: 46px 1fr auto; gap: 10px; align-items: center; padding: 7px 8px; border-radius: 8px; color: var(--text); }
+.pl-matches a:hover { background: rgba(79,140,255,.08); text-decoration: none; }
+/* แพ้/ชนะบอกด้วยป้ายสีของผลเอง ไม่ใช่แถบสีข้างการ์ด */
+.pl-res { font-size: 12px; font-weight: 700; text-align: center; padding: 2px 0; border-radius: 999px; color: var(--muted); background: rgba(139,153,179,.14); }
+.pl-matches li.r-win .pl-res { color: var(--ok); background: rgba(60,203,127,.16); }
+.pl-matches li.r-loss .pl-res { color: var(--err); background: rgba(255,92,92,.16); }
+.pl-mt { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pl-rt { font-variant-numeric: tabular-nums; font-weight: 700; }
+.pl-bars { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.pl-bars li { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; font-size: 13px; }
+.pl-bl { font-weight: 600; }
+.pl-bv { font-variant-numeric: tabular-nums; color: var(--muted); }
+.pl-bar { grid-column: 1 / -1; height: 6px; background: var(--line); border-radius: 999px; overflow: hidden; }
+.pl-bar i { display: block; height: 100%; background: var(--accent); border-radius: 999px; }
+.pl-bars .small { grid-column: 1 / -1; }
+.pl-empty { text-align: center; padding: 70px 20px; }
+.pl-empty .btn-primary { display: inline-block; margin-top: 14px; text-decoration: none; }
+
+/* ================================================================================================
+   หน้า /login — กระดานบรีฟแท็กติก: ซ้ายเรดาร์ de_mirage จริง + ตัวเลขจริงของระบบ · ขวาแผ่นฟอร์ม
+   โทนของหน้านี้ตามบรีฟ: พื้น #0B0E14 · ปุ่มหลักส้ม #FF6B00 · ส่วนที่โต้ตอบได้ฟ้า #00E5FF · แผ่นฟอร์ม #1E232D
+   ตัวอักษร: Chakra Petch (หัวเรื่อง / ป้าย / ปุ่ม) + Anuphan (เนื้อความ / ช่องกรอก) — ทั้งคู่มีภาษาไทย self-host ผ่าน @fontsource
+   ================================================================================================ */
+.page:has(.login-shell) { max-width: none; padding: 0; }
+body:has(.login-shell) { background: #0B0E14; }
+html:has(.login-shell) { color-scheme: dark; scrollbar-color: #2E3647 #0B0E14; }
+.login-shell {
+  --l-bg: #0B0E14; --l-plate: #1E232D; --l-field: #151A23; --l-steel: #2E3647; --l-steel-hi: #46516A;
+  --l-orange: #FF6B00; --l-orange-hi: #FFB27A; --l-cyan: #00E5FF; --l-text: #F2F5F9; --l-soft: #C8CFDA;
+  --l-muted: #9AA4B5; --l-red: #FF4D5E;
+  --l-display: "Chakra Petch", "Anuphan", system-ui, sans-serif;
+  --l-body: "Anuphan", system-ui, sans-serif;
+  min-height: 100dvh; display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(440px, 1fr);
+  background: var(--l-bg); color: var(--l-text); font: 400 16px/1.55 var(--l-body); caret-color: var(--l-orange);
+}
+.login-shell ::selection { background: rgba(255, 107, 0, .38); color: #fff; }
+.login-shell :focus-visible { outline: 2px solid var(--l-cyan); outline-offset: 3px; }
+
+/* ---- แผงบรีฟ ---- */
+.brief {
+  position: relative; overflow: hidden; isolation: isolate;
+  display: flex; flex-direction: column; justify-content: space-between; gap: 28px;
+  padding: clamp(28px, 4vw, 56px);
+  border-right: 1px solid var(--l-steel);
+  background: radial-gradient(60% 55% at 64% 52%, rgba(0, 229, 255, .08), transparent 70%), var(--l-bg);
+}
+/* กริดพล็อตของเรดาร์: เส้นหลักทุก 4 ช่อง จางออกจากตัวแผนที่ ไม่ใช่วอลเปเปอร์ทั้งแผง */
+.brief::before {
+  content: ""; position: absolute; inset: 0; z-index: -2; pointer-events: none;
+  background:
+    linear-gradient(rgba(0, 229, 255, .075) 1px, transparent 1px) 0 0 / 128px 128px,
+    linear-gradient(90deg, rgba(0, 229, 255, .075) 1px, transparent 1px) 0 0 / 128px 128px,
+    linear-gradient(rgba(0, 229, 255, .035) 1px, transparent 1px) 0 0 / 32px 32px,
+    linear-gradient(90deg, rgba(0, 229, 255, .035) 1px, transparent 1px) 0 0 / 32px 32px;
+  -webkit-mask-image: radial-gradient(70% 75% at 64% 52%, #000 25%, transparent 78%);
+  mask-image: radial-gradient(70% 75% at 64% 52%, #000 25%, transparent 78%);
+}
+.brief-radar {
+  position: absolute; z-index: -1; top: 50%; right: 2%; width: min(86vh, 76%); aspect-ratio: 1;
+  transform: translateY(-50%); border-radius: 50%; pointer-events: none;
+  -webkit-mask-image: radial-gradient(circle, #000 60%, transparent 71%), linear-gradient(90deg, rgba(0, 0, 0, .15) 0%, rgba(0, 0, 0, .15) 58%, #000 88%);
+  -webkit-mask-composite: source-in;
+  mask-image: radial-gradient(circle, #000 60%, transparent 71%), linear-gradient(90deg, rgba(0, 0, 0, .15) 0%, rgba(0, 0, 0, .15) 58%, #000 88%);
+  mask-composite: intersect;
+}
+.brief-radar img {
+  width: 100%; height: 100%; object-fit: contain; user-select: none; opacity: .8;
+}
+.brief-radar::before, .brief-radar::after { content: ""; position: absolute; inset: 0; border-radius: 50%; }
+.brief-radar::before { /* วงระยะ + เส้นเล็งกลางเรดาร์ */
+  background:
+    repeating-radial-gradient(circle, transparent 0 calc(12.5% - 1px), rgba(0, 229, 255, .14) calc(12.5% - 1px) 12.5%),
+    linear-gradient(transparent calc(50% - .5px), rgba(0, 229, 255, .16) calc(50% - .5px) calc(50% + .5px), transparent 0),
+    linear-gradient(90deg, transparent calc(50% - .5px), rgba(0, 229, 255, .16) calc(50% - .5px) calc(50% + .5px), transparent 0);
+}
+.brief-sweep {
+  position: absolute; inset: 0; border-radius: 50%;
+  background: conic-gradient(from 0deg, rgba(0, 229, 255, 0), rgba(0, 229, 255, .22) 1.5deg, rgba(0, 229, 255, .05) 60deg, transparent 95deg);
+  animation: l-sweep 7s linear infinite;
+}
+@keyframes l-sweep { to { transform: rotate(360deg); } }
+
+.brief-brand { display: flex; align-items: center; gap: 12px; font: 700 19px/1 var(--l-display); letter-spacing: .1em; }
+.brief-copy { max-width: 36rem; }
+.brief-slogan {
+  margin: 0 0 20px; font: 700 clamp(38px, 3.7vw, 62px)/1.04 var(--l-display); letter-spacing: -.01em; text-wrap: balance;
+}
+.brief-slogan span { color: var(--l-orange); }
+.brief-lead { margin: 0 0 28px; max-width: 34ch; font-size: 18px; line-height: 1.6; color: var(--l-soft); }
+.brief-stats { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 10px; }
+.brief-stats li {
+  display: flex; flex-direction: column; gap: 2px; padding: 10px 14px 11px; min-width: 132px;
+  background: rgba(30, 35, 45, .78); border: 1px solid var(--l-steel); border-radius: 4px;
+}
+.brief-stats b { font: 700 22px/1.1 var(--l-display); color: var(--l-text); font-variant-numeric: tabular-nums; }
+.brief-stats span { font-size: 13.5px; color: var(--l-muted); }
+.brief-caption { margin: 0; font-size: 13px; color: var(--l-muted); }
+
+/* ---- ฝั่งฟอร์ม ---- */
+.login-side {
+  position: relative; display: grid; place-items: center; padding: clamp(24px, 4vw, 56px);
+  background: radial-gradient(65% 50% at 50% 45%, rgba(255, 107, 0, .09), transparent 70%), var(--l-bg);
+}
+.login-card {
+  position: relative; width: min(448px, 100%); display: flex; flex-direction: column; gap: 20px;
+  padding: 36px 36px 28px; background: var(--l-plate); border: 1px solid var(--l-steel); border-radius: 6px;
+  box-shadow: 0 28px 64px -24px rgba(0, 0, 0, .75), 0 2px 6px rgba(0, 0, 0, .35);
+}
+.lc-corner { position: absolute; width: 20px; height: 20px; border: 0 solid var(--l-orange); pointer-events: none; }
+.lc-corner.tl { top: -1px; left: -1px; border-top-width: 2px; border-left-width: 2px; border-top-left-radius: 6px; }
+.lc-corner.tr { top: -1px; right: -1px; border-top-width: 2px; border-right-width: 2px; border-top-right-radius: 6px; }
+.lc-corner.bl { bottom: -1px; left: -1px; border-bottom-width: 2px; border-left-width: 2px; border-bottom-left-radius: 6px; }
+.lc-corner.br { bottom: -1px; right: -1px; border-bottom-width: 2px; border-right-width: 2px; border-bottom-right-radius: 6px; }
+.lc-head h1 { margin: 0 0 6px; font: 700 29px/1.2 var(--l-display); letter-spacing: -.005em; text-wrap: balance; }
+.lc-head p { margin: 0; font-size: 16px; color: var(--l-muted); }
+
+.field { display: flex; flex-direction: column; gap: 8px; }
+.field-foot { align-self: flex-end; margin-top: -2px; }
+.field label { font: 600 15px/1.2 var(--l-display); letter-spacing: .03em; color: var(--l-soft); }
+.field-box {
+  display: flex; align-items: center; gap: 10px; height: 54px; padding: 0 6px 0 14px;
+  background: var(--l-field); border: 1px solid var(--l-steel); border-radius: 4px;
+  transition: border-color .15s ease-out, box-shadow .25s ease-out;
+}
+.field-box > svg { color: var(--l-muted); flex: none; transition: color .15s ease-out; }
+.field-box:focus-within {
+  border-color: var(--l-cyan);
+  box-shadow: 0 0 0 3px rgba(0, 229, 255, .16), 0 0 22px -6px rgba(0, 229, 255, .55);
+}
+.field-box:focus-within > svg:first-child { color: var(--l-cyan); }
+.field-box.bad { border-color: var(--l-red); }
+/* ช่องกรอกโชว์โฟกัสด้วยกรอบเรืองแสงของ .field-box แล้ว — ไม่ต้องมีเส้นซ้อนข้างใน */
+.field-box input:focus-visible { outline: none; }
+.field-box.bad:focus-within { box-shadow: 0 0 0 3px rgba(255, 77, 94, .18); }
+.field-box input {
+  flex: 1; min-width: 0; height: 100%; padding: 0 8px 0 0; background: none; border: 0; outline: 0;
+  color: var(--l-text); font: 500 17px/1 var(--l-body);
+}
+.field-box input:-webkit-autofill { -webkit-text-fill-color: var(--l-text); box-shadow: 0 0 0 40px var(--l-field) inset; transition: background-color 9999s; }
+.pw-toggle {
+  flex: none; width: 40px; height: 40px; display: grid; place-items: center; border: 0; border-radius: 4px;
+  background: none; color: var(--l-muted); cursor: pointer;
+}
+.pw-toggle:hover { color: var(--l-text); background: rgba(255, 255, 255, .04); }
+.pw-toggle:focus-visible { outline-offset: -2px; }
+
+.lc-link {
+  padding: 0; border: 0; background: none; cursor: pointer; font: 600 15px/1.3 var(--l-body);
+  color: var(--l-cyan); text-underline-offset: 3px;
+}
+.lc-link:hover { text-decoration: underline; }
+.lc-link.quiet { font-weight: 500; font-size: 14px; color: var(--l-muted); }
+.lc-link.quiet:hover, .lc-link.quiet[aria-expanded="true"] { color: var(--l-text); }
+.lc-note, .lc-hint { margin: 2px 0 0; font-size: 14.5px; line-height: 1.5; color: var(--l-soft); }
+.lc-note { padding: 10px 12px; background: rgba(0, 229, 255, .06); border: 1px solid rgba(0, 229, 255, .28); border-radius: 4px; animation: l-in .22s ease-out; }
+.lc-hint { color: var(--l-muted); }
+
+.lc-check { display: flex; align-items: center; gap: 10px; width: fit-content; font-size: 15px; color: var(--l-soft); cursor: pointer; }
+.lc-check input {
+  appearance: none; flex: none; width: 20px; height: 20px; margin: 0; display: grid; place-items: center;
+  background: var(--l-field); border: 1.5px solid var(--l-steel-hi); border-radius: 3px; cursor: pointer;
+  transition: background-color .15s, border-color .15s;
+}
+.lc-check input::after {
+  content: ""; width: 10px; height: 5px; border: 2.2px solid var(--l-bg); border-top: 0; border-right: 0;
+  transform: rotate(-45deg) translate(1px, -1px) scale(0); transition: transform .15s ease-out;
+}
+.lc-check input:checked { background: var(--l-orange); border-color: var(--l-orange); }
+.lc-check input:checked::after { transform: rotate(-45deg) translate(1px, -1px) scale(1); }
+
+.lc-error {
+  display: flex; align-items: flex-start; gap: 10px; margin: 0; padding: 11px 13px;
+  font-size: 15.5px; line-height: 1.45; color: #FFDCE0;
+  background: rgba(255, 77, 94, .12); border: 1px solid rgba(255, 77, 94, .6); border-radius: 4px;
+  animation: l-in .24s ease-out;
+}
+.lc-error svg { flex: none; color: var(--l-red); margin-top: 1px; }
+@keyframes l-in { from { opacity: 0; transform: translateY(-4px); } }
+
+/* ปุ่มหลัก: วางมุมเล็งสี่มุมเข้าหาปุ่มตอน hover / โฟกัส + แสงส้ม */
+.lc-action {
+  position: relative; height: 56px; display: flex; align-items: center; justify-content: center; gap: 10px;
+  border: 0; border-radius: 4px; background: var(--l-orange); color: var(--l-bg); cursor: pointer;
+  font: 700 18px/1 var(--l-display); letter-spacing: .06em;
+  box-shadow: 0 0 0 1px var(--l-orange), 0 10px 26px -14px rgba(255, 107, 0, .8);
+  transition: box-shadow .3s cubic-bezier(.16, 1, .3, 1), background-color .2s, transform .12s;
+}
+.lc-action::before {
+  --c: var(--l-orange-hi);
+  content: ""; position: absolute; inset: -9px; pointer-events: none; opacity: 0;
+  background:
+    linear-gradient(var(--c), var(--c)) top left / 14px 2px no-repeat, linear-gradient(var(--c), var(--c)) top left / 2px 14px no-repeat,
+    linear-gradient(var(--c), var(--c)) top right / 14px 2px no-repeat, linear-gradient(var(--c), var(--c)) top right / 2px 14px no-repeat,
+    linear-gradient(var(--c), var(--c)) bottom left / 14px 2px no-repeat, linear-gradient(var(--c), var(--c)) bottom left / 2px 14px no-repeat,
+    linear-gradient(var(--c), var(--c)) bottom right / 14px 2px no-repeat, linear-gradient(var(--c), var(--c)) bottom right / 2px 14px no-repeat;
+  transition: inset .35s cubic-bezier(.16, 1, .3, 1), opacity .2s ease-out;
+}
+.lc-action:hover:not(:disabled), .lc-action:focus-visible {
+  outline: none; background: #FF7A1A;
+  box-shadow: 0 0 0 1px var(--l-orange-hi), 0 0 28px -4px rgba(255, 107, 0, .75), 0 14px 32px -12px rgba(255, 107, 0, .9);
+}
+.lc-action:hover:not(:disabled)::before, .lc-action:focus-visible::before { inset: -5px; opacity: 1; }
+.lc-action:active:not(:disabled) { transform: translateY(1px); }
+.lc-action:disabled { cursor: progress; background: #C9580A; box-shadow: none; }
+.lc-spin { width: 18px; height: 18px; border-radius: 50%; border: 2.5px solid rgba(11, 14, 20, .3); border-top-color: var(--l-bg); animation: l-spin .8s linear infinite; }
+@keyframes l-spin { to { transform: rotate(360deg); } }
+/* ปุ่ม Steam: รองจากปุ่มหลัก — เส้นขอบฟ้า ไม่ใช่พื้นส้ม เพราะปุ่มส้มมีได้ปุ่มเดียวต่อหน้า */
+.lc-steam {
+  display: flex; align-items: center; justify-content: center; gap: 10px; height: 52px;
+  border: 1px solid var(--l-steel-hi); border-radius: 4px; background: #182330; color: var(--l-text);
+  font: 700 16px/1 var(--l-display); letter-spacing: .04em; text-decoration: none;
+  transition: border-color .15s ease-out, background-color .15s ease-out, box-shadow .25s ease-out;
+}
+.lc-steam svg { color: var(--l-cyan); }
+.lc-steam:hover, .lc-steam:focus-visible {
+  text-decoration: none; border-color: var(--l-cyan); background: #1B2836;
+  box-shadow: 0 0 0 3px rgba(0, 229, 255, .14), 0 0 22px -8px rgba(0, 229, 255, .6);
+}
+.lc-or { display: flex; align-items: center; gap: 12px; margin: 0; font-size: 13.5px; color: var(--l-muted); }
+.lc-or::before, .lc-or::after { content: ""; flex: 1; height: 1px; background: var(--l-steel); }
+.lc-switch { margin: 0; text-align: center; font-size: 15px; color: var(--l-muted); }
+.login-foot { position: absolute; bottom: 16px; margin: 0; font-size: 13px; color: var(--l-muted); }
+
+/* laptop เตี้ย (สูง < 720): บีบระยะ ให้การ์ดทั้งใบอยู่ในจอเดียว */
+/* laptop เตี้ย (สูง < 760): ปุ่ม Steam + ฟอร์มรหัสผ่าน + ข้อความ error ต้องอยู่ในจอเดียวโดยไม่ต้องเลื่อน */
+@media (min-width: 1024px) and (max-height: 760px) {
+  .login-card { gap: 13px; padding: 24px 30px 20px; }
+  .lc-head h1 { font-size: 26px; }
+  .lc-head p { font-size: 15px; }
+  .field-box { height: 48px; }
+  .lc-steam { height: 46px; }
+  .lc-action { height: 50px; }
+  .login-side { padding: 20px clamp(20px, 3vw, 48px); }
+  .brief-lead { margin-bottom: 22px; }
+}
+/* จอแคบกว่า 1024: แผงบรีฟยุบเป็นแถบบนสั้น ๆ แล้วตามด้วยฟอร์ม */
+@media (max-width: 1023px) {
+  .login-shell { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto 1fr; }
+  .brief { border-right: 0; border-bottom: 1px solid var(--l-steel); gap: 16px; padding: 22px 24px 24px; }
+  .brief-radar { width: 360px; right: -110px; }
+  .brief-slogan { font-size: clamp(28px, 6.4vw, 40px); margin-bottom: 14px; }
+  .brief-stats { flex-wrap: nowrap; gap: 8px; }
+  .brief-lead, .brief-caption { display: none; }
+  .brief-stats li { flex: 1 1 0; min-width: 0; padding: 7px 9px 8px; }
+  .brief-stats b { font-size: 16px; white-space: nowrap; }
+  .brief-stats span { font-size: 12px; line-height: 1.35; }
+  .login-side { padding: 28px 16px 64px; }
+  .login-card { padding: 30px 22px 24px; }
+}
+/* โทรศัพท์: เหลือสองชิปตัวเลข ให้แต่ละชิปอ่านได้ในบรรทัดเดียว (ข้อมูลแผนที่ที่ปรับเทียบอยู่ในแอปแล้ว) */
+@media (max-width: 479px) {
+  .brief-stats li:nth-child(3) { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .brief-sweep { display: none; }
+  .lc-error, .lc-note { animation: none; }
+  .lc-action, .lc-action::before, .field-box, .lc-check input::after { transition: none; }
+}

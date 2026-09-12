@@ -131,7 +131,7 @@ WHERE e.vs >= 1
   AND NOT EXISTS (SELECT 1 FROM kills k WHERE k.round_id = e.round_id AND k.victim_id = pr.steam_id AND k.tick <= e.start_tick);
 
 -- ---------------------------------------------------------------------------
--- View ชั้นที่ 2: สถิติรายนักแข่งรวมทุกแมตช์ — API /api/players อ่านตัวนี้
+-- View ชั้นที่ 2: สถิติรายนักแข่งรวมทุกแมตช์ — match_scoreboard ใช้สูตร rating ชุดเดียวกัน (ยังไม่มีหน้ารวมนักแข่ง)
 -- 9 คอลัมน์แรกคงเดิมเพื่อไม่ให้หน้าเว็บเก่าพัง คอลัมน์ใหม่ต่อท้าย
 -- ---------------------------------------------------------------------------
 DROP VIEW IF EXISTS player_stats CASCADE;
@@ -217,6 +217,74 @@ SELECT f.match_id, f.steam_id, p.name,
 FROM player_round_facts f
 JOIN players p USING (steam_id)
 GROUP BY f.match_id, f.steam_id, p.name;
+
+-- ---------------------------------------------------------------------------
+-- View ชั้นที่ 2: ผลรายแมตช์ของผู้เล่นคนหนึ่ง — หน้าสถิติรายคนใช้ตัวนี้เป็นฐาน
+--   แพ้/ชนะ ตัดสินจากจำนวนรอบที่ "ฝั่งของผู้เล่นในรอบนั้น" ชนะ (ทีมสลับฝั่งกลางแมตช์ จึงนับรายรอบ)
+--   rating ใช้สูตรเดียวกับ player_stats / match_scoreboard (HLTV Rating 1.0 ที่ HLTV เปิดเผย)
+-- ---------------------------------------------------------------------------
+DROP VIEW IF EXISTS player_match_results CASCADE;
+CREATE VIEW player_match_results AS
+SELECT f.steam_id,
+       f.match_id,
+       m.demo_file,
+       m.map_name,
+       m.team_a,
+       m.team_b,
+       m.imported_at,
+       COUNT(*)                                                       AS rounds,
+       COUNT(*) FILTER (WHERE f.won)                                  AS rounds_won,
+       CASE WHEN COUNT(*) FILTER (WHERE f.won) * 2 > COUNT(*) THEN 'win'
+            WHEN COUNT(*) FILTER (WHERE f.won) * 2 = COUNT(*) THEN 'draw'
+            ELSE 'loss' END                                           AS result,
+       SUM(f.kills)    AS kills,
+       SUM(f.deaths)   AS deaths,
+       SUM(f.assists)  AS assists,
+       SUM(f.headshots) AS headshots,
+       ROUND(SUM(f.damage)::numeric / COUNT(*), 1)                    AS adr,
+       ROUND(100.0 * COUNT(*) FILTER (WHERE f.kast) / COUNT(*), 1)    AS kast,
+       ROUND((
+             (SUM(f.kills)::numeric / COUNT(*)) / 0.679
+           + 0.7 * ((COUNT(*) - SUM(f.deaths))::numeric / COUNT(*)) / 0.317
+           + ((COUNT(*) FILTER (WHERE f.kills = 1) + 4 * COUNT(*) FILTER (WHERE f.kills = 2) + 9 * COUNT(*) FILTER (WHERE f.kills = 3)
+               + 16 * COUNT(*) FILTER (WHERE f.kills = 4) + 25 * COUNT(*) FILTER (WHERE f.kills >= 5))::numeric / COUNT(*)) / 1.277
+       ) / 2.7, 2)                                                    AS rating
+FROM player_round_facts f
+JOIN matches m ON m.id = f.match_id
+GROUP BY f.steam_id, f.match_id, m.demo_file, m.map_name, m.team_a, m.team_b, m.imported_at;
+
+-- ---------------------------------------------------------------------------
+-- View ชั้นที่ 3: รวมรายแมพของผู้เล่น — "เล่นบ่อย" กับ "ชนะบ่อย" ในหน้าสถิติรายคน
+-- ---------------------------------------------------------------------------
+DROP VIEW IF EXISTS player_map_stats CASCADE;
+CREATE VIEW player_map_stats AS
+SELECT steam_id,
+       map_name,
+       COUNT(*)                                                    AS matches,
+       COUNT(*) FILTER (WHERE result = 'win')                       AS wins,
+       COUNT(*) FILTER (WHERE result = 'loss')                      AS losses,
+       SUM(rounds)                                                  AS rounds,
+       ROUND(100.0 * COUNT(*) FILTER (WHERE result = 'win') / COUNT(*), 1) AS win_rate,
+       ROUND(AVG(rating), 2)                                        AS rating,
+       ROUND(AVG(adr), 1)                                           AS adr
+FROM player_match_results
+GROUP BY steam_id, map_name;
+
+-- ---------------------------------------------------------------------------
+-- View ชั้นที่ 2: รวมรายอาวุธของผู้เล่น — นับเฉพาะการดวล (ทีมคิล/ตกที่สูงไม่นับ)
+-- ---------------------------------------------------------------------------
+DROP VIEW IF EXISTS player_weapon_stats CASCADE;
+CREATE VIEW player_weapon_stats AS
+SELECT k.attacker_id                                                        AS steam_id,
+       k.weapon,
+       COUNT(*)                                                             AS kills,
+       COUNT(*) FILTER (WHERE k.headshot)                                   AS headshots,
+       ROUND(100.0 * COUNT(*) FILTER (WHERE k.headshot) / COUNT(*), 1)      AS hs_rate
+FROM kills k
+WHERE k.attacker_id IS NOT NULL
+  AND k.attacker_side IN ('ct', 't') AND k.victim_side IN ('ct', 't')
+  AND k.attacker_side <> k.victim_side
+GROUP BY k.attacker_id, k.weapon;
 
 -- ---------------------------------------------------------------------------
 -- View ชั้นที่ 2: เศรษฐกิจรายรอบ — กราฟ equipment value ต่อรอบ + buy type

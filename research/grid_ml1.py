@@ -3,7 +3,7 @@
 """
 Grid ML (unsupervised) — ให้ข้อมูลจัดกลุ่มตัวเอง โดยไม่บอกโมเดลเลยว่าใครชนะ
 
-    python research/grid_ml1.py
+    python research/models/grid_ml1.py
 
 ต่างจาก grid_ml.py ตรงไหน
     grid_ml.py เป็น supervised: มีเฉลย (คนยิงเป็น CT หรือ T) ให้โมเดลเรียน แล้ววัดว่าทายถูกแค่ไหน
@@ -65,11 +65,11 @@ SEED = 0                # ให้รันซ้ำแล้วได้ผล
 SNIPERS = {"awp", "ssg08"}      # ปืนซุ่ม — ใช้แยก "เลนซุ่มระยะไกล" ออกจากพื้นที่ปะทะประชิด
 
 ROOT = Path(__file__).resolve().parent.parent
-CSV = ROOT / "data" / "all_kills.csv"     # สร้างด้วย python research/demoparser.py
+CSV = ROOT / "data" / "all_kills.csv"     # สร้างด้วย python research/prep/demoparser.py
 OUT = ROOT / "output"
 
 sys.path.insert(0, str(ROOT))           # ให้ import backend.* ได้เมื่อรันจากรากโปรเจกต์
-from backend.geo import cells_of, radar_frame  # noqa: E402  สูตรพิกัดชุดเดียวของทั้งรีโป
+from backend.review import cells_of, radar_frame  # noqa: E402  สูตรพิกัดชุดเดียวของทั้งรีโป
 
 for _s in (sys.stdout, sys.stderr):     # ให้คอนโซล Windows พิมพ์ไทยได้
     try:
@@ -107,7 +107,7 @@ else:
 # ===========================================================================
 # สองอย่างนี้เป็นฟีเจอร์หลักของโปรไฟล์ช่อง ถ้า csv ไม่มีก็ทำต่อไม่ได้ ต้อง parse ใหม่
 if "round_start_tick" not in df.columns:
-    sys.exit("csv ไม่มีคอลัมน์บริบทรอบ (round_start_tick) — รัน python research/demoparser.py --force ก่อน")
+    sys.exit("csv ไม่มีคอลัมน์บริบทรอบ (round_start_tick) — รัน python research/prep/demoparser.py --force ก่อน")
 
 rate = df["tickrate"].fillna(128)
 df["t_round"] = (df["tick"] - df["round_start_tick"]) / rate                  # วินาทีที่เท่าไรของรอบ
@@ -134,7 +134,7 @@ df["ct_won"] = (df["attacker_side"] == "ct").astype(int)
 # ขอบเขตกริดเอาจากภาพเรดาร์ ไม่ใช่จากค่าต่ำสุด-สูงสุดของข้อมูล (เหตุผลเดียวกับ grid_ml.py)
 radar = json.loads((ROOT / "assets" / "radars.json").read_text(encoding="utf-8"))[MAP]   # ไว้ใส่ payload + path รูป
 
-# สูตรแปลงพิกัด -> ช่องกริดอยู่ที่ backend/geo.py ที่เดียว (API หน้า Round Review ใช้ตัวเดียวกัน ช่องจึงตรงกันเสมอ)
+# สูตรแปลงพิกัด -> ช่องกริดอยู่ที่ backend/review.py ที่เดียว (API หน้า Round Review ใช้ตัวเดียวกัน ช่องจึงตรงกันเสมอ)
 frame = radar_frame(MAP)
 span = frame.span                          # 1024 พิกเซล x 5.0 = 5120 หน่วยในเกม
 x_left, x_right, y_bottom, y_top = frame.extent

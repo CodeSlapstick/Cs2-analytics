@@ -16,7 +16,7 @@ idempotent ด้วยวิธีเดียว
     (ตารางลูกทั้งหมด ON DELETE CASCADE จาก rounds) แล้วค่อยใส่ใหม่ในทรานแซกชันเดียว
     รันซ้ำแมตช์เดิมกี่ครั้งจึงได้ข้อมูลชุดเดียว และ matches.id ไม่เปลี่ยน (หน้าเว็บที่ poll อยู่ไม่หลุด)
 
-ฟีเจอร์ (opening / trade / buy type / clutch / KAST) คำนวณที่นี่ด้วย backend/features/compute.py
+ฟีเจอร์ (opening / trade / buy type / clutch / KAST) คำนวณที่นี่ด้วย backend/features.py
 แล้วเก็บลง player_rounds — คำนวณครั้งเดียวตอนโหลด ไม่ต้องคิดใหม่ทุกครั้งที่หน้าเว็บถาม
 """
 import argparse
@@ -32,8 +32,7 @@ sys.path.insert(0, str(ROOT))      # ให้รัน python backend/etl_loade
 
 from backend.db import DATABASE_URL as DB_URL  # noqa: E402  (โหลด .env ตอน import)
 from backend.db import apply_schema  # noqa: E402
-from backend.features.compute import compute_features  # noqa: E402
-from backend.features.teams import assign_teams  # noqa: E402
+from backend.features import assign_teams, compute_features  # noqa: E402
 
 
 def _int(v):
@@ -143,12 +142,16 @@ async def _replace_children(conn, match_id: int, doc: dict) -> dict:
         """, [(match_id, sid, m["start_side"], m["rounds"], team_of.get(sid)) for sid, m in mp.items()])
 
     g_rows = [
-        (rid_of(g), int(g["tick"]), _int(g.get("thrower_id")), g.get("side"), g["type"])
+        (rid_of(g), int(g["tick"]), _int(g.get("thrower_id")), g.get("side"), g["type"],
+         _float(g.get("throw_x")), _float(g.get("throw_y")), _float(g.get("land_x")), _float(g.get("land_y")),
+         _int(g.get("land_tick")), _int(g.get("end_tick")))
         for g in grenades if rid_of(g)
     ]
     if g_rows:
         await conn.executemany("""
-            INSERT INTO grenades (round_id, tick, thrower_id, side, type) VALUES ($1, $2, $3, $4, $5);
+            INSERT INTO grenades (round_id, tick, thrower_id, side, type,
+                                  throw_x, throw_y, land_x, land_y, land_tick, end_tick)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11);
         """, g_rows)
 
     pos_rows = [

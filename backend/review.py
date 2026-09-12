@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 backend/review.py — ประกอบข้อมูลหน้า Round Review จากแถวในฐานข้อมูล + output/grid_ml1.json
+    ส่วนแรกของไฟล์คือสูตรแปลงพิกัดเกม -> ช่องกริด / พิกเซลเรดาร์ (ห้ามเขียนสูตรนี้ที่อื่น)
 
     ฟังก์ชันทุกตัวรับ dict/list ธรรมดา ไม่แตะฐานข้อมูลเอง — app.py เป็นคน query แล้วส่งเข้ามา
     จึงทดสอบด้วย pytest ได้โดยไม่ต้องมี PostgreSQL
@@ -14,12 +15,150 @@ import json
 import math
 import os
 from dataclasses import dataclass, field
+from functools import lru_cache
 from pathlib import Path
 
-from backend.features.definitions import other_side
-from backend.geo import RadarFrame, cell_of, cell_rect_pixel, nearest_within, world_to_pixel
+import numpy as np
 
+from backend.features import other_side
+
+# ==================================================================================================
+# พิกัด: เกม <-> ช่องกริด / พิกเซลบนภาพเรดาร์ (สูตรชุดเดียวของทั้งรีโป)
+# backend/review.py — แปลงพิกัดในเกม <-> ช่องกริด / พิกเซลบนภาพเรดาร์  (สูตรชุดเดียวของทั้งรีโป)
+#
+#     from backend.review import radar_frame, cells_of, cell_of, world_to_pixel
+#     frame = radar_frame("de_mirage")
+#     cx, cy = cell_of(x, y, frame, grid_n=32)        # ช่องไหนของกริด (เหมือน research/grid_ml1.py เป๊ะ)
+#     px, py = world_to_pixel(x, y, frame)            # พิกเซลบนภาพเรดาร์ (มุมบนซ้าย = 0, 0)
+#
+# ที่มาของสูตร
+#     ยกมาจาก research/grid_ml1.py (STEP 5) ซึ่งตรวจแล้วว่าถูก — ตอนนี้ grid_ml1.py import จากที่นี่แทน
+#     ขอบเขตกริดเอาจากภาพเรดาร์ (assets/radars.json) ไม่ใช่จากค่าต่ำสุด-สูงสุดของข้อมูล
+#     ช่องจึงไม่ขยับเมื่อเพิ่มเดโม และช่องที่ API คำนวณตรงกับช่องใน grid_ml1.json เสมอ
+#
+#     ห้ามเขียนสูตรแปลงพิกัดที่อื่นอีก — ถ้าต้องการแปลงพิกัด ให้ import จากไฟล์นี้
+# ==================================================================================================
 ROOT = Path(__file__).resolve().parent.parent
+RADARS_JSON = ROOT / "assets" / "radars.json"
+
+
+@dataclass(frozen=True)
+class RadarFrame:
+    """ค่าปรับเทียบภาพเรดาร์ของแมพหนึ่ง (จาก radars.json) + ขอบเขตที่ภาพกินในพิกัดเกม"""
+    map_name: str
+    image: str      # path ภายใต้ assets/ เช่น "/maps/de_mirage.png"
+    size: int       # ภาพเป็นจัตุรัส size x size พิกเซล
+    pos_x: float    # พิกัดเกมของมุมบนซ้ายของภาพ
+    pos_y: float
+    scale: float    # หนึ่งพิกเซล = กี่หน่วยเกม
+
+    @property
+    def span(self) -> float:
+        """ความกว้างของภาพเป็นหน่วยเกม (1024 พิกเซล x 5.0 = 5120 บน Mirage)"""
+        return self.size * self.scale
+
+    @property
+    def x_left(self) -> float:
+        return self.pos_x
+
+    @property
+    def x_right(self) -> float:
+        return self.pos_x + self.span
+
+    @property
+    def y_top(self) -> float:
+        return self.pos_y            # แกน y ในเกมนับขึ้น ขอบบนของภาพจึงเป็นค่ามาก
+
+    @property
+    def y_bottom(self) -> float:
+        return self.pos_y - self.span
+
+    @property
+    def extent(self) -> tuple[float, float, float, float]:
+        """(x_left, x_right, y_bottom, y_top) — แบบที่ matplotlib imshow(extent=...) ต้องการ"""
+        return (self.x_left, self.x_right, self.y_bottom, self.y_top)
+
+    def cell_size(self, grid_n: int) -> float:
+        return self.span / grid_n
+
+
+def load_radars() -> dict:
+    return json.loads(RADARS_JSON.read_text(encoding="utf-8"))
+
+
+@lru_cache(maxsize=32)
+def radar_frame(map_name: str) -> RadarFrame | None:
+    """ค่าปรับเทียบของแมพ — None ถ้าแมพนี้ยังไม่มีใน radars.json"""
+    r = load_radars().get(map_name)
+    if not isinstance(r, dict):
+        return None
+    return RadarFrame(map_name, r["image"], int(r["size"]), float(r["pos_x"]), float(r["pos_y"]), float(r["scale"]))
+
+
+def cells_of(xs, ys, frame: RadarFrame, grid_n: int) -> tuple[np.ndarray, np.ndarray]:
+    """พิกัดเกม -> ช่องกริด (cx, cy) แบบ vectorized — สูตรเดียวกับ research/grid_ml1.py
+
+    (พิกัด - ขอบ) // ขนาดช่อง = อยู่ช่องที่เท่าไร
+    np.clip บีบให้อยู่ในช่วง 0 ถึง grid_n-1 กันจุดที่ตกริมขอบพอดีหลุดออกนอกตาราง
+    cy นับจากขอบล่าง (y_bottom) ขึ้นไป — แถว 0 คือแถวล่างสุดของแมพ
+    """
+    cell = frame.cell_size(grid_n)
+    cx = np.clip((np.asarray(xs, dtype=float) - frame.x_left) // cell, 0, grid_n - 1).astype(int)
+    cy = np.clip((np.asarray(ys, dtype=float) - frame.y_bottom) // cell, 0, grid_n - 1).astype(int)
+    return cx, cy
+
+
+def cell_of(x: float, y: float, frame: RadarFrame, grid_n: int) -> tuple[int, int]:
+    """จุดเดียว — เรียกตัว vectorized ข้างบน เพื่อให้ผลตรงกันทุกทศนิยม ไม่มีสูตรสองชุด"""
+    cx, cy = cells_of([x], [y], frame, grid_n)
+    return int(cx[0]), int(cy[0])
+
+
+def cell_rect_world(cx: int, cy: int, frame: RadarFrame, grid_n: int) -> tuple[float, float, float, float]:
+    """ขอบของช่องในพิกัดเกม (x0, y0, x1, y1) — y0 คือขอบล่าง"""
+    cell = frame.cell_size(grid_n)
+    x0 = frame.x_left + cx * cell
+    y0 = frame.y_bottom + cy * cell
+    return x0, y0, x0 + cell, y0 + cell
+
+
+def world_to_pixel(x: float, y: float, frame: RadarFrame) -> tuple[float, float]:
+    """พิกัดเกม -> พิกเซลบนภาพเรดาร์ (มุมบนซ้ายของภาพ = 0, 0 และ y พิกเซลนับลง)
+
+    ตรงกับ imshow(extent=frame.extent, origin="upper") ที่ grid_ml1.py ใช้วาดรูป
+    """
+    return (x - frame.pos_x) / frame.scale, (frame.pos_y - y) / frame.scale
+
+
+def cell_rect_pixel(cx: int, cy: int, frame: RadarFrame, grid_n: int) -> tuple[float, float, float]:
+    """มุมบนซ้ายของช่องเป็นพิกเซล + ความกว้างช่องเป็นพิกเซล (x, y, w) — ช่องเป็นจัตุรัส"""
+    x0, _, _, y1 = cell_rect_world(cx, cy, frame, grid_n)
+    px, py = world_to_pixel(x0, y1, frame)
+    return px, py, frame.cell_size(grid_n) / frame.scale
+
+
+def in_frame(x: float, y: float, frame: RadarFrame) -> bool:
+    """จุดนี้อยู่บนภาพเรดาร์ไหม (ถ้าไม่อยู่ วาดแล้วจะหลุดขอบรูป)"""
+    return frame.x_left <= x < frame.x_right and frame.y_bottom < y <= frame.y_top
+
+
+def nearest_within(x: float, y: float, centers: list[tuple[float, float]], radius: float) -> int | None:
+    """index ของจุดศูนย์กลางที่ใกล้ที่สุด ถ้าห่างไม่เกิน radius — ไม่งั้น None
+
+    กฎเดียวกับที่ sklearn MeanShift(cluster_all=False) ใช้แปะป้ายจุดตอน grid_ml1 หา hotspot:
+    ยอดที่ใกล้ที่สุด และระยะ <= bandwidth  (เกินจากนั้น = ไม่อยู่ใน hotspot ไหน)
+    """
+    if not centers:
+        return None
+    c = np.asarray(centers, dtype=float)
+    d = np.hypot(c[:, 0] - x, c[:, 1] - y)
+    i = int(np.argmin(d))
+    return i if d[i] <= radius else None
+
+
+# ==================================================================================================
+# ข้อมูลหน้ารอบ (Round Review) + grid_ml1.json
+# ==================================================================================================
 GRID_JSON = Path(os.environ.get("GRID_ML1_JSON", ROOT / "output" / "grid_ml1.json"))
 
 # สีประจำตัวผู้เล่น — ไม่ผูกกับสี CT/T เพราะทีมสลับฝั่งทุกครึ่ง (ทีมเดียวกันต้องสีเดิมทั้งแมตช์)
@@ -174,8 +313,14 @@ def build_round_list(rounds: list[dict], first_deaths: dict[int, int], death_cou
     } for r in rounds]
 
 
+# ควัน / ไฟ อยู่นานเท่าไรถ้าเดโมไม่มี event ตอนหมด (ค่าในเกม CS2) — แฟลช / HE ทำงานทันทีที่แตก
+NADE_DEFAULT_SEC = {"smoke": 20.0, "molotov": 7.0}
+# รัศมีที่วาดบนแผนที่ (หน่วยเกม) — ขนาดโดยประมาณของกลุ่มควันและกองไฟ ลูกอื่นวาดเป็นจุด
+NADE_RADIUS = {"smoke": 144, "molotov": 120}
+
+
 def build_round_detail(*, match: dict, rnd: dict, roster: list[dict], in_round: list[dict], kills: list[dict],
-                       frame: RadarFrame | None, model: GridModel | None) -> dict:
+                       frame: RadarFrame | None, model: GridModel | None, grenades: list[dict] = ()) -> dict:
     """payload ของหนึ่งรอบ
 
     match    {id, demo_file, map_name, tickrate, team_a, team_b}
@@ -183,6 +328,7 @@ def build_round_detail(*, match: dict, rnd: dict, roster: list[dict], in_round: 
     roster   ทุกคนในแมตช์ [{steam_id, name, team}]  — ใช้ให้สีคงที่ทั้งแมตช์
     in_round คนที่เล่นรอบนี้ [{steam_id, side, survived}]
     kills    การตายในรอบนี้ เรียงตาม tick แล้ว (คอลัมน์ตามตาราง kills + attacker_name/victim_name/assister_name)
+    grenades ระเบิดในรอบนี้ (คอลัมน์ตามตาราง grenades + thrower_name) — ใครขว้างอะไร จากไหน ตกที่ไหน
     """
     tickrate = int(match["tickrate"] or 128)
     start = rnd["start_tick"]
@@ -221,6 +367,22 @@ def build_round_detail(*, match: dict, rnd: dict, roster: list[dict], in_round: 
             "victim_px": vpx, "attacker_px": apx,
             "place": k.get("victim_place"), "attacker_place": k.get("attacker_place"),
             **ctx,
+        })
+
+    # ---- ระเบิด: จุดตก (วาดวง) + จุดขว้าง (เส้นประ) เป็นพิกเซล และช่วงเวลาที่มีผล ----
+    nades = []
+    for g in grenades:
+        land_t, end_t = _t(g.get("land_tick"), start, tickrate), _t(g.get("end_tick"), start, tickrate)
+        if land_t is not None and (end_t is None or end_t < land_t):
+            end_t = round(land_t + NADE_DEFAULT_SEC.get(g["type"], 0.0), 1)
+        tx, ty, lx, ly = g.get("throw_x"), g.get("throw_y"), g.get("land_x"), g.get("land_y")
+        nades.append({
+            "type": g["type"],
+            "thrower": person(g.get("thrower_id"), g.get("thrower_name"), g.get("side")),
+            "t_throw": _t(g["tick"], start, tickrate), "t_land": land_t, "t_end": end_t,
+            "throw_px": world_to_pixel(tx, ty, frame) if frame and None not in (tx, ty) else None,
+            "land_px": world_to_pixel(lx, ly, frame) if frame and None not in (lx, ly) else None,
+            "r_px": round(NADE_RADIUS.get(g["type"], 0) / frame.scale, 1) if frame else 0,
         })
 
     # ---- ทีม: จัดตาม team_clan ไม่ใช่ side; หัวกล่องบอก side ของรอบนี้ ----
@@ -276,5 +438,41 @@ def build_round_detail(*, match: dict, rnd: dict, roster: list[dict], in_round: 
             "source": model.source, "ct_win_overall": model.ct_win_overall, "min_kills": model.min_kills},
         "teams": team_list,
         "deaths": deaths,
+        "grenades": nades,
         "summary": summary,
     }
+
+
+# ---------------------------------------------------------------------------
+# โหมดเล่นย้อน (playback): ตำแหน่งผู้เล่นรายวินาทีของหนึ่งรอบ
+#   parser เก็บตำแหน่งวินาทีละครั้ง (1 Hz) เฉพาะช่วงที่รอบเล่นอยู่และเฉพาะคนที่ยังไม่ตาย
+#   -> คนที่ตายแล้วหายไปจากเฟรมเอง และไม่มีข้อมูลช่วงซื้อของก่อน freeze จบ
+#   ที่นี่แปลงเป็นพิกเซลบนภาพเรดาร์ให้เลย หน้าเว็บจึงไม่ต้องมีสูตรแปลงพิกัดของตัวเอง (กฎเดียวกับส่วนอื่นของไฟล์นี้)
+# ---------------------------------------------------------------------------
+POSITION_HZ = 1.0        # ความถี่ที่เดโมถูกเก็บ — ระหว่างสองเฟรมหน้าเว็บวาดประมาณให้ต่อเนื่อง ไม่ใช่ข้อมูลจริง
+
+
+def build_round_positions(positions: list[dict], *, start_tick, tickrate: int, frame: RadarFrame | None) -> dict:
+    """[{tick, steam_id, side, x, y, health, place}] -> {step, t_end, frames:[{t, players:[...]}]}"""
+    by_t: dict[float, list[dict]] = {}
+    for r in positions:
+        t = _t(r["tick"], start_tick, tickrate)
+        if t is None or r.get("x") is None or r.get("y") is None or frame is None:
+            continue
+        px, py = world_to_pixel(r["x"], r["y"], frame)
+        by_t.setdefault(t, []).append({
+            "steamid": str(r["steam_id"]),
+            "px": [round(px, 1), round(py, 1)],
+            "hp": int(r.get("health") or 0),
+            "side": r.get("side"),
+            "place": r.get("place"),
+        })
+    frames = [{"t": t, "players": sorted(pl, key=lambda p: p["steamid"])} for t, pl in sorted(by_t.items())]
+    return {
+        "step": POSITION_HZ,
+        "t_end": frames[-1]["t"] if frames else 0.0,
+        "frames": frames,
+        # ข้อความนี้ให้หน้าเว็บแสดงกำกับเสมอ — ผู้ใช้ต้องรู้ว่าอะไรคือข้อมูลจริง อะไรคือการวาดประมาณ
+        "note": "ตำแหน่งถูกเก็บวินาทีละครั้ง · ช่วงระหว่างวินาทีเป็นการวาดให้ต่อเนื่อง ไม่ใช่ข้อมูลจากเดโม",
+    }
+

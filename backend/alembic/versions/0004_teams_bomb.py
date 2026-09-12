@@ -4,11 +4,11 @@ Revision ID: 0004
 Revises: 0003
 Create Date: 2026-09-11
 
-team_clan   ชื่อทีมที่คงที่ทั้งแมตช์ (clan tag ในเดโม หรือ Team A/B) — ผูกด้วย backend/features/teams.py
+team_clan   ชื่อทีมที่คงที่ทั้งแมตช์ (clan tag ในเดโม หรือ Team A/B) — ผูกด้วย backend/features.py
 bomb_plant  ตำแหน่งที่วางบอมบ์ในรอบนั้น (จาก event bomb_planted) ไว้วางไอคอนบนแผนที่หน้า Round Review
 แมตช์ที่โหลดก่อน migration นี้มีค่าว่าง — API คำนวณทีมเองจาก player_rounds ได้ ส่วนตำแหน่งบอมบ์ต้องโหลดใหม่
 """
-from backend.migrate_util import execute_script
+from backend.db import execute_script
 
 revision = "0004"
 down_revision = "0003"

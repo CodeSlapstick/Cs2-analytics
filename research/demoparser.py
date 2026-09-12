@@ -3,9 +3,9 @@
 """
 อ่านไฟล์ .dem ทุกไฟล์ใน demos/ ด้วย awpy แล้วรวม kills เป็น csv ตารางเดียว
 
-    python research/demoparser.py            # อ่านทั้งหมดที่ยังไม่เคยอ่าน
-    python research/demoparser.py --limit 3  # ลองแค่ 3 ไฟล์แรก
-    python research/demoparser.py --force    # อ่านใหม่หมด ไม่สนแคช
+    python research/prep/demoparser.py            # อ่านทั้งหมดที่ยังไม่เคยอ่าน
+    python research/prep/demoparser.py --limit 3  # ลองแค่ 3 ไฟล์แรก
+    python research/prep/demoparser.py --force    # อ่านใหม่หมด ไม่สนแคช
 
 ทำไมไม่เรียก dem.parse() ตรง ๆ
     dem.parse() อ่าน tick ของผู้เล่นทุกคนทุกเฟรมด้วย ซึ่งเป็นงานหนักที่สุด
@@ -33,7 +33,7 @@ CACHE_DIR = ROOT / "output" / "kills_cache"
 OUT_CSV = ROOT / "data" / "all_kills.csv"
 
 sys.path.insert(0, str(ROOT))
-from backend.features.teams import assign_teams  # noqa: E402  ผูกทีมด้วยกฎชุดเดียวกับระบบหลัก
+from backend.features import assign_teams  # noqa: E402  ผูกทีมด้วยกฎชุดเดียวกับระบบหลัก
 
 # event ที่ dem.kills ต้องใช้ — ตัดที่เหลือออกให้หมด
 EVENTS = [

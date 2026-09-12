@@ -11,18 +11,18 @@ demos/
 # ผลลัพธ์ที่โปรแกรมสร้างเอง รันใหม่ก็ได้ใหม่ (json, png, html, แคชรายไฟล์)
 output/
 
-# ตารางที่ parse ออกมาเอง — สร้างใหม่ได้ด้วย python pipeline/demoparser.py
+# ตารางที่ parse ออกมาเอง — สร้างใหม่ได้ด้วย python research/demoparser.py
 *.csv
 
 # ...ยกเว้นชุดคิลตั้งต้น 2.6 MB (50 แมตช์ Mirage)
-# ต้องเข้า git ไม่งั้นโคลนใหม่แล้ว grid_ml.py / round_win.py รันไม่ได้เลย
+# ต้องเข้า git ไม่งั้นโคลนใหม่แล้ว research/grid_ml1.py รันไม่ได้เลย
 !data/all_kills.csv
 # ...และ snapshot ที่เทสต์ใช้เทียบ (grid_ml1_cells.csv) ไม่งั้น CI หาไฟล์ไม่เจอ
 !backend/tests/fixtures/*.csv
 
 # สิ่งที่ **ต้อง** เข้า git (เขียนไว้กันคนเผลอตัดทั้งโฟลเดอร์)
 #   assets/radars.json      ค่าปรับเทียบภาพเรดาร์ หาด้วยมือ สร้างใหม่ไม่ได้ง่าย ๆ
-#   assets/maps/*.webp      ภาพเรดาร์ที่ grid_ml.py เอาไปวาดทับ
+#   assets/maps/*.png       ภาพเรดาร์ที่หน้าเว็บและ grid_ml1.py วาดทับ
 #   data/all_kills.csv      ชุดคิลตั้งต้น (ดูข้างบน)
 
 .env
@@ -41,3 +41,17 @@ frontend/dist/
 
 # ค่า override เฉพาะเครื่อง (เช่น ชี้ volume เดิม)
 docker-compose.override.yml
+
+# เครื่องมือของ AI agent ที่ติดตั้งเฉพาะเครื่อง ไม่ใช่ของโปรเจกต์
+#   .claude/skills เป็น symlink ชี้ path ในเครื่องนี้ คนอื่น clone ไปแล้วใช้ไม่ได้
+#   .claude/settings.local.json เป็นค่าสิทธิ์เฉพาะเครื่อง
+#   skills-lock.json + .agents/ คือ skill ที่ลงด้วย `npx skills add`
+.agents/
+.claude/
+.github/agents/
+.github/hooks/
+.github/skills/
+skills-lock.json
+
+# ของที่ skill impeccable สร้างระหว่างออกแบบ (สรุปที่ใช้จริงอยู่ใน DESIGN.md แล้ว)
+.impeccable/

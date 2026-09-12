@@ -199,6 +199,31 @@ export interface GridSource {
   label: string;
 }
 
+export type GrenadeType = "smoke" | "flash" | "he" | "molotov" | "decoy";
+
+/** ระเบิดหนึ่งลูก — ใครขว้าง จากไหน ตกที่ไหน มีผลช่วงไหน (วินาทีนับจาก freeze จบ) */
+export interface ReviewGrenade {
+  type: GrenadeType;
+  thrower: ReviewPerson | null;
+  t_throw: number | null;
+  t_land: number | null;
+  t_end: number | null;
+  throw_px: Px | null;
+  land_px: Px | null;
+  r_px: number; // รัศมีควัน/ไฟเป็นพิกเซล (0 = วาดเป็นจุด)
+}
+
+/**
+ * โหมดเล่นย้อน: ตำแหน่งผู้เล่นรายวินาที เป็นพิกเซลบนภาพเรดาร์ (backend แปลงมาให้แล้ว)
+ * คนที่ตายแล้วจะไม่มีในเฟรมถัด ๆ ไป · ช่วงระหว่างสองเฟรมหน้าเว็บวาดประมาณให้ต่อเนื่องเอง
+ */
+export interface RoundPositions {
+  step: number; // วินาทีระหว่างสองเฟรม (1.0)
+  t_end: number;
+  note: string; // ข้อความกำกับว่าอะไรคือข้อมูลจริง — ต้องแสดงให้ผู้ใช้เห็น
+  frames: { t: number; players: { steamid: string; px: Px; hp: number; side: Side | null; place: string | null }[] }[];
+}
+
 export interface RoundDetail {
   match: { id: number; demo_file: string; map_name: string; tickrate: number; team_a: string | null; team_b: string | null };
   round: {
@@ -212,6 +237,7 @@ export interface RoundDetail {
   grid: { source: GridSource; ct_win_overall: number; min_kills: number } | null;
   teams: ReviewTeam[];
   deaths: ReviewDeath[];
+  grenades: ReviewGrenade[];
   summary: {
     first_death: { order: number; name: string; side: Side; place: string | null; t_round: number | null; by: string | null } | null;
     first_death_side_lost: boolean | null;
@@ -245,6 +271,8 @@ const enc = encodeURIComponent;
 export const api = {
   reviewRounds: (demo: string) => request<RoundListItem[]>(`/api/review/${enc(demo)}/rounds`),
   reviewRound: (demo: string, n: number) => request<RoundDetail>(`/api/review/${enc(demo)}/rounds/${n}`),
+  reviewPositions: (demo: string, n: number) =>
+    request<RoundPositions>(`/api/review/${enc(demo)}/rounds/${n}/positions`),
   reviewGrid: (map: string) => request<GridOverlay>(`/api/review/grid?map=${enc(map)}`),
   matches: () => request<Match[]>("/api/matches"),
   match: (id: number | string) => request<MatchDetail>(`/api/matches/${id}`),
@@ -265,6 +293,37 @@ export interface AuthUser {
   username: string;
 }
 
+/** สถิติรายคน (/api/players/...) — ตัวเลขทุกตัวมาจากเดโมที่โหลดเข้าระบบ */
+export interface PlayerSummary {
+  player: { steam_id: string; name: string; avatar: string | null; linked_account: string | null };
+  totals: {
+    matches: number; rounds: number; kills: number; deaths: number; assists: number; headshots: number;
+    kd: number; hs_rate: number; adr: number; kast: number; win_rate: number; survival_rate: number; rating: number;
+  };
+  rating2_approx: number;
+  entry: { both: EntrySide; t: EntrySide; ct: EntrySide };
+  clutches: { vs: number; attempts: number; wins: number }[];
+  source: { matches: number; label: string };
+}
+export interface EntrySide {
+  kills: number;
+  deaths: number;
+}
+export interface PlayerMatch {
+  match_id: number; demo_file: string; map_name: string | null; team_a: string | null; team_b: string | null;
+  imported_at: string; rounds: number; rounds_won: number; result: "win" | "loss" | "draw";
+  kills: number; deaths: number; assists: number; adr: number; kast: number; rating: number;
+}
+export interface PlayerMap {
+  map_name: string; matches: number; wins: number; losses: number; rounds: number; win_rate: number; rating: number; adr: number;
+}
+export interface PlayerWeapon {
+  weapon: string;
+  kills: number;
+  headshots: number;
+  hs_rate: number;
+}
+
 const postJson = (body: unknown): RequestInit => ({
   method: "POST",
   headers: { "Content-Type": "application/json" },
@@ -273,10 +332,20 @@ const postJson = (body: unknown): RequestInit => ({
 
 export const auth = {
   me: () => request<{ user: AuthUser }>("/auth/me"),
-  login: (username: string, password: string) => request<{ user: AuthUser }>("/auth/login", postJson({ username, password })),
-  register: (username: string, password: string) =>
-    request<{ user: AuthUser }>("/auth/register", postJson({ username, password })),
+  // remember=false -> คุกกี้หมดเมื่อปิดเบราว์เซอร์ (backend/auth.py set_auth_cookie)
+  login: (username: string, password: string, remember = true) =>
+    request<{ user: AuthUser }>("/auth/login", postJson({ username, password, remember })),
+  register: (username: string, password: string, remember = true) =>
+    request<{ user: AuthUser }>("/auth/register", postJson({ username, password, remember })),
   logout: () => request<{ ok: boolean }>("/auth/logout", { method: "POST" }),
+};
+
+/** who = "me" (บัญชีที่ล็อกอินด้วย Steam) หรือ SteamID64 */
+export const playerApi = {
+  summary: (who: string) => request<PlayerSummary>(`/api/players/${who}/summary`),
+  matches: (who: string) => request<PlayerMatch[]>(`/api/players/${who}/matches`),
+  maps: (who: string) => request<PlayerMap[]>(`/api/players/${who}/maps`),
+  weapons: (who: string) => request<PlayerWeapon[]>(`/api/players/${who}/weapons`),
 };
 
 export const isBusy = (s: MatchStatus) => s === "queued" || s === "parsing";

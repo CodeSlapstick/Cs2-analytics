@@ -1,7 +1,7 @@
 # CS2 Scouting Platform — image ของฝั่ง Python (ใช้ทั้ง api และ worker ใน docker-compose.yml)
 #
 #   docker build -t cs2-analytics .
-#   docker run --rm -v "${PWD}/output:/app/output" cs2-analytics python research/grid_ml.py   # รันสคริปต์วิจัย
+#   docker run --rm -v "${PWD}/output:/app/output" cs2-analytics python research/grid_ml1.py   # รันสคริปต์วิจัย
 #
 # ปกติไม่ต้อง build เอง — docker compose up -d ทำให้หมด
 

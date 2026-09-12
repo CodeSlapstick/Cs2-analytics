@@ -8,7 +8,7 @@ Create Date: 2026-09-11
 จึงรันบนฐานข้อมูลที่มีตารางอยู่แล้ว (จาก Sprint 1) ได้โดยไม่พัง และไม่ต้อง alembic stamp ก่อน
 ส่วน view ทั้งหมดอยู่ที่ backend/views.sql ซึ่ง backend/app.py รันซ้ำทุกครั้งที่สตาร์ต
 """
-from backend.migrate_util import execute_script
+from backend.db import execute_script
 
 revision = "0001"
 down_revision = None
