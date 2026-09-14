@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # ทุก library ที่โค้ดในรีโปนี้ import จริง
 #
 # ติดตั้ง:  pip install -r requirements.txt            (รันระบบ)

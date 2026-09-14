@@ -109,15 +109,21 @@ def test_require_login_uses_the_cookie():
         assert e.value.status_code == 401
 
 
-def test_auth_routes_are_password_or_steam_only():
-    """ล็อกอินมีสองทางเท่านั้น: username/password กับ Steam OpenID — ห้ามมี dev-login ที่พิมพ์ SteamID เข้าเองได้อีก"""
+def test_auth_routes_are_steam_only():
+    """ล็อกอินมีทางเดียวเท่านั้น: Steam OpenID
+
+    ห้ามมี dev-login ที่พิมพ์ SteamID เข้าเองได้, ห้ามมีสมัครสมาชิกเอง
+    และห้ามมีล็อกอินด้วยรหัสผ่าน — สามอย่างนี้เคยมีแล้วถูกถอดออก
+    """
     from backend import app as appmod
     routes = {(m, r.path) for r in appmod.app.routes for m in getattr(r, "methods", ()) or ()}
-    for expected in [("POST", "/auth/register"), ("POST", "/auth/login"), ("GET", "/auth/me"), ("POST", "/auth/logout"),
+    for expected in [("GET", "/auth/me"), ("POST", "/auth/logout"),
                      ("GET", "/auth/steam/login"), ("GET", "/auth/steam/callback")]:
         assert expected in routes
     paths = {p for _, p in routes}
     assert "/auth/dev-login" not in paths
+    assert "/auth/register" not in paths
+    assert "/auth/login" not in paths
 
 
 # ---- ล็อกอินด้วย Steam (ตรวจเฉพาะส่วนที่ไม่ต้องต่อเน็ต) ----------------------------------------

@@ -161,11 +161,12 @@ def nearest_within(x: float, y: float, centers: list[tuple[float, float]], radiu
 # ==================================================================================================
 GRID_JSON = Path(os.environ.get("GRID_ML1_JSON", ROOT / "output" / "grid_ml1.json"))
 
-# สีประจำตัวผู้เล่น — ไม่ผูกกับสี CT/T เพราะทีมสลับฝั่งทุกครึ่ง (ทีมเดียวกันต้องสีเดิมทั้งแมตช์)
-TEAM_PALETTES = (
-    ("#22d3ee", "#34d399", "#a3e635", "#60a5fa", "#2dd4bf", "#86efac"),   # ทีมแรก (เรียงตามชื่อ): โทนฟ้า-เขียว
-    ("#f472b6", "#c084fc", "#fb7185", "#facc15", "#fb923c", "#e879f9"),   # ทีมที่สอง: โทนชมพู-ม่วง-เหลือง
-)
+# สีบนเรดาร์ยึด "ฝั่ง" เป็นหลัก: CT = น้ำเงิน, T = ส้ม (กติกาเดียวกับทั้งเว็บ)
+# ในฝั่งเดียวกันไล่คนละเฉด จะได้ยังแยกออกว่าจุดไหนใคร ตอนผู้เล่นยืนซ้อนกันบนแผนที่
+SIDE_PALETTES = {
+    "ct": ("#4d8bff", "#8fb6ff", "#2f6fe0", "#c3d8ff", "#1b4fa8"),   # น้ำเงินไล่จากกลาง -> อ่อน -> เข้ม
+    "t":  ("#ff7a18", "#ffb066", "#d95f05", "#ffd4a8", "#a34700"),   # ส้มไล่แบบเดียวกัน
+}
 UNKNOWN_COLOUR = "#94a3b8"
 
 
@@ -292,13 +293,17 @@ def _t(tick, start_tick, tickrate) -> float | None:
     return round((int(tick) - int(start_tick)) / int(tickrate), 1)
 
 
-def player_colours(roster: list[dict]) -> dict[int, str]:
-    """สีต่อคน คงที่ทั้งแมตช์: ทีมเรียงตามชื่อ คนในทีมเรียงตาม steam_id"""
-    teams = sorted({r["team"] or "" for r in roster})
+def player_colours(side_now: dict[int, str]) -> dict[int, str]:
+    """สีต่อคนในรอบนี้ — เฉดของฝั่งที่เขาเล่นอยู่รอบนั้น (CT น้ำเงิน / T ส้ม)
+
+    ทีมสลับฝั่งทุกครึ่ง สีของคนจึงสลับตามไปด้วยโดยตั้งใจ:
+    บนเรดาร์ "ใครอยู่ฝั่งไหน" คือสิ่งที่ต้องอ่านออกทันที ส่วน "ใครอยู่ทีมไหน"
+    ดูได้จากกล่องรายชื่อทีมข้าง ๆ ซึ่งจัดกลุ่มตาม team_clan อยู่แล้ว
+    เรียงตาม steam_id เพื่อให้คนเดิมได้เฉดเดิมทุกรอบที่เขาอยู่ฝั่งเดิม
+    """
     out = {}
-    for ti, team in enumerate(teams):
-        palette = TEAM_PALETTES[ti] if ti < len(TEAM_PALETTES) else (UNKNOWN_COLOUR,)
-        members = sorted(int(r["steam_id"]) for r in roster if (r["team"] or "") == team)
+    for side, palette in SIDE_PALETTES.items():
+        members = sorted(sid for sid, s in side_now.items() if s == side)
         for i, sid in enumerate(members):
             out[sid] = palette[i % len(palette)]
     return out
@@ -322,11 +327,11 @@ NADE_RADIUS = {"smoke": 144, "molotov": 120}
 def _person_factory(roster: list[dict], in_round: list[dict]):
     """คืน (person, info, side_now, colours) — person(sid, name, side) ประกอบข้อมูลคนหนึ่งคนให้หน้าเว็บ
 
-    สีมาจาก roster ทั้งแมตช์ ไม่ใช่เฉพาะรอบนี้ คนคนเดิมจึงได้สีเดิมทุกรอบ
+    สีมาจากฝั่งที่เล่นในรอบนี้ (CT น้ำเงิน / T ส้ม) จึงต้องรู้ side_now ก่อนถึงจะแจกสีได้
     """
-    colours = player_colours(roster)
     info = {int(r["steam_id"]): r for r in roster}
     side_now = {int(p["steam_id"]): p["side"] for p in in_round}
+    colours = player_colours(side_now)
 
     def person(sid, name, side) -> dict | None:
         if sid is None:

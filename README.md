@@ -39,18 +39,11 @@ docker compose up -d          # db + redis + api + worker + frontend
 
 ### ล็อกอิน
 
-เปิดเว็บแล้วจะเด้งไปหน้า `/login` ก่อนเสมอ ใช้ user สำหรับ dev ที่ระบบสร้างให้ตอน api สตาร์ต
-
-| ชื่อผู้ใช้ | รหัสผ่าน |
-|---|---|
-| `dev` | `cs2dev1234` |
-
-เปลี่ยนได้ที่ `DEV_USERNAME` / `DEV_PASSWORD` ใน `.env` หรือกด "สมัครสมาชิก" ในหน้า login (ปิดได้ด้วย `ALLOW_REGISTER=0`)
-หรือกดปุ่ม **เข้าสู่ระบบด้วย Steam** — ล็อกอินผ่าน Steam (OpenID 2.0) ระบบไม่เห็นรหัสผ่าน Steam ของใครเลย
+เปิดเว็บแล้วจะเด้งไปหน้า `/login` ก่อนเสมอ **ทางเข้าเดียวคือปุ่ม เข้าสู่ระบบด้วย Steam**
+— ล็อกอินผ่าน Steam (OpenID 2.0) ระบบไม่เห็นรหัสผ่าน Steam ของใครเลย
 ครั้งแรกจะสร้างบัญชีให้เองจาก SteamID64 (ชื่อ/รูปโปรไฟล์ต้องตั้ง `STEAM_API_KEY` ใน `.env` ไม่ตั้งก็ล็อกอินได้ ชื่อจะเป็น `steam_<SteamID64>`)
 **ค่าเริ่มต้นคือใครมีบัญชี Steam ก็เข้าได้** — จำกัดเฉพาะทีมได้ด้วย `STEAM_ALLOWED_IDS=76561198...,76561198...` ใน `.env`
-รหัสผ่านเก็บเป็น PBKDF2 hash ส่วน session เป็น JWT ในคุกกี้ httpOnly อายุ 7 วัน (`backend/auth.py`) — ตั้ง `SECRET_KEY` ใน `.env` ไว้ ไม่งั้นทุกคนหลุดเมื่อ api รีสตาร์ต
-ลืมรหัส dev: `python -m backend.auth --reset` (ในเครื่อง) หรือ `docker compose exec api python -m backend.auth --reset`
+session เป็น JWT ในคุกกี้ httpOnly อายุ 7 วัน (`backend/auth.py`) — ตั้ง `SECRET_KEY` ใน `.env` ไว้ ไม่งั้นทุกคนหลุดเมื่อ api รีสตาร์ต
 
 ### หน้าเว็บ
 
@@ -108,7 +101,8 @@ cd frontend && npm install && npm run dev      # หน้าเว็บที�
 
 | Method | Path | ใช้ทำอะไร |
 |---|---|---|
-| POST | `/auth/register` · `/auth/login` · `/auth/logout` | สมัคร / ล็อกอิน (ติดคุกกี้ JWT) / ออกจากระบบ |
+| POST | `/auth/logout` | ออกจากระบบ (ล้างคุกกี้ JWT) |
+| GET | `/auth/steam/login` · `/auth/steam/callback` | ล็อกอินด้วย Steam (ติดคุกกี้ JWT) |
 | GET | `/auth/me` | ใครล็อกอินอยู่ (401 = ยังไม่ล็อกอิน) |
 | POST | `/api/demos` | อัปโหลดเดโม → สร้างแถว `matches` (queued) → เข้าคิว → 202 |
 | GET | `/api/matches` | รายการแมตช์ทั้งหมดพร้อมสรุปและสถานะ |

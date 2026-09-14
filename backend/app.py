@@ -7,7 +7,7 @@ backend/app.py — "หลังบ้าน" (backend) ของเว็บ CS
   - ไฟล์นี้ = พนักงานที่คอยรับคำสั่ง ไปหยิบของจากคลัง (PostgreSQL) แล้วส่งกลับไปให้
 
 หน้าที่ของไฟล์นี้มี 3 อย่าง (หน้าเว็บทั้งหมดอยู่ที่ frontend/ — React)
-  1) ล็อกอินด้วย username/password (backend/auth.py)
+  1) ล็อกอินด้วย Steam OpenID 2.0 (backend/auth.py) — ทางเข้าเดียวของระบบ
   2) จำว่า "ใครล็อกอินอยู่" ด้วย JWT ในคุกกี้ httpOnly (JavaScript อ่านไม่ได้)
   3) ตอบ /api/* — ดึงสถิติจากฐานข้อมูลแล้วส่งเป็น JSON ให้หน้าเว็บเอาไปวาด
 
@@ -35,7 +35,6 @@ from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, Request,
 from fastapi.concurrency import run_in_threadpool  # เอางานหนักที่ไม่ใช่ async ไปรันในเธรดแยก ไม่ให้เซิร์ฟเวอร์ค้าง
 from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
 
 from backend import auth  # ล็อกอิน: hash รหัสผ่าน + JWT ใน httpOnly cookie
 from backend.db import (  # noqa: F401  (load_dotenv ทำงานตอน import)
@@ -85,7 +84,6 @@ def log(msg: str) -> None:
 
 
 # ค่าจาก .env ที่รากโปรเจกต์ (backend/db.py โหลดเข้า environment ให้แล้วตอน import)
-ALLOW_REGISTER = os.environ.get("ALLOW_REGISTER", "1") == "1"   # 1 = ให้สมัครสมาชิกเองได้ที่หน้า /login
 # ที่อยู่ที่เบราว์เซอร์เห็น (Steam ต้องส่งผู้ใช้กลับมาที่นี่) — ว่าง = เดาจาก Host ของคำขอ ซึ่งถูกต้องเมื่ออยู่หลัง nginx ของ compose
 PUBLIC_URL = os.environ.get("PUBLIC_URL", "").rstrip("/")
 
@@ -142,52 +140,15 @@ def require_login(request: Request) -> dict:
 
 # ---------------------------------------------------------------------------
 # ส่วนที่ 4 — ล็อกอิน / ออกจากระบบ
+#
+# ทางเข้าเดียวคือ Steam OpenID 2.0 — ไม่มีล็อกอินด้วยรหัสผ่านและไม่มีสมัครสมาชิกแล้ว
 # ---------------------------------------------------------------------------
-class Credentials(BaseModel):
-    username: str
-    password: str
-    remember: bool = True        # ติ๊ก "จดจำการเข้าสู่ระบบ 7 วัน" — False = คุกกี้หมดเมื่อปิดเบราว์เซอร์
-
-
 def _logged_in(account, remember: bool = True) -> JSONResponse:
-    """ตอบกลับพร้อมติดคุกกี้ JWT — ใช้ร่วมกันทั้งตอนสมัครและตอนล็อกอิน"""
+    """ตอบกลับพร้อมติดคุกกี้ JWT (ตอนนี้มีทางเข้าทางเดียวคือ Steam)"""
     user = {"id": account["id"], "username": account["username"]}
     response = JSONResponse({"user": user})
     auth.set_auth_cookie(response, auth.create_token(user["id"], user["username"]), persistent=remember)
     return response
-
-
-@app.post("/auth/register")
-async def auth_register(body: Credentials, conn: asyncpg.Connection = Depends(db)):
-    """สมัครสมาชิกแล้วล็อกอินให้เลย — ปิดได้ด้วย ALLOW_REGISTER=0"""
-    if not ALLOW_REGISTER:
-        raise HTTPException(403, "ระบบนี้ปิดการสมัครสมาชิก")
-    username = body.username.strip()
-    if (err := auth.validate_credentials(username, body.password)):
-        raise HTTPException(400, err)
-    password_hash = await run_in_threadpool(auth.hash_password, body.password)
-    try:
-        row = await conn.fetchrow("""
-            INSERT INTO accounts (username, password_hash, last_login) VALUES ($1, $2, now())
-            RETURNING id, username""", username, password_hash)
-    except asyncpg.UniqueViolationError:
-        raise HTTPException(409, "ชื่อผู้ใช้นี้มีคนใช้แล้ว") from None
-    log(f"[AUTH] สมัครสมาชิก {username} (id {row['id']})")
-    return _logged_in(row, body.remember)
-
-
-@app.post("/auth/login")
-async def auth_login(body: Credentials, conn: asyncpg.Connection = Depends(db)):
-    """ตรวจรหัสผ่าน ผ่านแล้วติดคุกกี้ JWT — ผิดทั้งชื่อหรือรหัสตอบข้อความเดียวกัน ไม่บอกว่าชื่อนี้มีอยู่ไหม"""
-    row = await conn.fetchrow(
-        "SELECT id, username, password_hash FROM accounts WHERE lower(username) = lower($1)", body.username.strip())
-    if row is None:
-        await run_in_threadpool(auth.burn_time_like_verify, body.password)   # เวลาตอบเท่ากับกรณีมีชื่อจริง
-        raise HTTPException(401, "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง")
-    if not await run_in_threadpool(auth.verify_password, body.password, row["password_hash"]):
-        raise HTTPException(401, "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง")
-    await conn.execute("UPDATE accounts SET last_login = now() WHERE id = $1", row["id"])
-    return _logged_in(row, body.remember)
 
 
 # ---- ล็อกอินด้วย Steam (OpenID 2.0) — บัญชีที่มาทางนี้ไม่มีรหัสผ่านในระบบเรา (backend/auth.py)

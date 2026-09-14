@@ -1,3 +1,5 @@
+//คอยบอกว่าหน้าเว็บจะเปิดที่ไหน และเวลาขอข้อมูลต้องส่งไปหา backend ที่ไหน
+
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 

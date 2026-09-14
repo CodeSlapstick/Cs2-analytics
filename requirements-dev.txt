@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # เครื่องมือตอนพัฒนา — ไม่ต้องมีตอนรันระบบจริง
 #   pip install -r requirements-dev.txt     (ไฟล์นี้ดึง requirements.txt มาด้วย)
 -r requirements.txt
