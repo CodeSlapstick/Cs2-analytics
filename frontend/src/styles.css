@@ -413,60 +413,8 @@ html:has(.login-shell) { color-scheme: dark; scrollbar-color: #2E3647 #0B0E14; }
 .lc-head h1 { margin: 0 0 6px; font: 700 29px/1.2 var(--l-display); letter-spacing: -.005em; text-wrap: balance; }
 .lc-head p { margin: 0; font-size: 16px; color: var(--l-muted); }
 
-.field { display: flex; flex-direction: column; gap: 8px; }
-.field-foot { align-self: flex-end; margin-top: -2px; }
-.field label { font: 600 15px/1.2 var(--l-display); letter-spacing: .03em; color: var(--l-soft); }
-.field-box {
-  display: flex; align-items: center; gap: 10px; height: 54px; padding: 0 6px 0 14px;
-  background: var(--l-field); border: 1px solid var(--l-steel); border-radius: 4px;
-  transition: border-color .15s ease-out, box-shadow .25s ease-out;
-}
-.field-box > svg { color: var(--l-muted); flex: none; transition: color .15s ease-out; }
-.field-box:focus-within {
-  border-color: var(--l-cyan);
-  box-shadow: 0 0 0 3px rgba(0, 229, 255, .16), 0 0 22px -6px rgba(0, 229, 255, .55);
-}
-.field-box:focus-within > svg:first-child { color: var(--l-cyan); }
-.field-box.bad { border-color: var(--l-red); }
-/* ช่องกรอกโชว์โฟกัสด้วยกรอบเรืองแสงของ .field-box แล้ว — ไม่ต้องมีเส้นซ้อนข้างใน */
-.field-box input:focus-visible { outline: none; }
-.field-box.bad:focus-within { box-shadow: 0 0 0 3px rgba(255, 77, 94, .18); }
-.field-box input {
-  flex: 1; min-width: 0; height: 100%; padding: 0 8px 0 0; background: none; border: 0; outline: 0;
-  color: var(--l-text); font: 500 17px/1 var(--l-body);
-}
-.field-box input:-webkit-autofill { -webkit-text-fill-color: var(--l-text); box-shadow: 0 0 0 40px var(--l-field) inset; transition: background-color 9999s; }
-.pw-toggle {
-  flex: none; width: 40px; height: 40px; display: grid; place-items: center; border: 0; border-radius: 4px;
-  background: none; color: var(--l-muted); cursor: pointer;
-}
-.pw-toggle:hover { color: var(--l-text); background: rgba(255, 255, 255, .04); }
-.pw-toggle:focus-visible { outline-offset: -2px; }
-
-.lc-link {
-  padding: 0; border: 0; background: none; cursor: pointer; font: 600 15px/1.3 var(--l-body);
-  color: var(--l-cyan); text-underline-offset: 3px;
-}
-.lc-link:hover { text-decoration: underline; }
-.lc-link.quiet { font-weight: 500; font-size: 14px; color: var(--l-muted); }
-.lc-link.quiet:hover, .lc-link.quiet[aria-expanded="true"] { color: var(--l-text); }
-.lc-note, .lc-hint { margin: 2px 0 0; font-size: 14.5px; line-height: 1.5; color: var(--l-soft); }
+.lc-note { margin: 2px 0 0; font-size: 14.5px; line-height: 1.5; color: var(--l-soft); }
 .lc-note { padding: 10px 12px; background: rgba(0, 229, 255, .06); border: 1px solid rgba(0, 229, 255, .28); border-radius: 4px; animation: l-in .22s ease-out; }
-.lc-hint { color: var(--l-muted); }
-
-.lc-check { display: flex; align-items: center; gap: 10px; width: fit-content; font-size: 15px; color: var(--l-soft); cursor: pointer; }
-.lc-check input {
-  appearance: none; flex: none; width: 20px; height: 20px; margin: 0; display: grid; place-items: center;
-  background: var(--l-field); border: 1.5px solid var(--l-steel-hi); border-radius: 3px; cursor: pointer;
-  transition: background-color .15s, border-color .15s;
-}
-.lc-check input::after {
-  content: ""; width: 10px; height: 5px; border: 2.2px solid var(--l-bg); border-top: 0; border-right: 0;
-  transform: rotate(-45deg) translate(1px, -1px) scale(0); transition: transform .15s ease-out;
-}
-.lc-check input:checked { background: var(--l-orange); border-color: var(--l-orange); }
-.lc-check input:checked::after { transform: rotate(-45deg) translate(1px, -1px) scale(1); }
-
 .lc-error {
   display: flex; align-items: flex-start; gap: 10px; margin: 0; padding: 11px 13px;
   font-size: 15.5px; line-height: 1.45; color: #FFDCE0;
@@ -476,34 +424,7 @@ html:has(.login-shell) { color-scheme: dark; scrollbar-color: #2E3647 #0B0E14; }
 .lc-error svg { flex: none; color: var(--l-red); margin-top: 1px; }
 @keyframes l-in { from { opacity: 0; transform: translateY(-4px); } }
 
-/* ปุ่มหลัก: วางมุมเล็งสี่มุมเข้าหาปุ่มตอน hover / โฟกัส + แสงส้ม */
-.lc-action {
-  position: relative; height: 56px; display: flex; align-items: center; justify-content: center; gap: 10px;
-  border: 0; border-radius: 4px; background: var(--l-orange); color: var(--l-bg); cursor: pointer;
-  font: 700 18px/1 var(--l-display); letter-spacing: .06em;
-  box-shadow: 0 0 0 1px var(--l-orange), 0 10px 26px -14px rgba(255, 107, 0, .8);
-  transition: box-shadow .3s cubic-bezier(.16, 1, .3, 1), background-color .2s, transform .12s;
-}
-.lc-action::before {
-  --c: var(--l-orange-hi);
-  content: ""; position: absolute; inset: -9px; pointer-events: none; opacity: 0;
-  background:
-    linear-gradient(var(--c), var(--c)) top left / 14px 2px no-repeat, linear-gradient(var(--c), var(--c)) top left / 2px 14px no-repeat,
-    linear-gradient(var(--c), var(--c)) top right / 14px 2px no-repeat, linear-gradient(var(--c), var(--c)) top right / 2px 14px no-repeat,
-    linear-gradient(var(--c), var(--c)) bottom left / 14px 2px no-repeat, linear-gradient(var(--c), var(--c)) bottom left / 2px 14px no-repeat,
-    linear-gradient(var(--c), var(--c)) bottom right / 14px 2px no-repeat, linear-gradient(var(--c), var(--c)) bottom right / 2px 14px no-repeat;
-  transition: inset .35s cubic-bezier(.16, 1, .3, 1), opacity .2s ease-out;
-}
-.lc-action:hover:not(:disabled), .lc-action:focus-visible {
-  outline: none; background: #FF7A1A;
-  box-shadow: 0 0 0 1px var(--l-orange-hi), 0 0 28px -4px rgba(255, 107, 0, .75), 0 14px 32px -12px rgba(255, 107, 0, .9);
-}
-.lc-action:hover:not(:disabled)::before, .lc-action:focus-visible::before { inset: -5px; opacity: 1; }
-.lc-action:active:not(:disabled) { transform: translateY(1px); }
-.lc-action:disabled { cursor: progress; background: #C9580A; box-shadow: none; }
-.lc-spin { width: 18px; height: 18px; border-radius: 50%; border: 2.5px solid rgba(11, 14, 20, .3); border-top-color: var(--l-bg); animation: l-spin .8s linear infinite; }
-@keyframes l-spin { to { transform: rotate(360deg); } }
-/* ปุ่ม Steam: รองจากปุ่มหลัก — เส้นขอบฟ้า ไม่ใช่พื้นส้ม เพราะปุ่มส้มมีได้ปุ่มเดียวต่อหน้า */
+/* ปุ่ม Steam: ปุ่มเดียวของหน้านี้ — เข้าระบบได้ทางเดียว จึงให้น้ำหนักเป็นปุ่มหลัก */
 .lc-steam {
   display: flex; align-items: center; justify-content: center; gap: 10px; height: 52px;
   border: 1px solid var(--l-steel-hi); border-radius: 4px; background: #182330; color: var(--l-text);
@@ -515,20 +436,15 @@ html:has(.login-shell) { color-scheme: dark; scrollbar-color: #2E3647 #0B0E14; }
   text-decoration: none; border-color: var(--l-cyan); background: #1B2836;
   box-shadow: 0 0 0 3px rgba(0, 229, 255, .14), 0 0 22px -8px rgba(0, 229, 255, .6);
 }
-.lc-or { display: flex; align-items: center; gap: 12px; margin: 0; font-size: 13.5px; color: var(--l-muted); }
-.lc-or::before, .lc-or::after { content: ""; flex: 1; height: 1px; background: var(--l-steel); }
-.lc-switch { margin: 0; text-align: center; font-size: 15px; color: var(--l-muted); }
 .login-foot { position: absolute; bottom: 16px; margin: 0; font-size: 13px; color: var(--l-muted); }
 
 /* laptop เตี้ย (สูง < 720): บีบระยะ ให้การ์ดทั้งใบอยู่ในจอเดียว */
-/* laptop เตี้ย (สูง < 760): ปุ่ม Steam + ฟอร์มรหัสผ่าน + ข้อความ error ต้องอยู่ในจอเดียวโดยไม่ต้องเลื่อน */
+/* laptop เตี้ย (สูง < 760): ปุ่ม Steam + ข้อความ error ต้องอยู่ในจอเดียวโดยไม่ต้องเลื่อน */
 @media (min-width: 1024px) and (max-height: 760px) {
   .login-card { gap: 13px; padding: 24px 30px 20px; }
   .lc-head h1 { font-size: 26px; }
   .lc-head p { font-size: 15px; }
-  .field-box { height: 48px; }
   .lc-steam { height: 46px; }
-  .lc-action { height: 50px; }
   .login-side { padding: 20px clamp(20px, 3vw, 48px); }
   .brief-lead { margin-bottom: 22px; }
 }
@@ -553,5 +469,5 @@ html:has(.login-shell) { color-scheme: dark; scrollbar-color: #2E3647 #0B0E14; }
 @media (prefers-reduced-motion: reduce) {
   .brief-sweep { display: none; }
   .lc-error, .lc-note { animation: none; }
-  .lc-action, .lc-action::before, .field-box, .lc-check input::after { transition: none; }
+  .lc-steam { transition: none; }
 }

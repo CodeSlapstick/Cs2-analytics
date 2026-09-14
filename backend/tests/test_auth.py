@@ -17,28 +17,27 @@ FAST = 1_000          # รอบน้อย ๆ ไว้ทดสอบตร
 SECRET = "s" * 40
 
 
-def test_hash_verifies_and_salts_differ():
-    h1 = auth.hash_password("correct horse", iterations=FAST)
-    h2 = auth.hash_password("correct horse", iterations=FAST)
-    assert h1 != h2 and h1.startswith("pbkdf2_sha256$1000$")
-    assert auth.verify_password("correct horse", h1)
-    assert not auth.verify_password("correct horsE", h1)
-
-
-def test_default_hash_is_strong():
-    h = auth.hash_password("password123")
-    assert int(h.split("$")[1]) >= 300_000
-    assert auth.verify_password("password123", h)
-
-
-@pytest.mark.parametrize("stored", ["", "plain", "md5$1$a$b", "pbkdf2_sha256$x$a$b", "pbkdf2_sha256$1000$@@$@@", None])
-def test_verify_rejects_garbage_without_raising(stored):
-    assert auth.verify_password("pw", stored) is False
-
-
 def test_token_roundtrip():
     t = auth.create_token(7, "alice", secret=SECRET)
     assert auth.user_from_token(t, secret=SECRET) == {"id": 7, "username": "alice"}
+
+
+def test_token_carries_no_privilege_field():
+    """ระบบไม่แบ่ง role — token ต้องไม่มีฟิลด์สิทธิ์ให้ใครเอาไปตีความว่าเป็นแอดมิน"""
+    import jwt as _jwt
+    payload = _jwt.decode(auth.create_token(7, "alice", secret=SECRET), SECRET, algorithms=[auth.JWT_ALG])
+    assert "role" not in payload and "is_admin" not in payload
+
+
+def test_old_token_with_role_still_works_and_grants_nothing():
+    """token ที่ออกตอนระบบยังมี role ต้องใช้ต่อได้ ไม่ใช่เด้งออก และ role ในนั้นต้องไม่มีผล"""
+    from datetime import UTC, datetime, timedelta
+
+    import jwt as _jwt
+    now = datetime.now(UTC)
+    legacy = _jwt.encode({"sub": "7", "name": "alice", "role": "admin",
+                          "iat": now, "exp": now + timedelta(days=1)}, SECRET, algorithm=auth.JWT_ALG)
+    assert auth.user_from_token(legacy, secret=SECRET) == {"id": 7, "username": "alice"}
 
 
 def test_expired_tampered_wrong_secret_are_rejected():
@@ -65,15 +64,6 @@ def test_alg_none_and_missing_claims_are_rejected():
     assert auth.user_from_token(no_sub, secret=SECRET) is None
     no_exp = jwt.encode({"sub": "1", "name": "x"}, SECRET, algorithm="HS256")
     assert auth.user_from_token(no_exp, secret=SECRET) is None
-
-
-@pytest.mark.parametrize("username,password,ok", [
-    ("dev", "cs2dev1234", True), ("a.b-c_d", "12345678", True),
-    ("ab", "12345678", False), ("x" * 33, "12345678", False), ("bad name", "12345678", False),
-    ("ไทย", "12345678", False), ("dev", "short", False), ("dev", "x" * 300, False), (None, None, False),
-])
-def test_validate_credentials(username, password, ok):
-    assert (auth.validate_credentials(username, password) is None) is ok
 
 
 def test_cookie_is_httponly_lax_and_clearable():
@@ -109,15 +99,16 @@ def test_require_login_uses_the_cookie():
         assert e.value.status_code == 401
 
 
-def test_auth_routes_are_password_or_steam_only():
-    """ล็อกอินมีสองทางเท่านั้น: username/password กับ Steam OpenID — ห้ามมี dev-login ที่พิมพ์ SteamID เข้าเองได้อีก"""
+def test_auth_routes_are_steam_only():
+    """ล็อกอินมีทางเดียวคือ Steam OpenID — ห้ามมี local login / สมัครสมาชิก / dev-login กลับมาอีก"""
     from backend import app as appmod
     routes = {(m, r.path) for r in appmod.app.routes for m in getattr(r, "methods", ()) or ()}
-    for expected in [("POST", "/auth/register"), ("POST", "/auth/login"), ("GET", "/auth/me"), ("POST", "/auth/logout"),
+    for expected in [("GET", "/auth/me"), ("POST", "/auth/logout"),
                      ("GET", "/auth/steam/login"), ("GET", "/auth/steam/callback")]:
         assert expected in routes
     paths = {p for _, p in routes}
-    assert "/auth/dev-login" not in paths
+    for forbidden in ("/auth/login", "/auth/register", "/auth/dev-login", "/auth/config", "/auth/local"):
+        assert forbidden not in paths
 
 
 # ---- ล็อกอินด้วย Steam (ตรวจเฉพาะส่วนที่ไม่ต้องต่อเน็ต) ----------------------------------------
@@ -230,3 +221,35 @@ def test_safe_next_only_allows_paths_inside_this_site(given, expected):
     from backend import app as appmod
     assert appmod._safe_next(given) == expected
 
+
+# ---- สิทธิ์เจ้าของข้อมูล (แทนที่ระบบ role เดิม) ------------------------------------------------
+def test_owner_can_modify_but_others_cannot():
+    from backend import app as appmod
+    owner = {"id": 7, "username": "alice"}
+    other = {"id": 8, "username": "bob"}
+    match = {"id": 1, "uploaded_by": 7}
+    assert appmod.can_modify_match(match, owner) is True
+    assert appmod.can_modify_match(match, other) is False
+
+
+def test_match_without_owner_is_readable_but_not_modifiable():
+    """แมตช์ legacy (uploaded_by = NULL) ต้องคืน False เฉย ๆ ไม่ใช่ error
+
+    NULL เกิดได้สองทาง: แมตช์เก่าก่อน migration 0010 และแมตช์ที่เจ้าของถูกลบบัญชี
+    ทั้งสองกรณีคือ "ไม่มีเจ้าของ" — ใครก็แก้ไม่ได้จนกว่าจะมีฟีเจอร์กำหนดเจ้าของ
+    """
+    from backend import app as appmod
+    for user in ({"id": 7, "username": "alice"}, {"id": 8, "username": "bob"}):
+        assert appmod.can_modify_match({"id": 1, "uploaded_by": None}, user) is False
+    # ไม่มีคีย์ uploaded_by เลย (แถวที่ query มาไม่ได้เลือกคอลัมน์นั้น) ก็ต้องไม่ระเบิด
+    assert appmod.can_modify_match({"id": 1}, {"id": 7, "username": "alice"}) is False
+
+
+def test_upload_is_open_to_every_logged_in_user():
+    """อัปโหลดต้องไม่ผูกกับ role อีกแล้ว — ขอแค่ล็อกอิน และต้องไม่มี require_admin หลงเหลือ"""
+    import inspect
+
+    from backend import app as appmod
+    assert not hasattr(appmod, "require_admin")
+    src = inspect.getsource(appmod.api_upload_demo)
+    assert "require_login" in src and "require_admin" not in src

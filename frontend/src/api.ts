@@ -324,19 +324,10 @@ export interface PlayerWeapon {
   hs_rate: number;
 }
 
-const postJson = (body: unknown): RequestInit => ({
-  method: "POST",
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify(body),
-});
-
+// เข้าระบบทางเดียวคือ Steam — ปุ่มบนหน้า /login ลิงก์ตรงไป /auth/steam/login
+// ไม่ผ่าน fetch เพราะเป็น redirect ออกนอกเว็บ ที่นี่จึงเหลือแค่ "ฉันเป็นใคร" กับ "ออกจากระบบ"
 export const auth = {
   me: () => request<{ user: AuthUser }>("/auth/me"),
-  // remember=false -> คุกกี้หมดเมื่อปิดเบราว์เซอร์ (backend/auth.py set_auth_cookie)
-  login: (username: string, password: string, remember = true) =>
-    request<{ user: AuthUser }>("/auth/login", postJson({ username, password, remember })),
-  register: (username: string, password: string, remember = true) =>
-    request<{ user: AuthUser }>("/auth/register", postJson({ username, password, remember })),
   logout: () => request<{ ok: boolean }>("/auth/logout", { method: "POST" }),
 };
 

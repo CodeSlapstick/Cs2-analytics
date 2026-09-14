@@ -42,12 +42,16 @@ class MatchStatus:
 
 
 class Account(Base):
-    """บัญชีสำหรับล็อกอินหน้าเว็บ (username/password + JWT ใน httpOnly cookie) — migration 0005, backend/auth.py"""
+    """บัญชีสำหรับล็อกอินหน้าเว็บ — ล็อกอินด้วย Steam อย่างเดียว (migration 0005/0007/0009, backend/auth.py)
+
+    ระบบรองรับเฉพาะผู้ใช้ที่มีบัญชี Steam เพราะ CS2 เล่นผ่าน Steam
+    steam_id จึงเป็น NOT NULL + UNIQUE และไม่มีคอลัมน์รหัสผ่าน
+    ไม่มีคอลัมน์ role — ผู้ใช้ที่ล็อกอินแล้วมีสิทธิ์เท่ากันทุกคน
+    """
     __tablename__ = "accounts"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     username: Mapped[str] = mapped_column(Text, nullable=False)          # ไม่สนตัวพิมพ์ (unique บน lower(username))
-    password_hash: Mapped[str | None] = mapped_column(Text)              # pbkdf2_sha256$รอบ$salt$hash — NULL = บัญชีที่ล็อกอินด้วย Steam
-    steam_id: Mapped[int | None] = mapped_column(BigInteger)             # SteamID64 (migration 0007) — NULL = บัญชี username/password
+    steam_id: Mapped[int] = mapped_column(BigInteger, nullable=False)    # SteamID64 — ตัวระบุตัวตนจริงของผู้ใช้ (migration 0009)
     avatar: Mapped[str | None] = mapped_column(Text)                     # URL รูปโปรไฟล์จาก Steam (ว่างได้)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
     last_login: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -86,6 +90,10 @@ class Match(Base):
     team_a: Mapped[str | None] = mapped_column(Text)          # แกะจากชื่อไฟล์ "A-vs-B-Map.dem"
     team_b: Mapped[str | None] = mapped_column(Text)
     imported_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
+    # ใครอัปโหลด (migration 0010) — NULL = ไม่มีเจ้าของ: แมตช์เก่าก่อนมีคอลัมน์นี้
+    # หรือแมตช์ที่เจ้าของถูกลบบัญชีไปแล้ว (FK เป็น ON DELETE SET NULL)
+    # ข้อมูลไม่มีเจ้าของ: ทุกคนดูได้ แต่แก้/ลบไม่ได้ — ดู can_modify_match() ใน backend/app.py
+    uploaded_by: Mapped[int | None] = mapped_column(ForeignKey("accounts.id", ondelete="SET NULL"))
     # --- สถานะงาน parse (Sprint 2) ---
     status: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'queued'"))
     error_message: Mapped[str | None] = mapped_column(Text)   # เก็บทุก error จาก worker ตามข้อกำหนด

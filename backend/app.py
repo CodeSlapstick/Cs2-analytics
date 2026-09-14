@@ -26,6 +26,8 @@ import mimetypes
 import os
 import re
 import sys
+import time
+import traceback
 import urllib.parse
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -35,7 +37,6 @@ from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, Request,
 from fastapi.concurrency import run_in_threadpool  # เอางานหนักที่ไม่ใช่ async ไปรันในเธรดแยก ไม่ให้เซิร์ฟเวอร์ค้าง
 from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
 
 from backend import auth  # ล็อกอิน: hash รหัสผ่าน + JWT ใน httpOnly cookie
 from backend.db import (  # noqa: F401  (load_dotenv ทำงานตอน import)
@@ -67,6 +68,15 @@ MAX_DEMO_MB = int(os.environ.get("MAX_DEMO_MB", "600"))   # เพดานข�
 # สำคัญกว่าที่คิด: ถ้าปล่อยให้มี / หรือ .. ในชื่อ คนอัปจะเขียนไฟล์ทับที่ไหนก็ได้ในเครื่อง (path traversal)
 DEMO_NAME_RE = re.compile(r"^[A-Za-z0-9._()-]{1,120}\.dem$", re.IGNORECASE)
 
+# ลายเซ็น 8 ไบต์แรกของไฟล์เดโม CS2 — "PBDEMS2\0" (Protobuf Demo, Source 2)
+# นามสกุลไฟล์เป็นแค่ชื่อ ใครก็เปลี่ยนได้ การเช็คไบต์จริงบอกได้ว่าเป็นเดโม CS2 จริงหรือเปล่า
+# เดโมของ CS:GO รุ่นเก่าขึ้นต้นด้วย "HL2DEMO\0" ซึ่ง parser ตัวนี้อ่านไม่ได้ จึงต้องปฏิเสธด้วย
+DEMO_MAGIC = b"PBDEMS2\x00"
+
+# โควตาอัปโหลดต่อคนต่อชั่วโมง — นับจากตาราง matches ไม่ใช่ตัวนับในหน่วยความจำ
+# ตัวนับในหน่วยความจำหายทุกครั้งที่รีสตาร์ต และถ้ารันหลาย replica จะนับแยกกัน
+UPLOAD_MAX_PER_HOUR = int(os.environ.get("UPLOAD_MAX_PER_HOUR", "20"))
+
 # คอนโซลของ Windows ดีฟอลต์เป็น cp1252 ซึ่งพิมพ์ภาษาไทยไม่ได้ ถ้าไม่ตั้งบรรทัดนี้
 # print() ที่มีข้อความไทยจะโยน UnicodeEncodeError ออกมากลางคัน ทำให้ทั้ง request พัง
 for _s in (sys.stdout, sys.stderr):
@@ -85,7 +95,6 @@ def log(msg: str) -> None:
 
 
 # ค่าจาก .env ที่รากโปรเจกต์ (backend/db.py โหลดเข้า environment ให้แล้วตอน import)
-ALLOW_REGISTER = os.environ.get("ALLOW_REGISTER", "1") == "1"   # 1 = ให้สมัครสมาชิกเองได้ที่หน้า /login
 # ที่อยู่ที่เบราว์เซอร์เห็น (Steam ต้องส่งผู้ใช้กลับมาที่นี่) — ว่าง = เดาจาก Host ของคำขอ ซึ่งถูกต้องเมื่ออยู่หลัง nginx ของ compose
 PUBLIC_URL = os.environ.get("PUBLIC_URL", "").rstrip("/")
 
@@ -120,6 +129,21 @@ app.mount("/assets", StaticFiles(directory=ASSETS_DIR), name="assets")  # URL �
 mimetypes.add_type("image/webp", ".webp")
 
 
+# ---------------------------------------------------------------------------
+# ตัวดักข้อผิดพลาดที่ไม่มีใครดัก — ให้ทุก error ออกมาหน้าตาเดียวกัน {"detail": "..."}
+#
+# ไม่มีตัวนี้ bug ที่หลุดมาจะกลายเป็น 500 ตัวเปล่า หน้าเว็บแยกไม่ออกว่า
+# "เซิร์ฟเวอร์พัง" หรือ "ไม่มีข้อมูล" และรายละเอียดจริงหายไปกับ log ที่ไม่มีใครเปิดดู
+#
+# ข้อความจริงของ exception ไม่ถูกส่งกลับไปให้ผู้ใช้ (อาจมีชื่อตาราง/พาธในเครื่อง)
+# แต่ถูกพิมพ์ลง log ฝั่งเซิร์ฟเวอร์ครบพร้อม traceback
+# ---------------------------------------------------------------------------
+@app.exception_handler(Exception)
+async def unhandled_error(request: Request, exc: Exception):
+    log(f"[ERROR] {request.method} {request.url.path} -> {type(exc).__name__}: {exc}\n{traceback.format_exc()}")
+    return JSONResponse(status_code=500, content={"detail": "เซิร์ฟเวอร์มีข้อผิดพลาดภายใน — ดูรายละเอียดได้ใน log ของเซิร์ฟเวอร์"})
+
+
 async def db(request: Request) -> asyncpg.Connection:
     """Dependency: ขอ connection จากบ่อหนึ่งเส้นให้ route นี้ใช้ แล้วคืนอัตโนมัติเมื่อจบ"""
     pool: asyncpg.Pool | None = request.app.state.pool
@@ -133,7 +157,11 @@ async def db(request: Request) -> asyncpg.Connection:
 # ส่วนที่ 3 — ใครล็อกอินอยู่: JWT ในคุกกี้ httpOnly (สร้าง/ตรวจที่ backend/auth.py)
 # ---------------------------------------------------------------------------
 def require_login(request: Request) -> dict:
-    """Dependency: route ไหนใส่อันนี้ = ต้องล็อกอินก่อน ไม่งั้นตอบ 401 ทันที — คืน {id, username}"""
+    """Dependency: route ไหนใส่อันนี้ = ต้องล็อกอินก่อน ไม่งั้นตอบ 401 ทันที — คืน {id, username}
+
+    ผู้ใช้ทุกคนที่ล็อกอินแล้วมีสิทธิ์เท่ากันหมด ระบบไม่แบ่ง role
+    สิทธิ์ที่ยังแยกอยู่มีอย่างเดียวคือ "เจ้าของข้อมูล" — ดู can_modify_match()
+    """
     user = auth.user_from_token(request.cookies.get(auth.COOKIE_NAME))
     if not user:
         raise HTTPException(401, "ยังไม่ได้ล็อกอิน หรือ session หมดอายุ")
@@ -141,53 +169,49 @@ def require_login(request: Request) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# ส่วนที่ 4 — ล็อกอิน / ออกจากระบบ
+# ส่วนที่ 4 — ล็อกอินด้วย Steam (ทางเดียวของระบบ)
+#
+# ระบบนี้รองรับเฉพาะผู้ใช้ที่มีบัญชี Steam เพราะ CS2 เล่นผ่าน Steam
+# จึงไม่มีการล็อกอินด้วย username/password และไม่มีหน้าสมัครสมาชิก
+# โครงตารางบังคับข้อนี้ไว้ด้วย: accounts.steam_id เป็น NOT NULL + UNIQUE (migration 0009)
 # ---------------------------------------------------------------------------
-class Credentials(BaseModel):
-    username: str
-    password: str
-    remember: bool = True        # ติ๊ก "จดจำการเข้าสู่ระบบ 7 วัน" — False = คุกกี้หมดเมื่อปิดเบราว์เซอร์
+
+# ---- จำกัดจำนวนครั้งที่ยิงเข้ามาที่ /auth/* ต่อหนึ่ง IP ----
+# ไม่มีรหัสผ่านให้เดาแล้ว แต่ยังต้องกันการยิง callback ถล่ม เพราะ callback หนึ่งครั้ง
+# ทำให้เซิร์ฟเวอร์ต้องโทรออกไปหา Steam สองครั้ง (verify + ขอโปรไฟล์) ซึ่งช้าและมีโควตาของ Valve
+#
+# เก็บในหน่วยความจำของโปรเซสเดียว ไม่ใช้ Redis เพราะระบบนี้รัน api container เดียว
+# ถ้าวันหนึ่งรันหลาย replica ต้องย้ายไปนับที่ Redis ไม่งั้นแต่ละตัวนับแยกกัน
+#
+# นับเป็นช่วงเวลา (window) ไม่ใช่นับสะสม — ครบเวลาแล้วเริ่มนับใหม่
+AUTH_MAX_TRIES = int(os.environ.get("AUTH_MAX_TRIES", "20"))     # กี่ครั้งต่อหนึ่งช่วงเวลา
+AUTH_WINDOW_SEC = int(os.environ.get("AUTH_WINDOW_SEC", "300"))  # ความยาวช่วงเวลา (วินาที)
+_auth_hits: dict[str, tuple[int, float]] = {}                    # ip -> (นับได้กี่ครั้ง, ช่วงเวลานี้เริ่มเมื่อไร)
 
 
-def _logged_in(account, remember: bool = True) -> JSONResponse:
-    """ตอบกลับพร้อมติดคุกกี้ JWT — ใช้ร่วมกันทั้งตอนสมัครและตอนล็อกอิน"""
-    user = {"id": account["id"], "username": account["username"]}
-    response = JSONResponse({"user": user})
-    auth.set_auth_cookie(response, auth.create_token(user["id"], user["username"]), persistent=remember)
-    return response
+def _client_ip(request: Request) -> str:
+    return (request.client.host if request.client else None) or "unknown"
 
 
-@app.post("/auth/register")
-async def auth_register(body: Credentials, conn: asyncpg.Connection = Depends(db)):
-    """สมัครสมาชิกแล้วล็อกอินให้เลย — ปิดได้ด้วย ALLOW_REGISTER=0"""
-    if not ALLOW_REGISTER:
-        raise HTTPException(403, "ระบบนี้ปิดการสมัครสมาชิก")
-    username = body.username.strip()
-    if (err := auth.validate_credentials(username, body.password)):
-        raise HTTPException(400, err)
-    password_hash = await run_in_threadpool(auth.hash_password, body.password)
-    try:
-        row = await conn.fetchrow("""
-            INSERT INTO accounts (username, password_hash, last_login) VALUES ($1, $2, now())
-            RETURNING id, username""", username, password_hash)
-    except asyncpg.UniqueViolationError:
-        raise HTTPException(409, "ชื่อผู้ใช้นี้มีคนใช้แล้ว") from None
-    log(f"[AUTH] สมัครสมาชิก {username} (id {row['id']})")
-    return _logged_in(row, body.remember)
+def rate_limit_auth(request: Request) -> None:
+    """Dependency: เกินโควตาแล้วตอบ 429 ทันที โดยไม่ต้องโทรหา Steam หรือแตะฐานข้อมูล"""
+    ip = _client_ip(request)
+    now = time.monotonic()
+    hits, started = _auth_hits.get(ip, (0, now))
+    if now - started > AUTH_WINDOW_SEC:       # ช่วงเวลาเก่าหมดอายุ เริ่มนับใหม่
+        hits, started = 0, now
+    hits += 1
+    _auth_hits[ip] = (hits, started)
 
+    # กันหน่วยความจำบวมเมื่อมี IP แปลก ๆ เข้ามาเยอะ — เก็บกวาดรายการที่หมดอายุแล้ว
+    if len(_auth_hits) > 1000:
+        for k, (_, t) in list(_auth_hits.items()):
+            if now - t > AUTH_WINDOW_SEC:
+                _auth_hits.pop(k, None)
 
-@app.post("/auth/login")
-async def auth_login(body: Credentials, conn: asyncpg.Connection = Depends(db)):
-    """ตรวจรหัสผ่าน ผ่านแล้วติดคุกกี้ JWT — ผิดทั้งชื่อหรือรหัสตอบข้อความเดียวกัน ไม่บอกว่าชื่อนี้มีอยู่ไหม"""
-    row = await conn.fetchrow(
-        "SELECT id, username, password_hash FROM accounts WHERE lower(username) = lower($1)", body.username.strip())
-    if row is None:
-        await run_in_threadpool(auth.burn_time_like_verify, body.password)   # เวลาตอบเท่ากับกรณีมีชื่อจริง
-        raise HTTPException(401, "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง")
-    if not await run_in_threadpool(auth.verify_password, body.password, row["password_hash"]):
-        raise HTTPException(401, "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง")
-    await conn.execute("UPDATE accounts SET last_login = now() WHERE id = $1", row["id"])
-    return _logged_in(row, body.remember)
+    if hits > AUTH_MAX_TRIES:
+        wait = int(AUTH_WINDOW_SEC - (now - started))
+        raise HTTPException(429, f"เรียกเข้าสู่ระบบบ่อยเกินไป — รออีก {wait} วินาทีแล้วลองใหม่")
 
 
 # ---- ล็อกอินด้วย Steam (OpenID 2.0) — บัญชีที่มาทางนี้ไม่มีรหัสผ่านในระบบเรา (backend/auth.py)
@@ -215,7 +239,9 @@ def auth_steam_login(request: Request, next: str = "/matches"):
 
 
 @app.get("/auth/steam/callback")
-async def auth_steam_callback(request: Request, next: str = "/matches", conn: asyncpg.Connection = Depends(db)):
+async def auth_steam_callback(request: Request, next: str = "/matches",
+                              _rl: None = Depends(rate_limit_auth),
+                              conn: asyncpg.Connection = Depends(db)):
     """Steam ส่งกลับมาที่นี่ — ตรวจกับ Steam ก่อนเสมอ ผ่านแล้วค่อยสร้าง/หาบัญชีแล้วติดคุกกี้ JWT"""
     params = dict(request.query_params)
     steamid = await run_in_threadpool(auth.verify_steam_openid, params)
@@ -233,8 +259,8 @@ async def auth_steam_callback(request: Request, next: str = "/matches", conn: as
         for username in (auth.username_for_steam(profile["name"], steamid), f"steam_{steamid}"):
             try:
                 row = await conn.fetchrow("""
-                    INSERT INTO accounts (username, password_hash, steam_id, avatar, last_login)
-                    VALUES ($1, NULL, $2, $3, now()) RETURNING id, username""",
+                    INSERT INTO accounts (username, steam_id, avatar, last_login)
+                    VALUES ($1, $2, $3, now()) RETURNING id, username""",
                     username, int(steamid), profile["avatar"])
                 break
             except asyncpg.UniqueViolationError:
@@ -275,7 +301,11 @@ def rows(records) -> list[dict]:
 
 @app.get("/api/health")
 async def api_health(request: Request):
-    """เช็คว่า DB ต่อได้ไหม มีข้อมูลเท่าไร — ไม่ต้องล็อกอิน ไว้ให้ docker/monitor ถาม"""
+    """เช็คว่า DB ต่อได้ไหม มีข้อมูลเท่าไร — ไม่ต้องล็อกอิน ไว้ให้ docker/monitor ถาม
+
+    จำนวนแมตช์/คิลเป็นตัวเลขรวม ไม่มีชื่อคนหรือข้อมูลของแมตช์ใด — หน้า /login เอาไปโชว์
+    ก่อนผู้ใช้ล็อกอิน (frontend/src/LoginPage.tsx) จึงตั้งใจให้เรียกได้โดยไม่ต้องมี session
+    """
     pool = request.app.state.pool
     if pool is None:
         return JSONResponse({"ok": False, "db": "ยังไม่ได้ต่อ"}, status_code=503)
@@ -479,6 +509,11 @@ def save_upload(file: UploadFile, dest: Path) -> int:
     try:
         with open(part, "wb") as out:
             while chunk := file.file.read(1024 * 1024):
+                # ก้อนแรกมีหัวไฟล์อยู่ — ตรวจลายเซ็นตรงนี้เลย จะได้ตัดจบก่อนเขียนครบทั้งไฟล์
+                # ถ้าไปตรวจตอนท้าย จะเสียเวลาและพื้นที่ดิสก์ไปกับไฟล์ที่รู้อยู่แล้วว่าใช้ไม่ได้
+                if size == 0 and not chunk.startswith(DEMO_MAGIC):
+                    raise HTTPException(400, "ไฟล์นี้ไม่ใช่เดโมของ CS2 — หัวไฟล์ไม่ใช่ PBDEMS2 "
+                                             "(เดโมของ CS:GO รุ่นเก่าใช้กับระบบนี้ไม่ได้)")
                 size += len(chunk)
                 if size > limit:
                     raise HTTPException(413, f"ไฟล์ใหญ่เกิน {MAX_DEMO_MB} MB")
@@ -494,11 +529,41 @@ def save_upload(file: UploadFile, dest: Path) -> int:
         part.unlink(missing_ok=True)   # เหลือ .part ค้างอยู่ = อัปไม่สำเร็จ เก็บกวาดทิ้ง
 
 
+async def check_upload_quota(conn: asyncpg.Connection, account_id: int) -> None:
+    """เกินโควตาต่อชั่วโมงแล้วตอบ 429 — นับจาก matches.imported_at ของคนนั้น
+
+    นับจากฐานข้อมูลไม่ใช่หน่วยความจำ เพราะตัวนับในหน่วยความจำหายทุกครั้งที่รีสตาร์ต
+    และการอัปโหลดหนึ่งครั้งกิน CPU ของ worker เป็นนาที จึงต้องนับให้แม่น
+    ใช้ index matches_uploaded_by_time_idx (uploaded_by, imported_at) ที่ทำไว้ใน migration 0010
+    """
+    used = await conn.fetchval("""
+        SELECT count(*) FROM matches
+        WHERE uploaded_by = $1 AND imported_at > now() - interval '1 hour';
+    """, account_id)
+    if used >= UPLOAD_MAX_PER_HOUR:
+        raise HTTPException(429, f"อัปโหลดครบโควตาแล้ว ({UPLOAD_MAX_PER_HOUR} ไฟล์ต่อชั่วโมง) "
+                                 "— รอสักครู่แล้วลองใหม่")
+
+
+def can_modify_match(match: dict, user: dict) -> bool:
+    """แก้/ลบแมตช์นี้ได้ไหม — ได้เฉพาะเจ้าของเท่านั้น
+
+    uploaded_by เป็น NULL ได้สองกรณี และทั้งสองกรณีถือว่า "ไม่มีเจ้าของ" เหมือนกัน:
+        1. แมตช์เก่าที่โหลดเข้าระบบก่อนมี migration 0010
+        2. แมตช์ที่เจ้าของถูกลบบัญชีไปแล้ว (FK เป็น ON DELETE SET NULL)
+
+    ข้อมูลไม่มีเจ้าของ = ทุกคนที่ล็อกอินแล้ว "ดูได้" ตามปกติ แต่ "แก้/ลบไม่ได้"
+    จนกว่าจะมีฟีเจอร์กำหนดเจ้าของภายหลัง — คืน False ไม่ใช่ error
+    """
+    owner = match.get("uploaded_by")
+    return owner is not None and owner == user["id"]
+
+
 @app.post("/api/demos")
 async def api_upload_demo(
     file: UploadFile = File(..., description="ไฟล์ .dem หนึ่งไฟล์"),
     force: str = Form("0"),                     # "1" = แมตช์นี้เคยโหลดแล้วให้ลบของเดิมทิ้งแล้วโหลดใหม่
-    _: dict = Depends(require_login),
+    user: dict = Depends(require_login),   # ล็อกอินแล้วอัปได้ทุกคน — uploaded_by บันทึกว่าใครอัป
     conn: asyncpg.Connection = Depends(db),
 ):
     """รับเดโมหนึ่งไฟล์ เก็บลงดิสก์ แล้วส่งงานแกะเข้าคิว — ตอบ 202 ทันที ไม่รอแกะ
@@ -522,29 +587,42 @@ async def api_upload_demo(
         raise HTTPException(409, f"แมตช์ {name} มีอยู่ในระบบแล้ว (Match ID: {existing['id']}, สถานะ {existing['status']}) "
                                  "— ติ๊ก \"โหลดทับของเดิม\" ถ้าต้องการโหลดใหม่")
 
-    # ---- 3) เขียนไฟล์ลงดิสก์ --------------------------------------------
+    # ---- 3) โควตาต่อชั่วโมง — เช็คก่อนเขียนดิสก์ จะได้ไม่เสียพื้นที่ไปกับไฟล์ที่จะถูกปฏิเสธ
+    await check_upload_quota(conn, user["id"])
+
+    # ---- 4) เขียนไฟล์ลงดิสก์ --------------------------------------------
     DEMOS_DIR.mkdir(parents=True, exist_ok=True)
     dem_path = DEMOS_DIR / name
     size = await run_in_threadpool(save_upload, file, dem_path)
 
-    # ---- 4) สร้าง/รีเซ็ตแถว matches เป็น queued แล้วส่งงานเข้าคิว ------------
+    # ---- 5) สร้าง/รีเซ็ตแถว matches เป็น queued แล้วส่งงานเข้าคิว ------------
     # ตัวเซิร์ฟเวอร์ไม่แกะเดโมเองอีกแล้ว (เดโมใหญ่แกะเป็นนาที request จะค้าง)
     # worker (python -m backend.jobs) หยิบงานไปทำ แล้วหน้าเว็บ poll ที่ /api/matches/{id}/status
     if existing:
         match_id = existing["id"]     # เก็บ id เดิมไว้ ลิงก์/บุ๊กมาร์กเก่าจะได้ไม่พัง
+        # imported_at = now() ด้วย เพราะการอัปทับคือ "การรับคำขอครั้งใหม่" ต้องนับเข้าโควตา
+        # ถ้าไม่อัปเดต เวลาจะค้างอยู่ที่การอัปครั้งแรก แล้วยิงอัปทับซ้ำ ๆ เลี่ยงโควตาได้ไม่จำกัด
+        # uploaded_by เปลี่ยนเป็นคนล่าสุด เพราะเนื้อข้อมูลในแถวนี้มาจากไฟล์ของเขา
         await conn.execute("""
             UPDATE matches SET status = 'queued', error_message = NULL, job_id = NULL,
-                               started_at = NULL, finished_at = NULL
+                               started_at = NULL, finished_at = NULL,
+                               imported_at = now(), uploaded_by = $2
             WHERE id = $1;
-        """, match_id)
+        """, match_id, user["id"])
     else:
         match_id = await conn.fetchval(
-            "INSERT INTO matches (demo_file, status) VALUES ($1, 'queued') RETURNING id;", name)
+            "INSERT INTO matches (demo_file, status, uploaded_by) VALUES ($1, 'queued', $2) RETURNING id;",
+            name, user["id"])
 
     try:
         job_id = await run_in_threadpool(enqueue_parse, match_id)
     except QueueUnavailable as e:
         await conn.execute("UPDATE matches SET status = 'error', error_message = $2 WHERE id = $1;", match_id, str(e))
+        # ไฟล์เพิ่งเขียนลงดิสก์ไปหลายร้อยเมกะ แต่ไม่มีใครจะมาแกะมันแล้ว — เก็บกวาดทิ้ง
+        # ไม่ลบ = อัปซ้ำตอน Redis ล่มทีละไฟล์ ดิสก์เต็มโดยไม่มีอะไรเตือน
+        # แต่ถ้าเป็นการอัปทับของเดิม (replace) ห้ามลบ ไฟล์เดิมที่ใช้งานได้จะหายไปด้วย
+        if not existing:
+            dem_path.unlink(missing_ok=True)
         log(f"[UPLOAD] {name}: {e}")
         raise HTTPException(503, f"รับไฟล์แล้วแต่ส่งงานเข้าคิวไม่ได้ — เปิด Redis ด้วย docker compose up -d redis ({e})")
     await conn.execute("UPDATE matches SET job_id = $2 WHERE id = $1;", match_id, job_id)
