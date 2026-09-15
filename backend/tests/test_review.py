@@ -188,13 +188,21 @@ def test_every_round_payload_is_consistent(sample_doc, model, frame):
         assert f"{model.matches} แมตช์" in d["grid"]["source"]["label"]
 
 
-def test_player_colours_are_stable_across_rounds(sample_doc, model, frame):
-    seen: dict[str, str] = {}
+def test_player_colours_follow_the_side_they_play(sample_doc, model, frame):
+    """สีบนเรดาร์บอกฝั่ง: CT ได้เฉดน้ำเงิน T ได้เฉดส้ม และในรอบเดียวกันต้องไม่ซ้ำกันเลย
+
+    ไม่ได้คงที่ทั้งแมตช์อีกแล้ว — ทีมสลับฝั่งตอนเปลี่ยนครึ่ง สีก็สลับตามโดยตั้งใจ
+    """
+    from backend.review import SIDE_PALETTES
+
     for r in sample_doc["rounds"]:
+        used = []
         for t in detail(sample_doc, r["round_num"], model, frame)["teams"]:
             for p in t["players"]:
-                assert seen.setdefault(p["steamid"], p["color"]) == p["color"]
-    assert len(set(seen.values())) == 10
+                assert p["color"] in SIDE_PALETTES[p["side"]], (
+                    f'รอบ {r["round_num"]}: {p["name"]} ฝั่ง {p["side"]} ได้สี {p["color"]}')
+                used.append(p["color"])
+        assert len(used) == len(set(used)) == 10       # 10 คน 10 สี ไม่ซ้ำกันในรอบเดียว
 
 
 def test_bomb_icon_position_when_planted(sample_doc, model, frame):

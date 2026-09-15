@@ -109,15 +109,21 @@ def test_require_login_uses_the_cookie():
         assert e.value.status_code == 401
 
 
-def test_auth_routes_are_password_or_steam_only():
-    """ล็อกอินมีสองทางเท่านั้น: username/password กับ Steam OpenID — ห้ามมี dev-login ที่พิมพ์ SteamID เข้าเองได้อีก"""
+def test_auth_routes_are_the_three_we_chose():
+    """ล็อกอินมีสามทางโดยตั้งใจ: Steam · ชื่อผู้ใช้ของทีม · ผู้เยี่ยมชม
+
+    branch feat/frontend เคยถอดรหัสผ่านออกให้เหลือ Steam ทางเดียว แต่ตอนรวมงานเลือกเก็บทั้งสามไว้
+    (อาจารย์และคนที่มาลองต้องกดเข้าดูได้โดยไม่ต้องมีบัญชี Steam) — ปิดทีละทางได้ด้วย
+    ALLOW_REGISTER=0 และ GUEST_LOGIN=0 ถ้า deploy จริงแล้วอยากให้เหลือ Steam อย่างเดียว
+
+    ห้ามมี /auth/dev-login ที่พิมพ์ SteamID เป็นใครก็ได้ — อันนั้นถูกถอดออกไปแล้วและห้ามกลับมา
+    """
     from backend import app as appmod
     routes = {(m, r.path) for r in appmod.app.routes for m in getattr(r, "methods", ()) or ()}
     for expected in [("POST", "/auth/register"), ("POST", "/auth/login"), ("GET", "/auth/me"), ("POST", "/auth/logout"),
                      ("GET", "/auth/steam/login"), ("GET", "/auth/steam/callback"), ("POST", "/auth/guest")]:
         assert expected in routes
-    paths = {p for _, p in routes}
-    assert "/auth/dev-login" not in paths
+    assert "/auth/dev-login" not in {p for _, p in routes}
 
 
 def test_guest_is_read_only():

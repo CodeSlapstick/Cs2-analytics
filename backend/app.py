@@ -7,7 +7,7 @@ backend/app.py — "หลังบ้าน" (backend) ของเว็บ CS
   - ไฟล์นี้ = พนักงานที่คอยรับคำสั่ง ไปหยิบของจากคลัง (PostgreSQL) แล้วส่งกลับไปให้
 
 หน้าที่ของไฟล์นี้มี 3 อย่าง (หน้าเว็บทั้งหมดอยู่ที่ frontend/ — React)
-  1) ล็อกอินด้วย username/password (backend/auth.py)
+  1) ล็อกอินด้วย Steam OpenID 2.0 (backend/auth.py) — ทางเข้าเดียวของระบบ
   2) จำว่า "ใครล็อกอินอยู่" ด้วย JWT ในคุกกี้ httpOnly (JavaScript อ่านไม่ได้)
   3) ตอบ /api/* — ดึงสถิติจากฐานข้อมูลแล้วส่งเป็น JSON ให้หน้าเว็บเอาไปวาด
 
@@ -162,6 +162,11 @@ def forbid_guest(user: dict = Depends(require_login)) -> dict:
 
 # ---------------------------------------------------------------------------
 # ส่วนที่ 4 — ล็อกอิน / ออกจากระบบ
+#
+# เข้าได้สามทาง โดยตั้งใจ:
+#   Steam OpenID 2.0   ทางหลัก — ทางเดียวที่ระบบรู้ว่าคนไหนในเดโมคือผู้ใช้ จึงเป็นทางที่ได้สถิติรายคน
+#   username/password  บัญชีของทีม (และ dev user ที่ระบบสร้างให้) — ปิดการสมัครได้ด้วย ALLOW_REGISTER=0
+#   guest              คลิกเดียว ดูได้อย่างเดียว — ไว้ให้คนที่มาลองดูโดยไม่ต้องมีบัญชี (GUEST_LOGIN=0 เพื่อปิด)
 # ---------------------------------------------------------------------------
 class Credentials(BaseModel):
     username: str
@@ -170,7 +175,7 @@ class Credentials(BaseModel):
 
 
 def _logged_in(account, remember: bool = True) -> JSONResponse:
-    """ตอบกลับพร้อมติดคุกกี้ JWT — ใช้ร่วมกันทั้งตอนสมัครและตอนล็อกอิน"""
+    """ตอบกลับพร้อมติดคุกกี้ JWT — ใช้ร่วมกันทุกทางเข้า"""
     user = {"id": account["id"], "username": account["username"]}
     response = JSONResponse({"user": {**user, "guest": is_guest(user)}})   # รูปเดียวกับ /auth/me — หน้าเว็บใช้แทนกันได้ทันที
     auth.set_auth_cookie(response, auth.create_token(user["id"], user["username"]), persistent=remember)

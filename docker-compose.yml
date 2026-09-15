@@ -68,7 +68,6 @@ services:
     environment:
       <<: *backend-env
       SECRET_KEY: ${SECRET_KEY:-}              # กุญแจเซ็น JWT — ไม่ตั้ง = สุ่มใหม่ทุกครั้งที่ api รีสตาร์ต (ทุกคนต้องล็อกอินใหม่)
-      ALLOW_REGISTER: ${ALLOW_REGISTER:-1}     # 1 = สมัครสมาชิกเองได้ที่หน้า /login
       COOKIE_SECURE: ${COOKIE_SECURE:-0}       # 1 = คุกกี้ส่งเฉพาะ HTTPS
       DEV_USERNAME: ${DEV_USERNAME:-dev}       # user สำหรับ dev ที่ backend.auth สร้างให้ตอนสตาร์ต
       DEV_PASSWORD: ${DEV_PASSWORD:-cs2dev1234}
