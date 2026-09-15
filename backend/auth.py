@@ -2,14 +2,18 @@
 """
 backend/auth.py — ล็อกอินด้วย Steam (OpenID 2.0) + JWT ใน httpOnly cookie
 
-    create_token / user_from_token       JWT (HS256) อายุ 7 วัน เซ็นด้วย SECRET_KEY จาก .env
+    create_token / create_guest_token    JWT (HS256) เซ็นด้วย SECRET_KEY จาก .env
+    viewer_from_token                    แกะ token เป็น "ใครกำลังดู" — จุดเดียวที่แปล token เป็นตัวตน
     set_auth_cookie / clear_auth_cookie  คุกกี้ httpOnly — JavaScript ในหน้าเว็บอ่าน token ไม่ได้ (ไม่เก็บใน localStorage)
-
-    python -m backend.auth [--reset]     สร้าง dev user (dev / cs2dev1234) — docker compose รันให้ตอน api สตาร์ต
     steam_login_url / verify_steam_openid / steam_persona   ล็อกอินด้วย Steam (OpenID 2.0) — ไม่มีรหัสผ่านในระบบเรา
 
-ระบบนี้รองรับเฉพาะบัญชี Steam เท่านั้น (CS2 เล่นผ่าน Steam) จึงไม่มีรหัสผ่าน ไม่มีหน้าสมัคร
-และไม่แบ่ง role — ล็อกอินแล้วทุกคนมีสิทธิ์เท่ากัน
+ระบบนี้ไม่มีรหัสผ่านและไม่มีหน้าสมัคร เข้าได้สองทาง:
+
+    steam   ล็อกอินผ่าน Steam มีแถวใน accounts และมี steam_id เสมอ
+    guest   โหมดเยี่ยมชม ไม่มีแถวใน accounts มีแต่รหัส session สุ่มในคุกกี้
+
+ตอนนี้ทั้งสองแบบมีสิทธิ์เท่ากันทุก endpoint ยังไม่แบ่ง role
+วันไหนจะแยกสิทธิ์ ให้แก้ที่ app.require_viewer() กับ app.can_modify_match() เท่านั้น
 """
 import json
 import os
@@ -26,6 +30,7 @@ import backend.db  # noqa: F401  โหลด .env เข้า environment ก�
 COOKIE_NAME = "cs2_token"
 JWT_ALG = "HS256"
 TOKEN_TTL = timedelta(days=7)
+GUEST_TTL = timedelta(days=1)      # โหมดเยี่ยมชมไม่มีบัญชีให้กู้คืน ไม่ควรค้างในเครื่องเป็นสัปดาห์
 COOKIE_SECURE = os.environ.get("COOKIE_SECURE", "0") == "1"   # 1 = ส่งคุกกี้เฉพาะ HTTPS (เปิดเมื่อ deploy จริง)
 
 
@@ -41,16 +46,12 @@ def secret_key() -> str:
 
 
 # ---------------------------------------------------------------------------
-# รหัสผ่าน
+# JWT — token ชนิดเดียว ใช้ได้ทั้งผู้ใช้ Steam และโหมดเยี่ยมชม แยกกันที่ฟิลด์ typ
 # ---------------------------------------------------------------------------
+STEAM = "steam"       # ล็อกอินผ่าน Steam — มีแถวใน accounts
+GUEST = "guest"       # โหมดเยี่ยมชม — ไม่มีแถวใน accounts
 
 
-_dummy_hash: str | None = None
-
-
-# ---------------------------------------------------------------------------
-# JWT
-# ---------------------------------------------------------------------------
 def create_token(user_id: int, username: str, *, secret: str | None = None,
                  ttl: timedelta = TOKEN_TTL, now: datetime | None = None) -> str:
     """สร้าง JWT ของผู้ใช้ที่ล็อกอินผ่าน Steam แล้ว
@@ -59,18 +60,49 @@ def create_token(user_id: int, username: str, *, secret: str | None = None,
     สิทธิ์ที่ยังแยกอยู่คือ "เจ้าของข้อมูล" ซึ่งเทียบจาก id ในฐานข้อมูล ไม่ใช่จาก token
     """
     now = now or datetime.now(UTC)
-    payload = {"sub": str(user_id), "name": username, "iat": now, "exp": now + ttl}
+    payload = {"sub": str(user_id), "name": username, "typ": STEAM, "iat": now, "exp": now + ttl}
     return jwt.encode(payload, secret or secret_key(), algorithm=JWT_ALG)
 
 
-def user_from_token(token: str | None, *, secret: str | None = None) -> dict | None:
-    """แกะ token จากคุกกี้ — หมดอายุ / ถูกแก้ / เซ็นด้วยกุญแจอื่น / ไม่ใช่ HS256 -> None (= ยังไม่ล็อกอิน)"""
+def create_guest_token(*, guest_id: str | None = None, secret: str | None = None,
+                       ttl: timedelta = GUEST_TTL, now: datetime | None = None) -> str:
+    """สร้าง JWT ของโหมดเยี่ยมชม — ไม่มีแถวใน accounts ไม่มี steam_id
+
+    guest_id เป็นรหัสสุ่มประจำ session ใช้สองอย่าง
+        1. แยกที่มาของเดโมที่อัปโหลด (matches.uploader_guest) — วันหน้าคัดเฉพาะข้อมูลของผู้ใช้ Steam ไปเทรน ML ได้
+        2. นับโควตาอัปโหลดต่อชั่วโมง — ถ้าไม่มีรหัสนี้ guest จะอัปได้ไม่จำกัด
+           เพราะเงื่อนไข WHERE uploaded_by = $1 ไม่เคยแมตช์กับค่า NULL
+
+    อายุสั้นกว่าของผู้ใช้ Steam เพราะไม่มีบัญชีให้กู้คืน หมดอายุก็แค่กด "เข้าชม" ใหม่
+    """
+    now = now or datetime.now(UTC)
+    payload = {"sub": guest_id or new_guest_id(), "typ": GUEST, "iat": now, "exp": now + ttl}
+    return jwt.encode(payload, secret or secret_key(), algorithm=JWT_ALG)
+
+
+def new_guest_id() -> str:
+    """รหัส session ของโหมดเยี่ยมชม — เดาไม่ได้ และแยกจาก accounts.id ด้วยสายตาได้ทันที"""
+    return f"g_{secrets.token_hex(12)}"
+
+
+def viewer_from_token(token: str | None, *, secret: str | None = None) -> dict | None:
+    """แกะ token จากคุกกี้เป็น "ใครกำลังดู" — จุดเดียวของระบบที่แปล token เป็นตัวตน
+
+    คืน {"type": "steam", "id": int,  "username": str,  "guest_id": None}
+         {"type": "guest", "id": None, "username": None, "guest_id": str}
+         None  ไม่มี token / หมดอายุ / ถูกแก้ / เซ็นด้วยกุญแจอื่น / ไม่ใช่ HS256
+
+    token ที่ไม่มีฟิลด์ typ คือ token ที่ออกก่อนมีโหมดเยี่ยมชม ถือเป็น steam ตามเดิม
+    คนที่ค้างล็อกอินอยู่จึงไม่ถูกเด้งออกเพราะการเปลี่ยนครั้งนี้
+    """
     if not token:
         return None
     try:
         p = jwt.decode(token, secret or secret_key(), algorithms=[JWT_ALG], options={"require": ["exp", "sub"]})
         # token เก่าที่ยังมีฟิลด์ role ติดมา ถูกมองข้ามไปเฉย ๆ ไม่ต้องบังคับให้ล็อกอินใหม่
-        return {"id": int(p["sub"]), "username": str(p.get("name", ""))}
+        if p.get("typ") == GUEST:
+            return {"type": GUEST, "id": None, "username": None, "guest_id": str(p["sub"])}
+        return {"type": STEAM, "id": int(p["sub"]), "username": str(p.get("name", "")), "guest_id": None}
     except (jwt.InvalidTokenError, TypeError, ValueError):
         return None
 

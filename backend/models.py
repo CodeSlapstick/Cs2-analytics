@@ -93,7 +93,10 @@ class Match(Base):
     # ใครอัปโหลด (migration 0010) — NULL = ไม่มีเจ้าของ: แมตช์เก่าก่อนมีคอลัมน์นี้
     # หรือแมตช์ที่เจ้าของถูกลบบัญชีไปแล้ว (FK เป็น ON DELETE SET NULL)
     # ข้อมูลไม่มีเจ้าของ: ทุกคนดูได้ แต่แก้/ลบไม่ได้ — ดู can_modify_match() ใน backend/app.py
+    # --- ที่มาของไฟล์ (migration 0010, 0011) — บันทึกตอนรับไฟล์ ไว้คัดข้อมูลตอนเทรนโมเดล ---
     uploaded_by: Mapped[int | None] = mapped_column(ForeignKey("accounts.id", ondelete="SET NULL"))
+    uploader_type: Mapped[str] = mapped_column(Text, nullable=False)   # 'legacy' | 'steam' | 'guest'
+    uploader_guest: Mapped[str | None] = mapped_column(Text)           # รหัส session โหมดเยี่ยมชม (ไม่มีแถวใน accounts)
     # --- สถานะงาน parse (Sprint 2) ---
     status: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'queued'"))
     error_message: Mapped[str | None] = mapped_column(Text)   # เก็บทุก error จาก worker ตามข้อกำหนด

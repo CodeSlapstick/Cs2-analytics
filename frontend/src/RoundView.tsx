@@ -57,6 +57,9 @@ export function RoundView({ demo, roundNum, view, setView }: RoundViewProps) {
   const [playing, setPlaying] = useState(false);
   const [speed, setSpeed] = useState<(typeof SPEEDS)[number]>(1);
   const [time, setTime] = useState(view.time ?? 0);
+  // ชี้เมาส์ที่แถวในตาราง (หรือที่ตัวผู้เล่นบนแผนที่) = ไฮไลต์ชั่วคราว ไม่เขียนลง URL
+  // ต่างจาก view.player ที่เป็นการ "กดค้างไว้" และติดไปกับลิงก์ที่แชร์ได้
+  const [hover, setHover] = useState<string | null>(null);
   const q = useQuery({
     queryKey: ["review-round", demo, roundNum],
     queryFn: () => api.reviewRound(demo, roundNum),
@@ -149,7 +152,7 @@ export function RoundView({ demo, roundNum, view, setView }: RoundViewProps) {
   // เล่นย้อน: แผนที่ต้องเห็นเฉพาะสิ่งที่เกิดขึ้นแล้ว ณ วินาทีนั้น (คนที่ตายแล้ว / ระเบิดที่ยังมีผล / บอมบ์ที่วางแล้ว)
   const pos = positions.data;
   const roster = new Map(
-    d.teams.flatMap((t) => t.players.map((p) => [p.steamid, { name: p.name, color: p.color }] as const)),
+    d.teams.flatMap((t) => t.players.map((p) => [p.steamid, { name: p.name, color: p.color, slot: p.slot }] as const)),
   );
   const live = view.playback && pos ? playersAt(pos, time, roster) : null;
   // บางรอบในเดโมมีการตายที่บันทึกไว้ก่อนรอบเริ่ม (t_round ติดลบ — ส่วนใหญ่คือตกที่สูงตอนสลับรอบ)
@@ -159,6 +162,8 @@ export function RoundView({ demo, roundNum, view, setView }: RoundViewProps) {
   const liveNades = live ? shownNades.filter((n) => nadeActiveAt(n, time)) : shownNades;
   const plantT = d.round.bomb_planted_t;
   const shownBomb = live && plantT != null && time < plantT ? null : d.round.bomb;
+  // ชี้เมาส์อยู่ให้ชนะการกดค้าง — ปล่อยเมาส์แล้วกลับไปที่ตัวที่กดค้างไว้เหมือนเดิม
+  const focusPlayer = hover ?? view.player;
 
   return (
     <div className="review" data-testid="round-view">
@@ -213,8 +218,14 @@ export function RoundView({ demo, roundNum, view, setView }: RoundViewProps) {
 
       {/* หน้าจอ laptop / projector: สามส่วนนี้อยู่ในความสูงจอเดียว แผนที่เป็นจัตุรัสเท่าที่ช่องให้ได้ (styles.css) */}
       <div className="review-grid">
-        <aside className="roster-col" aria-label="รายชื่อทีม">
-          <TeamRoster teams={d.teams} highlight={view.player} onHighlight={(p) => setView({ player: p })} />
+        <aside className="roster-col" aria-label="ตารางระบุตัวผู้เล่น">
+          <TeamRoster
+            teams={d.teams}
+            highlight={focusPlayer}
+            onHighlight={(p) => setView({ player: p })}
+            onHover={setHover}
+            playback={view.playback}
+          />
           {view.player && (
             <button type="button" className="link-btn" onClick={() => setView({ player: null })}>
               ล้างการไฮไลต์
@@ -237,7 +248,8 @@ export function RoundView({ demo, roundNum, view, setView }: RoundViewProps) {
                 zoom={view.zoom}
                 center={view.center}
                 onView={(zoom, center) => setView({ zoom, center })}
-                highlight={view.player}
+                highlight={focusPlayer}
+                onHover={setHover}
                 selected={view.death}
                 onSelect={(o) => setView({ death: o })}
               />
@@ -368,13 +380,28 @@ export interface LivePlayer {
   place: string | null;
   name: string;
   color: string;
+  slot: number | null;   // หมายเลข 1-5 ที่แสดงบนตัวผู้เล่น — คงที่ทั้งแมตช์ (backend/review.py player_slots)
 }
+
+// ------------------------------------------------------------------ สีของทีมบนแผนที่ (โหมดเล่นย้อน)
+// ทั้งทีมใช้สีเดียวกันตามฝั่ง แยกตัวบุคคลด้วยหมายเลข ไม่ใช่ด้วยสี
+// (สีประจำตัว p.color ยังใช้อยู่ในโหมดปกติและในไทม์ไลน์ เพราะที่นั่นไม่มีหมายเลขกำกับ)
+// ฟ้าเข้มกว่าสี CT ตัวจริง เพราะเลขสีขาวต้องอ่านออกบนวง (#4f8cff ได้ contrast 3:1 · ตัวนี้ 6:1)
+const SIDE_FILL: Record<string, string> = { ct: "#2563c9", t: "#f0891c" };
+/** สีตัวเลขบนวง — ส้มเป็นสีอ่อน เลขสีขาวบนส้มอ่านไม่ออก ต้องใช้ตัวเข้ม ส่วนบนฟ้าเข้มใช้ตัวขาว */
+const SIDE_INK: Record<string, string> = { ct: "#ffffff", t: "#20160a" };
+const sideFill = (side: string | null | undefined) => SIDE_FILL[side ?? ""] ?? "#94a3b8";
+const sideInk = (side: string | null | undefined) => SIDE_INK[side ?? ""] ?? "#20160a";
+
+/** เส้นทาง ✕ สองขีดไขว้กัน รัศมี r รอบจุด (0,0) — ใช้วาดคนที่ตายแล้วในโหมดเล่นย้อน */
+const crossPath = (r: number) => `M${-r},${-r} L${r},${r} M${r},${-r} L${-r},${r}`;
 
 /**
  * ตำแหน่งของทุกคน ณ วินาที t — เลื่อนระหว่างสองเฟรมที่บันทึกไว้ให้เดินลื่น
  * (ช่วงระหว่างวินาทีเป็นการวาดประมาณ ไม่ใช่ข้อมูลจากเดโม — มีหมายเหตุกำกับใต้แผนที่)
  */
-function playersAt(pos: RoundPositions, t: number, roster: Map<string, { name: string; color: string }>): LivePlayer[] {
+function playersAt(pos: RoundPositions, t: number,
+                   roster: Map<string, { name: string; color: string; slot: number | null }>): LivePlayer[] {
   if (pos.frames.length === 0) return [];
   const i = Math.max(0, Math.min(pos.frames.length - 1, Math.floor(t / pos.step)));
   const cur = pos.frames[i];
@@ -391,6 +418,7 @@ function playersAt(pos: RoundPositions, t: number, roster: Map<string, { name: s
       place: p.place,
       name: info?.name ?? p.steamid,
       color: info?.color ?? "#9aa4b2",
+      slot: info?.slot ?? null,
     };
   });
 }
@@ -442,6 +470,7 @@ interface MapProps {
   showHotspots: boolean;
   grenades: ReviewGrenade[];
   live?: LivePlayer[] | null; // โหมดเล่นย้อน: คนที่ยังไม่ตาย ณ วินาทีที่ดู (null = ปิดโหมด)
+  onHover?: (steamid: string | null) => void; // ชี้เมาส์ที่ตัวผู้เล่น -> ไฮไลต์แถวในตารางข้างแผนที่
   zoom: number;
   center: [number, number] | null;
   onView: (zoom: number, center: [number, number] | null) => void;
@@ -457,7 +486,7 @@ interface MapProps {
  * โหมดเล่นย้อน (prop live) เพิ่มตัวผู้เล่น ณ วินาทีที่ดู — ไม่มีเส้นทางเดินย้อนหลัง
  * เลือกการตายแล้ว ระเบิดที่แสดงเหลือเฉพาะลูกที่มีผลอยู่ ณ วินาทีนั้น (ควัน/ไฟที่ยังไม่หมด แฟลช/HE ที่เพิ่งแตก)
  */
-export function MapView({ radar, deaths, bomb, overlay, showCells, showHotspots, grenades, live, zoom, center, onView, highlight, selected, onSelect }: MapProps) {
+export function MapView({ radar, deaths, bomb, overlay, showCells, showHotspots, grenades, live, zoom, center, onView, highlight, onHover, selected, onSelect }: MapProps) {
   const s = radar.size;
   // ---- ซูม/เลื่อนดู: viewBox คือกรอบที่มองอยู่ · เก็บบน URL เพื่อให้รีเฟรช/แชร์ลิงก์แล้วเห็นกรอบเดิม
   const span = s / zoom;
@@ -513,13 +542,11 @@ export function MapView({ radar, deaths, bomb, overlay, showCells, showHotspots,
     if (d.attacker_px) block(d.attacker_px[0], d.attacker_px[1], z.atk);
   });
   nades.forEach((n) => n.r_px === 0 && block(n.land_px![0], n.land_px![1], z.nade));
-  live?.forEach((p) => block(p.px[0], p.px[1], z.dot * 0.8));
+  live?.forEach((p) => block(p.px[0], p.px[1], z.dot * 0.9));   // ยังกันไม่ให้ป้ายอื่นทับตัวผู้เล่น
   const deathLabel = new Map<number, LabelPos>();
   deaths.forEach((d) => {
     if (d.victim_px) deathLabel.set(d.order, place(d.victim_px[0], d.victim_px[1], dotR(d), d.victim.name, z.name));
   });
-  // โหมดเล่นย้อน: ชื่อคนวางทีหลังจุดตาย เพราะจุดตายมีเลขกำกับอยู่แล้ว ชื่อคนเป็นตัวที่ขยับหนีได้
-  const liveLabel = live?.map((p) => place(p.px[0], p.px[1], z.dot * 0.8, p.name, z.name * 0.92)) ?? [];
   const nadeLabelPos = nades.map((n) =>
     place(n.land_px![0], n.land_px![1], n.r_px > 0 ? n.r_px : z.nade, `${n.thrower?.name ?? "?"} · ${nadeLabel(n.type)}`, z.nadeName),
   );
@@ -650,19 +677,45 @@ export function MapView({ radar, deaths, bomb, overlay, showCells, showHotspots,
           ),
       )}
 
-      {/* โหมดเล่นย้อน: ตัวผู้เล่นที่ยังไม่ตาย ณ วินาทีนั้น — วงในสีของคน ขอบสีตามฝั่ง */}
-      {live?.map((p, i) => (
-        <g key={`live-${p.steamid}`} opacity={!highlight || highlight === p.steamid ? 1 : 0.3} data-testid="live-player">
-          <circle cx={p.px[0]} cy={p.px[1]} r={z.dot * 0.8} fill={p.color}
-            stroke={p.side === "ct" ? "#58a6ff" : "#ff9d2e"} strokeWidth={z.line * 1.4} />
-          <text x={liveLabel[i].x} y={liveLabel[i].y} textAnchor={liveLabel[i].anchor} className="dot-name" style={halo(z.name * 0.92)}>
-            {p.name}
+      {/* โหมดเล่นย้อน: ตัวผู้เล่นที่ยังไม่ตาย ณ วินาทีนั้น
+          วงทึบสีของฝั่ง (CT ฟ้า / T ส้ม) + หมายเลข 1-5 ในวง — ไม่มีชื่อบนแผนที่ ชื่ออยู่ในตารางข้างแผนที่
+          ขอบวงเป็นสีเข้มไว้ให้ยังแยกออกจากกันตอนสองคนยืนชิดกัน (สีเดียวกันทั้งทีม) */}
+      {live?.map((p) => (
+        <g
+          key={`live-${p.steamid}`}
+          opacity={!highlight || highlight === p.steamid ? 1 : 0.28}
+          data-testid="live-player"
+          data-slot={p.slot ?? ""}
+          data-side={p.side ?? ""}
+          onMouseEnter={() => onHover?.(p.steamid)}
+          onMouseLeave={() => onHover?.(null)}
+        >
+          <circle
+            cx={p.px[0]}
+            cy={p.px[1]}
+            r={highlight === p.steamid ? z.dot : z.dot * 0.9}
+            fill={sideFill(p.side)}
+            stroke={highlight === p.steamid ? "#fff" : "#0b1220"}
+            strokeWidth={z.line * (highlight === p.steamid ? 2 : 1.2)}
+          />
+          <text
+            x={p.px[0]}
+            y={p.px[1]}
+            dy={z.num * 0.36}
+            textAnchor="middle"
+            className="slot-num"
+            style={{ fontSize: z.num * 1.05, fill: sideInk(p.side) }}
+          >
+            {p.slot ?? "?"}
           </text>
-          <title>{`${p.name} · ${p.hp} HP${p.place ? ` · ${p.place}` : ""}`}</title>
+          <title>{`${p.slot ?? "?"} · ${p.name} · ${p.hp} HP${p.place ? ` · ${p.place}` : ""}`}</title>
         </g>
       ))}
 
-      {/* จุดตาย: สีตามคนตาย มีเลขลำดับ ชื่อคนตายข้างวง */}
+      {/* จุดตาย — ตัวเลขบนแผนที่ต้องหมายถึงสิ่งเดียวกันเสมอในแต่ละโหมด ไม่ปนกัน
+            โหมดเล่นย้อน  ✕ กลวงสีของฝั่ง + "หมายเลขผู้เล่น" (ทุกเลขบนแผนที่ = หมายเลขผู้เล่น)
+            โหมดปกติ      วงทึบสีประจำตัว + "ลำดับการตาย" (ตายคนที่ 3 ขึ้นเลข 3) พร้อมชื่อข้างวง
+          ลำดับการตายยังอ่านได้จากไทม์ไลน์ใต้แผนที่ในทั้งสองโหมด */}
       {deaths.map(
         (d) =>
           d.victim_px && (
@@ -676,16 +729,32 @@ export function MapView({ radar, deaths, bomb, overlay, showCells, showHotspots,
                 onSelect(selected === d.order ? null : d.order);
               }}
               data-testid="death-dot"
+              data-mode={live ? "playback" : "normal"}
             >
-              <circle r={dotR(d)} fill={d.victim.color} stroke={selected === d.order ? "#fff" : "#0b1220"} strokeWidth={z.line * 1.3} />
-              <text textAnchor="middle" dy={z.num * 0.36} className="death-num" style={{ fontSize: z.num }}>
-                {d.order}
-              </text>
-              <text x={deathLabel.get(d.order)!.x - d.victim_px[0]} y={deathLabel.get(d.order)!.y - d.victim_px[1]}
-                textAnchor={deathLabel.get(d.order)!.anchor} className="dot-name" style={halo(z.name)}>
-                {d.victim.name}
-              </text>
-              <title>{`${d.order}. ${fmtT(d.t_round)} ${d.victim.name} ตาย · ${weaponLabel(d.weapon)}${d.attacker ? ` · โดย ${d.attacker.name}` : ""}`}</title>
+              {live ? (
+                <>
+                  {/* ✕ กลวง: เส้นล่างสีเข้มไว้ให้ยังเห็นบนพื้นเรดาร์ส่วนที่สว่าง */}
+                  <path d={crossPath(dotR(d))} stroke="#0b1220" strokeWidth={z.line * 3.2} strokeLinecap="round" fill="none" />
+                  <path d={crossPath(dotR(d))} stroke={sideFill(d.victim.side)} strokeWidth={z.line * 1.8}
+                    strokeLinecap="round" fill="none" />
+                  <text x={dotR(d) * 1.05} y={-dotR(d) * 0.75} textAnchor="start" className="slot-num dead"
+                    style={{ ...halo(z.num), fill: sideFill(d.victim.side) }}>
+                    {d.victim.slot ?? "?"}
+                  </text>
+                </>
+              ) : (
+                <>
+                  <circle r={dotR(d)} fill={d.victim.color} stroke={selected === d.order ? "#fff" : "#0b1220"} strokeWidth={z.line * 1.3} />
+                  <text textAnchor="middle" dy={z.num * 0.36} className="death-num" style={{ fontSize: z.num }}>
+                    {d.order}
+                  </text>
+                  <text x={deathLabel.get(d.order)!.x - d.victim_px[0]} y={deathLabel.get(d.order)!.y - d.victim_px[1]}
+                    textAnchor={deathLabel.get(d.order)!.anchor} className="dot-name" style={halo(z.name)}>
+                    {d.victim.name}
+                  </text>
+                </>
+              )}
+              <title>{`${live ? `${d.victim.slot ?? "?"} · ` : `${d.order}. `}${fmtT(d.t_round)} ${d.victim.name} ตาย · ${weaponLabel(d.weapon)}${d.attacker ? ` · โดย ${d.attacker.name}` : ""}`}</title>
             </g>
           ),
       )}
@@ -694,36 +763,64 @@ export function MapView({ radar, deaths, bomb, overlay, showCells, showHotspots,
 }
 
 // ================================================================================================
-// รายชื่อสองทีม
+// ตารางระบุตัวผู้เล่น (legend ข้างแผนที่)
 // ================================================================================================
 interface RosterProps {
   teams: ReviewTeam[];
   highlight: string | null;
   onHighlight: (steamid: string | null) => void;
+  /** ไฮไลต์ชั่วคราวตอนเอาเมาส์ชี้ — แยกจาก highlight ที่กดค้างไว้ */
+  onHover: (steamid: string | null) => void;
+  playback: boolean;
 }
 
-/** สองกล่องแยกตามทีม (ชื่อทีมคงที่ทั้งแมตช์) — หัวกล่องบอกว่ารอบนี้ทีมนั้นเล่นฝั่งไหน */
-export function TeamRoster({ teams, highlight, onHighlight }: RosterProps) {
+/**
+ * บอกว่าหมายเลขไหนคือใคร — ตารางนี้คือสิ่งที่ทำให้หมายเลขบนแผนที่มีความหมาย
+ *
+ * จัดกล่องตามทีม (clan) ซึ่งในหนึ่งรอบเท่ากับจัดตามฝั่งอยู่แล้ว เพราะทีมหนึ่งเล่นได้ฝั่งเดียวต่อรอบ
+ * หัวกล่องจึงใช้สีของฝั่งที่ทีมนั้นเล่น "รอบนี้" — ครึ่งหลังสลับฝั่ง สีหัวกล่องก็สลับตาม
+ * แต่หมายเลขในกล่องไม่ขยับ เพราะมาจาก player_slots() ที่ผูกกับทีม ไม่ผูกกับฝั่ง
+ *
+ * วงกลมเลขหน้าแถวใช้สีและรูปทรงเดียวกับบนแผนที่ เพื่อให้กวาดตาเทียบกันได้ทันที
+ */
+export function TeamRoster({ teams, highlight, onHighlight, onHover, playback }: RosterProps) {
   return (
     <div className="roster" data-testid="team-roster">
       {teams.map((t) => (
-        <div className="team-box" key={t.clan}>
+        <div className={`team-box side-${t.side_this_round}`} key={t.clan}>
           <div className="team-head">
             <b>{t.clan}</b>
             <span className={`badge b-${t.side_this_round}`}>{sideLabel(t.side_this_round)}</span>
             <span className="muted small">รอบนี้</span>
           </div>
           <ul>
-            {t.players.map((p) => (
-              <li key={p.steamid} className={highlight === p.steamid ? "on" : highlight ? "dim" : ""}>
+            {[...t.players].sort((a, b) => (a.slot ?? 99) - (b.slot ?? 99)).map((p) => (
+              <li
+                key={p.steamid}
+                className={[
+                  highlight === p.steamid ? "on" : highlight ? "dim" : "",
+                  p.survived ? "" : "dead",
+                ].filter(Boolean).join(" ")}
+                onMouseEnter={() => onHover(p.steamid)}
+                onMouseLeave={() => onHover(null)}
+                data-testid="roster-row"
+                data-slot={p.slot ?? ""}
+                data-dead={p.survived ? "0" : "1"}
+              >
                 <button
                   type="button"
                   className="pname"
                   onClick={() => onHighlight(highlight === p.steamid ? null : p.steamid)}
-                  title="กดเพื่อไฮไลต์เฉพาะเหตุการณ์ของคนนี้"
+                  title="กดเพื่อไฮไลต์เฉพาะเหตุการณ์ของคนนี้ค้างไว้"
                 >
-                  <span className="pdot" style={{ background: p.color }} />
-                  {p.name}
+                  <span
+                    className="pslot"
+                    style={{ background: sideFill(t.side_this_round), color: sideInk(t.side_this_round) }}
+                    aria-hidden="true"
+                  >
+                    {p.slot ?? "?"}
+                  </span>
+                  <span className="pn">{p.name}</span>
                   {p.kills > 0 && <span className="kills">{p.kills} คิล</span>}
                 </button>
                 <div className="pstat">
@@ -742,6 +839,11 @@ export function TeamRoster({ teams, highlight, onHighlight }: RosterProps) {
           </ul>
         </div>
       ))}
+      <p className="roster-note muted small">
+        {playback
+          ? "หมายเลขบนแผนที่ตรงกับตารางนี้ · คนที่ตายแล้วเป็นเครื่องหมาย ✕ · แถวจางคือคนที่ตายในรอบนี้"
+          : "หมายเลขประจำตัวคงที่ทั้งแมตช์ · เปิดโหมดเล่นย้อนเพื่อเห็นหมายเลขบนแผนที่"}
+      </p>
     </div>
   );
 }

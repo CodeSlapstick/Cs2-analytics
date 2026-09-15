@@ -59,6 +59,15 @@ export function nadeActiveAt(n: ReviewGrenade, t: number): boolean {
   return n.t_land <= t && t - n.t_land <= 3;
 }
 
+/** ชื่อแมตช์ที่คนอ่านรู้เรื่อง — ไม่มีชื่อทีมในเดโมก็ใช้ชื่อไฟล์ */
+export const matchTitle = (m: { team_a: string | null; team_b: string | null; demo_file: string }) =>
+  m.team_a && m.team_b ? `${m.team_a} vs ${m.team_b}` : m.demo_file;
+
+/** 12345 -> "12,345" — ตัวเลขทุกตัวในเว็บใช้ตัวคั่นหลักพันแบบเดียวกัน */
+export const num = (n: number) => n.toLocaleString("th-TH");
+
+export const mb = (n: number) => `${(n / 1024 / 1024).toFixed(1)} MB`;
+
 // ================================================================================================
 // state ของหน้าบน URL
 // ================================================================================================
@@ -67,8 +76,6 @@ export function nadeActiveAt(n: ReviewGrenade, t: number): boolean {
  * แมตช์กับรอบอยู่ใน path (/matches/{demo_file}/rounds/{n}) ส่วนที่เหลืออยู่ที่นี่
  */
 export interface ViewState {
-  sidebar: boolean; // sb=0      ย่อ sidebar
-  board: boolean; // board=1   เปิดแผงสกอร์บอร์ดทั้งแมตช์
   cells: boolean; // cells=1   ซ้อนประเภทช่องจาก grid_ml1
   hotspots: boolean; // hs=1      ซ้อนวง hotspot
   nades: NadeType[]; // g=smoke,flash  ชนิดระเบิดที่แสดง (ไม่มี g = แสดงครบ, g=none = ไม่แสดงเลย)
@@ -101,8 +108,6 @@ export function useViewState() {
   const [params, setParams] = useSearchParams();
   const d = Number(params.get("d"));
   const state: ViewState = {
-    sidebar: params.get("sb") !== "0",
-    board: params.get("board") === "1",
     cells: params.get("cells") === "1",
     hotspots: params.get("hs") === "1",
     nades: parseNades(params.get("g")),
@@ -121,8 +126,6 @@ export function useViewState() {
         (prev) => {
           const next = new URLSearchParams(prev);
           const put = (key: string, value: string | null) => (value === null ? next.delete(key) : next.set(key, value));
-          if ("sidebar" in patch) put("sb", patch.sidebar ? null : "0");
-          if ("board" in patch) put("board", patch.board ? "1" : null);
           if ("cells" in patch) put("cells", patch.cells ? "1" : null);
           if ("hotspots" in patch) put("hs", patch.hotspots ? "1" : null);
           if ("nades" in patch) {
@@ -155,6 +158,33 @@ export function roundUrl(demo: string, round: number, params?: URLSearchParams, 
   drop.forEach((k) => q.delete(k));
   const s = q.toString();
   return `/matches/${encodeURIComponent(demo)}/rounds/${round}${s ? `?${s}` : ""}`;
+}
+
+// ================================================================================================
+// เส้นทางย้อนกลับ (breadcrumb)
+// ================================================================================================
+export interface Crumb {
+  label: string;
+  to?: string; // ไม่มี to = ระดับที่กำลังอยู่ (ไม่ใช่ลิงก์)
+}
+
+/**
+ * แมตช์ › ชื่อแมตช์ › รอบ 7 — กดย้อนได้ทุกระดับที่มี to
+ *
+ * ระดับสุดท้ายเป็นข้อความเปล่าและใส่ aria-current ไว้ เพราะการทำลิงก์ชี้หน้าตัวเอง
+ * ทำให้ screen reader อ่านว่ายังไปที่อื่นได้ ซึ่งไม่จริง
+ */
+export function Breadcrumb({ items }: { items: Crumb[] }) {
+  return (
+    <nav className="crumbs" aria-label="เส้นทางหน้า" data-testid="breadcrumb">
+      {items.map((c, i) => (
+        <span key={`${c.label}-${i}`}>
+          {i > 0 && <span className="crumb-sep" aria-hidden="true">›</span>}
+          {c.to ? <Link to={c.to}>{c.label}</Link> : <b aria-current="page">{c.label}</b>}
+        </span>
+      ))}
+    </nav>
+  );
 }
 
 // ================================================================================================

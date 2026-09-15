@@ -1,12 +1,12 @@
 import { useQuery } from "@tanstack/react-query";
-import { Link, useParams } from "react-router-dom";
-import { ApiError, playerApi, type PlayerMap, type PlayerWeapon } from "./api";
+import { Link, useLocation, useParams } from "react-router-dom";
+import { ApiError, auth, isGuest, playerApi, type PlayerMap, type PlayerWeapon } from "./api";
 import { NotFound, weaponLabel } from "./utils";
 
 /**
  * หน้าสถิติรายคน — ทุกตัวเลขมาจากเดโมที่โหลดเข้าระบบเท่านั้น
- *   /player                 = คนที่ล็อกอินอยู่ (ต้องล็อกอินด้วย Steam)
- *   /player/{steamid64}     = ผู้เล่นคนใดก็ได้ที่อยู่ในเดโมที่โหลดไว้
+ *   /player                 = คนที่ล็อกอินอยู่ (ต้องล็อกอินด้วย Steam — โหมดเยี่ยมชมไม่มี "ฉัน")
+ *   /player/{steamid64}     = ผู้เล่นคนใดก็ได้ที่อยู่ในเดโมที่โหลดไว้ (โหมดเยี่ยมชมดูได้ตามปกติ)
  */
 export function PlayerPage() {
   const { steamId } = useParams();
@@ -17,7 +17,9 @@ export function PlayerPage() {
   const weapons = useQuery({ queryKey: ["player-weapons", who], queryFn: () => playerApi.weapons(who), retry: false, enabled: !!summary.data });
 
   if (summary.isLoading) return <p className="muted">กำลังโหลดสถิติ…</p>;
-  if (summary.error instanceof ApiError) return <PlayerEmpty status={summary.error.status} message={summary.error.message} mine={!steamId} />;
+  if (summary.error instanceof ApiError) {
+    return <PlayerEmpty status={summary.error.status} message={summary.error.message} mine={!steamId} />;
+  }
   if (summary.error) return <p className="err">โหลดสถิติไม่ได้: {(summary.error as Error).message}</p>;
   if (!summary.data) return <NotFound title="ไม่พบผู้เล่นคนนี้" />;
 
@@ -183,19 +185,53 @@ export function PlayerPage() {
 }
 
 /** ยังไม่ผูก Steam (409) หรือไม่มีข้อมูลในเดโม (404) — บอกตรง ๆ ว่าทำอะไรต่อ ไม่โชว์ตัวเลขปลอม */
+/**
+ * ไม่มีสถิติให้แสดง — แยกสองเหตุคนละเรื่องออกจากกัน
+ *   409  ไม่มี "ฉัน" ให้ชี้ (โหมดเยี่ยมชม หรือบัญชีที่ไม่มี steam_id) -> ทางออกคือล็อกอิน Steam
+ *   404  มี "ฉัน" แต่ยังไม่มีเดโมที่คนนี้ลงเล่น                        -> ทางออกคืออัปโหลดเดโม
+ */
 function PlayerEmpty({ status, message, mine }: { status: number; message: string; mine: boolean }) {
+  const me = useQuery({ queryKey: ["me"], queryFn: auth.me, retry: false, staleTime: 5 * 60_000 });
+  const guest = isGuest(me.data?.user);
+  const needsSteam = status === 409;
+  const { pathname } = useLocation();
+
   return (
-    <div className="pl-empty" data-testid="player-empty">
-      <h1>{status === 409 ? "ยังไม่ได้ผูกบัญชีกับ Steam" : "ยังไม่มีสถิติของคุณ"}</h1>
+    <div className="pl-empty card" data-testid="player-empty" data-reason={needsSteam ? "no-steam" : "no-data"}>
+      <h1>{needsSteam ? "ยังไม่มีสถิติของตัวเอง" : "ยังไม่มีสถิติของคุณ"}</h1>
       <p className="muted">{message}</p>
-      {mine && (
-        <p className="muted">
-          สถิติจะขึ้นเมื่อมีเดโมที่คุณลงเล่นอยู่ในระบบ — อัปโหลดเดโมของทีมที่หน้าแมตช์ แล้วกลับมาที่หน้านี้
-        </p>
+
+      {needsSteam && guest && (
+        <>
+          <p className="muted">
+            คุณกำลังใช้โหมดเยี่ยมชม ซึ่งไม่ผูกกับบัญชี Steam จึงยังไม่รู้ว่า "คุณ" คือผู้เล่นคนไหนในเดโม
+            — ล็อกอินด้วย Steam แล้วสถิติของตัวเองจะขึ้นเองถ้ามีเดโมที่คุณลงเล่นอยู่ในระบบ
+          </p>
+          <a className="btn-primary" href={`/auth/steam/login?next=${encodeURIComponent(pathname)}`}>
+            ล็อกอินด้วย Steam เพื่อดูสถิติของตัวเอง
+          </a>
+          <p className="muted small">ระหว่างนี้ยังเปิดดูสถิติของผู้เล่นคนอื่นได้จากสกอร์บอร์ดในหน้าสรุปแมตช์</p>
+        </>
       )}
-      <Link className="btn-primary" to="/matches">
-        ไปหน้าแมตช์
-      </Link>
+
+      {needsSteam && !guest && (
+        <a className="btn-primary" href={`/auth/steam/login?next=${encodeURIComponent(pathname)}`}>
+          ล็อกอินด้วย Steam
+        </a>
+      )}
+
+      {!needsSteam && (
+        <>
+          {mine && (
+            <p className="muted">
+              สถิติจะขึ้นเมื่อมีเดโมที่คุณลงเล่นอยู่ในระบบ — อัปโหลดเดโมของทีมที่หน้าแมตช์ แล้วกลับมาที่หน้านี้
+            </p>
+          )}
+          <Link className="btn-primary" to="/matches">
+            ไปหน้าแมตช์
+          </Link>
+        </>
+      )}
     </div>
   );
 }

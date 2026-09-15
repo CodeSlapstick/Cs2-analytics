@@ -130,6 +130,8 @@ export interface ReviewPerson {
   side: Side | null;
   team: string | null;
   color: string;
+  /** หมายเลข 1-5 ในทีม คงที่ทั้งแมตช์ (backend/review.py player_slots) — null = ข้อมูลทีมและฝั่งขาดทั้งคู่ */
+  slot: number | null;
 }
 
 export interface DeathCell {
@@ -177,6 +179,7 @@ export interface ReviewPlayer {
   name: string;
   steamid: string;
   color: string;
+  slot: number | null;   // หมายเลขเดียวกับที่แสดงบนแผนที่ — ดู ReviewPerson.slot
   side: Side;
   survived: boolean;
   died_at_t: number | null;
@@ -288,10 +291,21 @@ export const api = {
 // ---------------------------------------------------------------------------
 // ล็อกอิน — JWT อยู่ในคุกกี้ httpOnly ที่เซิร์ฟเวอร์ตั้งให้ JavaScript ไม่เคยเห็น token (ไม่ใช้ localStorage)
 // ---------------------------------------------------------------------------
+/**
+ * ใครกำลังดูหน้านี้ — ฟิลด์เดียวกับที่ /auth/me ตอบมา
+ *
+ * type คือจุดเดียวที่หน้าเว็บใช้แยกว่าเป็นผู้ใช้ Steam หรือโหมดเยี่ยมชม
+ * ตอนนี้สิทธิ์เท่ากันทุกอย่าง ฟิลด์นี้จึงใช้แค่แสดงสถานะบนแถบบน
+ * วันไหนจะแยกสิทธิ์จริง ให้ดูจากฟิลด์นี้ อย่ากระจายเงื่อนไขไปทั่วหน้า
+ */
 export interface AuthUser {
-  id: number;
-  username: string;
+  type: "steam" | "guest";
+  id: number | null;         // guest ไม่มีบัญชี จึงเป็น null
+  username: string | null;   // guest ไม่มีชื่อ จึงเป็น null
+  guest_id: string | null;   // รหัส session ของโหมดเยี่ยมชม (ผู้ใช้ Steam เป็น null)
 }
+
+export const isGuest = (u: AuthUser | undefined | null) => u?.type === "guest";
 
 /** สถิติรายคน (/api/players/...) — ตัวเลขทุกตัวมาจากเดโมที่โหลดเข้าระบบ */
 export interface PlayerSummary {
@@ -328,6 +342,8 @@ export interface PlayerWeapon {
 // ไม่ผ่าน fetch เพราะเป็น redirect ออกนอกเว็บ ที่นี่จึงเหลือแค่ "ฉันเป็นใคร" กับ "ออกจากระบบ"
 export const auth = {
   me: () => request<{ user: AuthUser }>("/auth/me"),
+  /** เข้าชมโดยไม่ล็อกอิน — เซิร์ฟเวอร์ออกคุกกี้ session ให้ (ไม่มีบัญชีในฐานข้อมูล) */
+  guest: () => request<{ user: AuthUser }>("/auth/guest", { method: "POST" }),
   logout: () => request<{ ok: boolean }>("/auth/logout", { method: "POST" }),
 };
 
