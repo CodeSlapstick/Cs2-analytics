@@ -134,6 +134,8 @@ export interface ReviewPerson {
   side: Side | null;
   team: string | null;
   color: string;
+  /** หมายเลข 1-5 ในทีม คงที่ทั้งแมตช์ (backend/review.py player_slots) — null = ข้อมูลทีมและฝั่งขาดทั้งคู่ */
+  slot: number | null;
 }
 
 export interface DeathCell {
@@ -181,6 +183,7 @@ export interface ReviewPlayer {
   name: string;
   steamid: string;
   color: string;
+  slot: number | null;   // หมายเลขเดียวกับที่แสดงบนแผนที่ — ดู ReviewPerson.slot
   side: Side;
   survived: boolean;
   died_at_t: number | null;
@@ -266,12 +269,12 @@ export interface GridOverlay {
   ct_win_overall?: number;
   min_kills?: number;
   clusters?: { id: number; name: string; ct_win: number; n_cells: number; duels: number }[];
-  // ct_win = สัดส่วนที่ CT ชนะดวลในช่องนั้น (ทั้งดาต้าเซ็ต) · duels = จำนวนดวลที่นับ — หน้าเว็บระบาย "พื้นที่ได้เปรียบ" จากสองค่านี้
+  // ct_win = สัดส่วนที่ CT ชนะดวลในช่องนั้น (ทั้งดาต้าเซ็ต) · duels = จำนวนดวลที่นับ
+  // หน้าเว็บระบาย "ดวลบ่อย" และ "พื้นที่ได้เปรียบ" จากสองค่านี้
   cells?: { cx: number; cy: number; cluster_id: number; x: number; y: number; w: number; ct_win: number; duels: number }[];
   hotspots?: { id: number; place: string; share: number; duels: number; ct_win: number; px: number; py: number; r: number }[];
 }
 
-/** หน้า Analysis — จุดที่ผู้เล่นตาย นับลงกริด 32×32 เดียวกับโมเดล (backend/review.py deaths_overlay) */
 export interface DeathCellCount {
   cx: number;
   cy: number;
@@ -328,8 +331,9 @@ export const api = {
   reviewRound: (demo: string, n: number) => request<RoundDetail>(`/api/review/${enc(demo)}/rounds/${n}`),
   reviewPositions: (demo: string, n: number) =>
     request<RoundPositions>(`/api/review/${enc(demo)}/rounds/${n}/positions`),
-  readability: (demo: string) => request<Readability>(`/api/analysis/readability?demo=${enc(demo)}`),
   reviewGrid: (map: string) => request<GridOverlay>(`/api/review/grid?map=${enc(map)}`),
+  // --- หน้าเครื่องมือวิเคราะห์ ---
+  readability: (demo: string) => request<Readability>(`/api/analysis/readability?demo=${enc(demo)}`),
   analysisDeaths: (map: string, scope: MatchSource, side: string, demo?: string | null) =>
     request<DeathsOverlay>(
       `/api/analysis/deaths?map=${enc(map)}&scope=${scope}&side=${side}${demo ? `&demo=${enc(demo)}` : ""}`,
@@ -348,12 +352,22 @@ export const api = {
 // ---------------------------------------------------------------------------
 // ล็อกอิน — JWT อยู่ในคุกกี้ httpOnly ที่เซิร์ฟเวอร์ตั้งให้ JavaScript ไม่เคยเห็น token (ไม่ใช้ localStorage)
 // ---------------------------------------------------------------------------
+/**
+ * ใครกำลังดูหน้านี้ — ฟิลด์เดียวกับที่ /auth/me ตอบมา
+ *
+ * type คือจุดเดียวที่หน้าเว็บใช้แยกว่าเป็นผู้ใช้ Steam หรือโหมดเยี่ยมชม
+ * ตอนนี้สิทธิ์เท่ากันทุกอย่าง ฟิลด์นี้จึงใช้แค่แสดงสถานะบนแถบบน
+ * วันไหนจะแยกสิทธิ์จริง ให้ดูจากฟิลด์นี้ อย่ากระจายเงื่อนไขไปทั่วหน้า
+ */
 export interface AuthUser {
-  id: number;
-  username: string;
-  guest?: boolean; // บัญชีผู้เยี่ยมชม (ปุ่ม "ลองใช้ทันที") — ดูได้ทุกอย่าง อัปโหลดเดโมไม่ได้
-  avatar?: string | null; // รูปโปรไฟล์ Steam (มีเฉพาะบัญชีที่ล็อกอินด้วย Steam และตั้ง STEAM_API_KEY)
+  type: "steam" | "guest";
+  id: number | null;         // guest ไม่มีบัญชี จึงเป็น null
+  username: string | null;   // guest ไม่มีชื่อ จึงเป็น null
+  guest_id: string | null;   // รหัส session ของโหมดเยี่ยมชม (ผู้ใช้ Steam เป็น null)
+  avatar?: string | null;    // รูปโปรไฟล์จาก Steam — ไม่มีก็ใช้ตัวอักษรแรกของชื่อแทน
 }
+
+export const isGuest = (u: AuthUser | undefined | null) => u?.type === "guest";
 
 /** สถิติรายคน (/api/players/...) — ตัวเลขทุกตัวมาจากเดโมที่โหลดเข้าระบบ */
 export interface PlayerSummary {
@@ -386,22 +400,13 @@ export interface PlayerWeapon {
   hs_rate: number;
 }
 
-const postJson = (body: unknown): RequestInit => ({
-  method: "POST",
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify(body),
-});
-
+// เข้าระบบทางเดียวคือ Steam — ปุ่มบนหน้า /login ลิงก์ตรงไป /auth/steam/login
+// ไม่ผ่าน fetch เพราะเป็น redirect ออกนอกเว็บ ที่นี่จึงเหลือแค่ "ฉันเป็นใคร" กับ "ออกจากระบบ"
 export const auth = {
   me: () => request<{ user: AuthUser }>("/auth/me"),
-  // remember=false -> คุกกี้หมดเมื่อปิดเบราว์เซอร์ (backend/auth.py set_auth_cookie)
-  login: (username: string, password: string, remember = true) =>
-    request<{ user: AuthUser }>("/auth/login", postJson({ username, password, remember })),
-  register: (username: string, password: string, remember = true) =>
-    request<{ user: AuthUser }>("/auth/register", postJson({ username, password, remember })),
-  logout: () => request<{ ok: boolean }>("/auth/logout", { method: "POST" }),
-  // เข้าเป็น guest คลิกเดียว — คุกกี้แบบ session (backend ปิดได้ด้วย GUEST_LOGIN=0 -> 403)
+  /** เข้าชมโดยไม่ล็อกอิน — เซิร์ฟเวอร์ออกคุกกี้ session ให้ (ไม่มีบัญชีในฐานข้อมูล) */
   guest: () => request<{ user: AuthUser }>("/auth/guest", { method: "POST" }),
+  logout: () => request<{ ok: boolean }>("/auth/logout", { method: "POST" }),
 };
 
 /** who = "me" (บัญชีที่ล็อกอินด้วย Steam) หรือ SteamID64 */

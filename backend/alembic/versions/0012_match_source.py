@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""0008 — แยก "ชุดอ้างอิงที่ใช้เทรนโมเดล" ออกจาก "แมตช์ที่ผู้ใช้อัปโหลด"
+"""0012 — แยก "ชุดอ้างอิงที่ใช้เทรนโมเดล" ออกจาก "แมตช์ที่ผู้ใช้อัปโหลด"
 
 matches.source  'reference' = เดโมชุดตั้งต้นที่ grid_ml1 เทรนจากมัน (อยู่ใน demos/reference/)
                 'upload'    = เดโมที่ผู้ใช้อัปโหลดเข้ามาเอง (อยู่ใน demos/uploads/) — ห้ามเข้าชุดเทรน
@@ -10,8 +10,8 @@ matches.source  'reference' = เดโมชุดตั้งต้นที�
 """
 from backend.db import execute_script
 
-revision = "0008"
-down_revision = "0007"
+revision = "0012"
+down_revision = "0011"
 branch_labels = None
 depends_on = None
 

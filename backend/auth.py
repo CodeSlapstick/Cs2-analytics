@@ -1,21 +1,20 @@
 # -*- coding: utf-8 -*-
 """
-backend/auth.py — ล็อกอินแบบ username/password + JWT ใน httpOnly cookie (เบาที่สุดที่ใช้งานได้)
+backend/auth.py — ล็อกอินด้วย Steam (OpenID 2.0) + JWT ใน httpOnly cookie
 
-    hash_password / verify_password      PBKDF2-SHA256 จาก hashlib ของ Python เอง (ไม่ต้องลง lib เพิ่ม) salt สุ่มต่อคน
-    create_token / user_from_token       JWT (HS256) อายุ 7 วัน เซ็นด้วย SECRET_KEY จาก .env
+    create_token / create_guest_token    JWT (HS256) เซ็นด้วย SECRET_KEY จาก .env
+    viewer_from_token                    แกะ token เป็น "ใครกำลังดู" — จุดเดียวที่แปล token เป็นตัวตน
     set_auth_cookie / clear_auth_cookie  คุกกี้ httpOnly — JavaScript ในหน้าเว็บอ่าน token ไม่ได้ (ไม่เก็บใน localStorage)
-
-    python -m backend.auth [--reset]     สร้าง dev user (dev / cs2dev1234) — docker compose รันให้ตอน api สตาร์ต
     steam_login_url / verify_steam_openid / steam_persona   ล็อกอินด้วย Steam (OpenID 2.0) — ไม่มีรหัสผ่านในระบบเรา
 
-ยังไม่ทำ (ตั้งใจ): reset password, ยืนยันอีเมล, OAuth, role/permission
+ระบบนี้ไม่มีรหัสผ่านและไม่มีหน้าสมัคร เข้าได้สองทาง:
+
+    steam   ล็อกอินผ่าน Steam มีแถวใน accounts และมี steam_id เสมอ
+    guest   โหมดเยี่ยมชม ไม่มีแถวใน accounts มีแต่รหัส session สุ่มในคุกกี้
+
+ตอนนี้ทั้งสองแบบมีสิทธิ์เท่ากันทุก endpoint ยังไม่แบ่ง role
+วันไหนจะแยกสิทธิ์ ให้แก้ที่ app.require_viewer() กับ app.can_modify_match() เท่านั้น
 """
-import argparse
-import asyncio
-import base64
-import hashlib
-import hmac
 import json
 import os
 import re
@@ -24,7 +23,6 @@ import urllib.parse
 import urllib.request
 from datetime import UTC, datetime, timedelta
 
-import asyncpg
 import jwt
 
 import backend.db  # noqa: F401  โหลด .env เข้า environment ก่อนอ่าน SECRET_KEY / COOKIE_SECURE
@@ -32,12 +30,9 @@ import backend.db  # noqa: F401  โหลด .env เข้า environment ก�
 COOKIE_NAME = "cs2_token"
 JWT_ALG = "HS256"
 TOKEN_TTL = timedelta(days=7)
+GUEST_TTL = timedelta(days=1)      # โหมดเยี่ยมชมไม่มีบัญชีให้กู้คืน ไม่ควรค้างในเครื่องเป็นสัปดาห์
 COOKIE_SECURE = os.environ.get("COOKIE_SECURE", "0") == "1"   # 1 = ส่งคุกกี้เฉพาะ HTTPS (เปิดเมื่อ deploy จริง)
 
-PBKDF2_ITERATIONS = 390_000            # ค่าแนะนำของ OWASP สำหรับ PBKDF2-SHA256 (ช้าพอให้เดารหัสยาก ~0.3 วินาทีต่อครั้ง)
-USERNAME_RE = re.compile(r"^[A-Za-z0-9_.-]{3,32}$")
-PASSWORD_MIN = 8
-PASSWORD_MAX = 256
 
 _secret: str | None = None
 
@@ -51,74 +46,63 @@ def secret_key() -> str:
 
 
 # ---------------------------------------------------------------------------
-# รหัสผ่าน
+# JWT — token ชนิดเดียว ใช้ได้ทั้งผู้ใช้ Steam และโหมดเยี่ยมชม แยกกันที่ฟิลด์ typ
 # ---------------------------------------------------------------------------
-def _b64(b: bytes) -> str:
-    return base64.urlsafe_b64encode(b).decode("ascii").rstrip("=")
+STEAM = "steam"       # ล็อกอินผ่าน Steam — มีแถวใน accounts
+GUEST = "guest"       # โหมดเยี่ยมชม — ไม่มีแถวใน accounts
 
 
-def _unb64(s: str) -> bytes:
-    return base64.urlsafe_b64decode(s + "=" * (-len(s) % 4))
-
-
-def hash_password(password: str, *, iterations: int = PBKDF2_ITERATIONS) -> str:
-    """คืน 'pbkdf2_sha256$รอบ$salt$hash' — เก็บจำนวนรอบไว้ในตัว จะเพิ่มรอบทีหลังได้โดยรหัสเก่ายังใช้ได้"""
-    salt = os.urandom(16)
-    dk = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, iterations)
-    return f"pbkdf2_sha256${iterations}${_b64(salt)}${_b64(dk)}"
-
-
-def verify_password(password: str, stored: str | None) -> bool:
-    """เทียบรหัสผ่านกับ hash ที่เก็บไว้ — รูปแบบผิด/ข้อมูลเสียทุกแบบตอบ False ไม่โยน error"""
-    try:
-        algo, iterations, salt, digest = str(stored).split("$")
-        if algo != "pbkdf2_sha256":
-            return False
-        calc = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), _unb64(salt), int(iterations))
-        return hmac.compare_digest(calc, _unb64(digest))       # เทียบแบบเวลาคงที่ กันเดาทีละตัวจากเวลาตอบ
-    except (ValueError, TypeError):
-        return False
-
-
-_dummy_hash: str | None = None
-
-
-def burn_time_like_verify(password: str) -> None:
-    """ตอนหา username ไม่เจอ ให้เสียเวลาเท่ากับตรวจรหัสจริง — เวลาตอบจะได้ไม่บอกว่าชื่อนี้มีอยู่ในระบบไหม"""
-    global _dummy_hash
-    if _dummy_hash is None:
-        _dummy_hash = hash_password(secrets.token_hex(8))
-    verify_password(password, _dummy_hash)
-
-
-def validate_credentials(username: str | None, password: str | None) -> str | None:
-    """คืนข้อความ error ภาษาไทย หรือ None ถ้าใช้ได้"""
-    if not USERNAME_RE.match(username or ""):
-        return "ชื่อผู้ใช้ต้องยาว 3-32 ตัว ใช้ได้เฉพาะ a-z A-Z 0-9 _ . -"
-    if len(password or "") < PASSWORD_MIN:
-        return f"รหัสผ่านต้องยาวอย่างน้อย {PASSWORD_MIN} ตัว"
-    if len(password) > PASSWORD_MAX:
-        return "รหัสผ่านยาวเกินไป"
-    return None
-
-
-# ---------------------------------------------------------------------------
-# JWT
-# ---------------------------------------------------------------------------
 def create_token(user_id: int, username: str, *, secret: str | None = None,
                  ttl: timedelta = TOKEN_TTL, now: datetime | None = None) -> str:
+    """สร้าง JWT ของผู้ใช้ที่ล็อกอินผ่าน Steam แล้ว
+
+    ไม่มีฟิลด์สิทธิ์ใน payload เพราะระบบไม่แบ่ง role — ล็อกอินแล้วทำได้เท่ากันหมด
+    สิทธิ์ที่ยังแยกอยู่คือ "เจ้าของข้อมูล" ซึ่งเทียบจาก id ในฐานข้อมูล ไม่ใช่จาก token
+    """
     now = now or datetime.now(UTC)
-    payload = {"sub": str(user_id), "name": username, "iat": now, "exp": now + ttl}
+    payload = {"sub": str(user_id), "name": username, "typ": STEAM, "iat": now, "exp": now + ttl}
     return jwt.encode(payload, secret or secret_key(), algorithm=JWT_ALG)
 
 
-def user_from_token(token: str | None, *, secret: str | None = None) -> dict | None:
-    """แกะ token จากคุกกี้ — หมดอายุ / ถูกแก้ / เซ็นด้วยกุญแจอื่น / ไม่ใช่ HS256 -> None (= ยังไม่ล็อกอิน)"""
+def create_guest_token(*, guest_id: str | None = None, secret: str | None = None,
+                       ttl: timedelta = GUEST_TTL, now: datetime | None = None) -> str:
+    """สร้าง JWT ของโหมดเยี่ยมชม — ไม่มีแถวใน accounts ไม่มี steam_id
+
+    guest_id เป็นรหัสสุ่มประจำ session ใช้สองอย่าง
+        1. แยกที่มาของเดโมที่อัปโหลด (matches.uploader_guest) — วันหน้าคัดเฉพาะข้อมูลของผู้ใช้ Steam ไปเทรน ML ได้
+        2. นับโควตาอัปโหลดต่อชั่วโมง — ถ้าไม่มีรหัสนี้ guest จะอัปได้ไม่จำกัด
+           เพราะเงื่อนไข WHERE uploaded_by = $1 ไม่เคยแมตช์กับค่า NULL
+
+    อายุสั้นกว่าของผู้ใช้ Steam เพราะไม่มีบัญชีให้กู้คืน หมดอายุก็แค่กด "เข้าชม" ใหม่
+    """
+    now = now or datetime.now(UTC)
+    payload = {"sub": guest_id or new_guest_id(), "typ": GUEST, "iat": now, "exp": now + ttl}
+    return jwt.encode(payload, secret or secret_key(), algorithm=JWT_ALG)
+
+
+def new_guest_id() -> str:
+    """รหัส session ของโหมดเยี่ยมชม — เดาไม่ได้ และแยกจาก accounts.id ด้วยสายตาได้ทันที"""
+    return f"g_{secrets.token_hex(12)}"
+
+
+def viewer_from_token(token: str | None, *, secret: str | None = None) -> dict | None:
+    """แกะ token จากคุกกี้เป็น "ใครกำลังดู" — จุดเดียวของระบบที่แปล token เป็นตัวตน
+
+    คืน {"type": "steam", "id": int,  "username": str,  "guest_id": None}
+         {"type": "guest", "id": None, "username": None, "guest_id": str}
+         None  ไม่มี token / หมดอายุ / ถูกแก้ / เซ็นด้วยกุญแจอื่น / ไม่ใช่ HS256
+
+    token ที่ไม่มีฟิลด์ typ คือ token ที่ออกก่อนมีโหมดเยี่ยมชม ถือเป็น steam ตามเดิม
+    คนที่ค้างล็อกอินอยู่จึงไม่ถูกเด้งออกเพราะการเปลี่ยนครั้งนี้
+    """
     if not token:
         return None
     try:
         p = jwt.decode(token, secret or secret_key(), algorithms=[JWT_ALG], options={"require": ["exp", "sub"]})
-        return {"id": int(p["sub"]), "username": str(p.get("name", ""))}
+        # token เก่าที่ยังมีฟิลด์ role ติดมา ถูกมองข้ามไปเฉย ๆ ไม่ต้องบังคับให้ล็อกอินใหม่
+        if p.get("typ") == GUEST:
+            return {"type": GUEST, "id": None, "username": None, "guest_id": str(p["sub"])}
+        return {"type": STEAM, "id": int(p["sub"]), "username": str(p.get("name", "")), "guest_id": None}
     except (jwt.InvalidTokenError, TypeError, ValueError):
         return None
 
@@ -140,45 +124,6 @@ def clear_auth_cookie(response) -> None:
 
 
 # ---------------------------------------------------------------------------
-# dev user — รันซ้ำได้ มีอยู่แล้วจะข้าม (ไม่ทับรหัสผ่านที่ถูกเปลี่ยนไปแล้ว)
-#   python -m backend.auth            ใช้ DEV_USERNAME / DEV_PASSWORD จาก .env (ค่าเริ่มต้น dev / cs2dev1234)
-#   python -m backend.auth --reset    มี user นี้อยู่แล้วก็ตั้งรหัสผ่านกลับเป็นค่าข้างบน
-# ---------------------------------------------------------------------------
-DEFAULT_USERNAME = "dev"
-DEFAULT_PASSWORD = "cs2dev1234"
-
-
-async def seed(reset: bool = False) -> str:
-    username = os.environ.get("DEV_USERNAME") or DEFAULT_USERNAME
-    password = os.environ.get("DEV_PASSWORD") or DEFAULT_PASSWORD
-    if (err := validate_credentials(username, password)):
-        raise SystemExit(f"[dev user] DEV_USERNAME/DEV_PASSWORD ใช้ไม่ได้: {err}")
-    conn = await asyncpg.connect(backend.db.DATABASE_URL)
-    try:
-        row = await conn.fetchrow("SELECT id FROM accounts WHERE lower(username) = lower($1)", username)
-        if row and not reset:
-            return f"[dev user] มี user '{username}' อยู่แล้ว (id {row['id']}) — ข้าม"
-        if row:
-            await conn.execute("UPDATE accounts SET password_hash = $2 WHERE id = $1", row["id"], hash_password(password))
-            return f"[dev user] ตั้งรหัสผ่านของ '{username}' ใหม่แล้ว"
-        new_id = await conn.fetchval(
-            "INSERT INTO accounts (username, password_hash) VALUES ($1, $2) RETURNING id", username, hash_password(password))
-        return f"[dev user] สร้าง user '{username}' แล้ว (id {new_id})"
-    finally:
-        await conn.close()
-
-
-def main() -> None:
-    ap = argparse.ArgumentParser(description="สร้าง user สำหรับ dev")
-    ap.add_argument("--reset", action="store_true", help="มีอยู่แล้วก็ตั้งรหัสผ่านใหม่")
-    print(asyncio.run(seed(reset=ap.parse_args().reset)), flush=True)
-
-
-if __name__ == "__main__":
-    main()
-
-
-# ---------------------------------------------------------------------------
 # ล็อกอินด้วย Steam (OpenID 2.0)
 #   1) เราพาเบราว์เซอร์ไปที่ steamcommunity.com/openid/login พร้อมบอกว่าเสร็จแล้วส่งกลับมาที่ไหน
 #   2) Steam ส่งกลับมาพร้อมพารามิเตอร์ชุดหนึ่ง — ห้ามเชื่อทันที
@@ -191,6 +136,8 @@ STEAM_CLAIMED_RE = re.compile(r"^https://steamcommunity\.com/openid/id/(7656119\
 STEAM_API_KEY = os.environ.get("STEAM_API_KEY", "")               # ไม่มีก็ล็อกอินได้ แค่ไม่ได้ชื่อ/รูปโปรไฟล์
 # ว่าง = ใครมี Steam ก็เข้าได้ (ค่าที่ผู้ใช้เลือกไว้) | ใส่ SteamID64 คั่นด้วยจุลภาค = อนุญาตเฉพาะรายชื่อนี้
 STEAM_ALLOWED_IDS = {s.strip() for s in os.environ.get("STEAM_ALLOWED_IDS", "").split(",") if s.strip()}
+# ชื่อผู้ใช้ที่ยอมรับ — ใช้ตรวจชื่อที่สร้างจากชื่อโปรไฟล์ Steam ก่อนเอาไปเก็บ (ดู username_for_steam)
+USERNAME_RE = re.compile(r"^[A-Za-z0-9_.-]{3,32}$")
 HTTP_TIMEOUT = 8
 
 

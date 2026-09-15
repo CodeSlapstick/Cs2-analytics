@@ -53,15 +53,18 @@ def test_new_matches_default_to_upload_not_reference():
     assert "upload" in str(col.server_default.arg)
 
 
-def test_upload_route_is_closed_to_guests():
-    """บัญชีผู้เยี่ยมชมเพิ่มข้อมูลเข้าระบบไม่ได้ — ของที่เข้ามาต้องมีเจ้าของเสมอ"""
-    from fastapi import HTTPException
+def test_every_upload_records_where_it_came_from():
+    """โหมดเยี่ยมชมอัปโหลดได้ แต่ทุกไฟล์ต้องติดป้ายที่มา — ไม่งั้นคัด "ของใครเข้าชุดเทรน" ไม่ได้
 
-    from backend import app as appmod
+    uploader_type บังคับ NOT NULL และไม่มีค่าตั้งต้น: ถ้าวันหน้ามีทางเข้าใหม่แล้วลืมระบุที่มา
+    คำสั่ง INSERT จะพังทันที ดีกว่าปล่อยให้แถวนั้นติดป้ายผิดแล้วไหลเข้าชุดเทรน
+    """
+    from backend.models import Match
 
-    with pytest.raises(HTTPException) as e:
-        appmod.forbid_guest({"id": 1, "username": "guest"})
-    assert e.value.status_code == 403
+    col = Match.__table__.c.uploader_type
+    assert col.nullable is False
+    assert col.server_default is None, "uploader_type ห้ามมีค่าตั้งต้น — ที่มาต้องถูกระบุตอน INSERT เสมอ"
+    # และไม่ว่าใครอัป แถวใหม่ก็ยังเป็น source='upload' (เทสต์ข้างบน) จึงไม่เข้าชุดเทรนอยู่ดี
 
 
 @pytest.mark.skipif(not (ROOT / "data" / "all_kills.csv").is_file(), reason="ไม่มี data/all_kills.csv ในเครื่องนี้")

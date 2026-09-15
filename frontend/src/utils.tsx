@@ -1,10 +1,10 @@
-// ตัวช่วยที่ทุกหน้าใช้ร่วมกัน: จัดรูปแบบข้อความ · สีฝั่ง + เลขผู้เล่น · พื้นที่ได้เปรียบ · state บน URL · หน้า 404
+// ตัวช่วยที่ทุกหน้าใช้ร่วมกัน: จัดรูปแบบข้อความ · state บน URL · หน้า 404
 import { useCallback } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import type { ReviewGrenade, ReviewTeam, Side } from "./api";
 
 // ================================================================================================
-// จัดรูปแบบข้อความ (เวลา / % / ชื่ออาวุธ / สาเหตุจบรอบ)
+// จัดรูปแบบข้อความ (เวลา / % / ชื่ออาวุธ / สาเหตุจบรอบ / สีประเภทช่อง)
 // ================================================================================================
 // ตัวช่วยแสดงผลของหน้า Round Review — ข้อความทุกตัวต้องเป็นข้อเท็จจริง ไม่ตัดสินผู้เล่น
 
@@ -18,7 +18,6 @@ export function fmtT(t: number | null | undefined): string {
 export const pct = (x: number | null | undefined) => (x == null ? "—" : `${Math.round(x * 100)}%`);
 
 export const sideLabel = (s: string | null | undefined) => (s === "ct" ? "CT" : s === "t" ? "T" : "?");
-export const otherSide = (s: Side): Side => (s === "ct" ? "t" : "ct");
 
 const WEAPONS: Record<string, string> = {
   ak47: "AK-47", m4a1: "M4A4", m4a1_silencer: "M4A1-S", awp: "AWP", ssg08: "SSG 08", deagle: "Desert Eagle",
@@ -165,12 +164,9 @@ export function advantageLevel(ctWin: number, side: Side): AdvLevel {
 }
 export const ADV_ALPHA: Record<1 | 2 | 3, number> = { 1: 0.3, 2: 0.5, 3: 0.72 };
 
-// ================================================================================================
-// ระเบิด
-// ================================================================================================
 const NADE_LABEL: Record<string, string> = { smoke: "สโมค", flash: "แฟลช", he: "HE", molotov: "โมโลตอฟ", decoy: "ดีคอย" };
 export const NADE_COLOR: Record<string, string> = {
-  smoke: "#D7DEE8", flash: "#F5E663", he: "#F08A8A", molotov: "#FFB35C", decoy: "#B8A9F5",
+  smoke: "#cbd5e1", flash: "#fde047", he: "#f87171", molotov: "#fb923c", decoy: "#a78bfa",
 };
 export const nadeLabel = (t: string) => NADE_LABEL[t] ?? t;
 /** ชนิดที่วาดบนแผนที่ได้จริง — decoy ไม่มีในนี้เพราะเดโมไม่บันทึกว่ามันไปตกที่ไหน */
@@ -184,6 +180,15 @@ export function nadeActiveAt(n: ReviewGrenade, t: number): boolean {
   return n.t_land <= t && t - n.t_land <= 3;
 }
 
+/** ชื่อแมตช์ที่คนอ่านรู้เรื่อง — ไม่มีชื่อทีมในเดโมก็ใช้ชื่อไฟล์ */
+export const matchTitle = (m: { team_a: string | null; team_b: string | null; demo_file: string }) =>
+  m.team_a && m.team_b ? `${m.team_a} vs ${m.team_b}` : m.demo_file;
+
+/** 12345 -> "12,345" — ตัวเลขทุกตัวในเว็บใช้ตัวคั่นหลักพันแบบเดียวกัน */
+export const num = (n: number) => n.toLocaleString("th-TH");
+
+export const mb = (n: number) => `${(n / 1024 / 1024).toFixed(1)} MB`;
+
 // ================================================================================================
 // state ของหน้าบน URL
 // ================================================================================================
@@ -192,10 +197,8 @@ export function nadeActiveAt(n: ReviewGrenade, t: number): boolean {
  * แมตช์กับรอบอยู่ใน path (/matches/{demo_file}/rounds/{n}) ส่วนที่เหลืออยู่ที่นี่
  */
 export interface ViewState {
-  sidebar: boolean; // sb=0      ย่อ sidebar
-  board: boolean; // board=1   เปิดแผงสกอร์บอร์ดทั้งแมตช์
-  grid: GridLayer; // grid=freq|ct|t  ระบายกริดด้วยความถี่ หรือความได้เปรียบของฝั่งนั้น (ไม่มี = ปิด)
-  hotspots: boolean; // hs=1      ซ้อนวงจุดปะทะที่โมเดลหาเจอ
+  grid: GridLayer; // grid=freq|ct|t  ชั้นที่ระบายบนกริดของ grid_ml1 (ไม่มี = ปิด)
+  hotspots: boolean; // hs=1      ซ้อนวง hotspot
   nades: NadeType[]; // g=smoke,flash  ชนิดระเบิดที่แสดง (ไม่มี g = แสดงครบ, g=none = ไม่แสดงเลย)
   zoom: number; // z=2.5     ซูมแผนที่ (1 = เต็มแมพ)
   center: [number, number] | null; // c=x,y  จุดกึ่งกลางที่มองอยู่ (หน่วยพิกเซลของภาพเรดาร์)
@@ -203,6 +206,12 @@ export interface ViewState {
   time: number | null; // t=12.5   วินาทีในรอบที่ดูค้างไว้
   player: string | null; // p=<steamid> ไฮไลต์ผู้เล่น
   death: number | null; // d=<ลำดับ>  การตายที่เลือก
+}
+
+/** grid=freq|ct|t · ลิงก์รุ่นก่อนใช้ cells=1 ซึ่งหมายถึงชั้น "ดวลบ่อย" — เปิดได้เหมือนเดิม */
+function parseGrid(raw: string | null, legacyCells: string | null): GridLayer {
+  if (raw === "freq" || raw === "ct" || raw === "t") return raw;
+  return legacyCells === "1" ? "freq" : "off";
 }
 
 export const MAX_ZOOM = 6;
@@ -225,11 +234,8 @@ function parseCenter(raw: string | null): [number, number] | null {
 export function useViewState() {
   const [params, setParams] = useSearchParams();
   const d = Number(params.get("d"));
-  const g = params.get("grid");
   const state: ViewState = {
-    sidebar: params.get("sb") !== "0",
-    board: params.get("board") === "1",
-    grid: g === "ct" || g === "t" || g === "freq" ? g : "off",
+    grid: parseGrid(params.get("grid"), params.get("cells")),
     hotspots: params.get("hs") === "1",
     nades: parseNades(params.get("g")),
     zoom: clampZoom(Number(params.get("z")) || 1),
@@ -247,9 +253,10 @@ export function useViewState() {
         (prev) => {
           const next = new URLSearchParams(prev);
           const put = (key: string, value: string | null) => (value === null ? next.delete(key) : next.set(key, value));
-          if ("sidebar" in patch) put("sb", patch.sidebar ? null : "0");
-          if ("board" in patch) put("board", patch.board ? "1" : null);
-          if ("grid" in patch) put("grid", !patch.grid || patch.grid === "off" ? null : patch.grid);
+          if ("grid" in patch) {
+            put("grid", !patch.grid || patch.grid === "off" ? null : patch.grid);
+            next.delete("cells");   // ลิงก์รุ่นก่อนใช้ cells=1 — เขียนทับด้วยค่าใหม่ ไม่เก็บทั้งสองตัว
+          }
           if ("hotspots" in patch) put("hs", patch.hotspots ? "1" : null);
           if ("nades" in patch) {
             const list = patch.nades ?? [];
@@ -284,13 +291,40 @@ export function roundUrl(demo: string, round: number, params?: URLSearchParams, 
 }
 
 // ================================================================================================
+// เส้นทางย้อนกลับ (breadcrumb)
+// ================================================================================================
+export interface Crumb {
+  label: string;
+  to?: string; // ไม่มี to = ระดับที่กำลังอยู่ (ไม่ใช่ลิงก์)
+}
+
+/**
+ * แมตช์ › ชื่อแมตช์ › รอบ 7 — กดย้อนได้ทุกระดับที่มี to
+ *
+ * ระดับสุดท้ายเป็นข้อความเปล่าและใส่ aria-current ไว้ เพราะการทำลิงก์ชี้หน้าตัวเอง
+ * ทำให้ screen reader อ่านว่ายังไปที่อื่นได้ ซึ่งไม่จริง
+ */
+export function Breadcrumb({ items }: { items: Crumb[] }) {
+  return (
+    <nav className="crumbs" aria-label="เส้นทางหน้า" data-testid="breadcrumb">
+      {items.map((c, i) => (
+        <span key={`${c.label}-${i}`}>
+          {i > 0 && <span className="crumb-sep" aria-hidden="true">›</span>}
+          {c.to ? <Link to={c.to}>{c.label}</Link> : <b aria-current="page">{c.label}</b>}
+        </span>
+      ))}
+    </nav>
+  );
+}
+
+// ================================================================================================
 // หน้า 404
 // ================================================================================================
 /** 404 ที่มีปุ่มกลับ — ใช้ทั้ง path ที่ไม่มีจริง แมตช์ที่ไม่มีในระบบ และเลขรอบที่เกินจำนวนรอบ */
 export function NotFound({ title = "ไม่พบหน้านี้", detail }: { title?: string; detail?: string }) {
   return (
     <div className="notfound" data-testid="not-found">
-      <p className="eyebrow num">404</p>
+      <p className="eyebrow">404</p>
       <h1>{title}</h1>
       {detail && <p className="muted">{detail}</p>}
       <Link className="btn-primary" to="/matches">

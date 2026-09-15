@@ -3,14 +3,14 @@ import "@fontsource/chakra-petch/700.css";
 import "@fontsource/anuphan/400.css";
 import "@fontsource/anuphan/500.css";
 import "@fontsource/anuphan/600.css";
-import { type FormEvent, type ReactNode, useId, useState } from "react";
+import { type ReactNode, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import { ApiError, auth } from "./api";
 // เส้นโครงสีฟ้าที่สกัดจากภาพเรดาร์ de_mirage จริงของเกม (ที่มาฝังอยู่ในไฟล์ PNG)
 import radarLines from "./assets/brief-mirage-lines.png";
 
-export const DEFAULT_AFTER_LOGIN = "/player";   // หน้าแรกหลังล็อกอิน = สถิติของฉัน (ตรงกับ _safe_next ใน backend/app.py)
+export const DEFAULT_AFTER_LOGIN = "/matches";
 
 /** ป้องกัน open redirect: รับเฉพาะ path ภายในเว็บเรา (ขึ้นต้น / แต่ไม่ใช่ //) */
 export function safeNext(next: string | null): string {
@@ -18,6 +18,12 @@ export function safeNext(next: string | null): string {
 }
 
 /** ข้อความเมื่อกลับมาจาก Steam แบบไม่สำเร็จ (/auth/steam/callback เด้งมาที่ /login?err=...) */
+/** ช่องทางของโปรเจกต์ — เปิดแท็บใหม่ทุกลิงก์ (rel กัน tabnabbing: หน้าที่เปิดใหม่แก้ที่อยู่หน้าเราไม่ได้) */
+const CHANNELS = [
+  { name: "X", href: "https://x.com/UntitledCs2", icon: <IconX /> },
+  { name: "Discord", href: "https://discord.gg/RKUH2c7MZ", icon: <IconDiscord /> },
+];
+
 const STEAM_ERROR: Record<string, string> = {
   steam: "Steam ไม่ยืนยันการล็อกอินครั้งนี้ — ลองกดเข้าสู่ระบบด้วย Steam ใหม่อีกครั้ง",
   steam_denied: "บัญชี Steam นี้ไม่อยู่ในรายชื่อที่เข้าระบบนี้ได้ — ติดต่อผู้ดูแลระบบของทีม",
@@ -39,6 +45,13 @@ function useLiveCounts() {
   });
 }
 
+/**
+ * หน้าล็อกอิน — เข้าระบบได้ทางเดียวคือ Steam
+ *
+ * CS2 เล่นผ่าน Steam ผู้ใช้จริงของระบบจึงมีบัญชี Steam อยู่แล้วทุกคน
+ * หน้านี้เลยไม่มีฟอร์มชื่อผู้ใช้/รหัสผ่าน ไม่มีสมัครสมาชิก และไม่มีลืมรหัสผ่าน
+ * เพราะไม่มีรหัสผ่านให้ลืม — ฝั่ง backend ก็ไม่มี endpoint พวกนี้แล้วเช่นกัน
+ */
 export function LoginPage() {
   const [params] = useSearchParams();
   const next = safeNext(params.get("next"));
@@ -46,57 +59,26 @@ export function LoginPage() {
   const qc = useQueryClient();
   const me = useQuery({ queryKey: ["me"], queryFn: auth.me, retry: false });
   const counts = useLiveCounts().data;
-  const [mode, setMode] = useState<"login" | "register">("login");
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
-  const [remember, setRemember] = useState(false);
-  const [showPw, setShowPw] = useState(false);
-  const [forgotOpen, setForgotOpen] = useState(false);
-  const [error, setError] = useState<string | null>(STEAM_ERROR[params.get("err") ?? ""] ?? null);
+  const [guestErr, setGuestErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const id = useId();
-  const ids = { user: `${id}-user`, pw: `${id}-pw`, err: `${id}-err`, forgot: `${id}-forgot`, hint: `${id}-hint` };
+  // ข้อผิดพลาดมาจาก query string ที่ Steam เด้งกลับมา หรือจากการกดเข้าชมที่ล้มเหลว
+  const error = guestErr ?? STEAM_ERROR[params.get("err") ?? ""] ?? null;
 
   if (me.data) return <Navigate to={next} replace />;
 
-  async function submit(e: FormEvent) {
-    e.preventDefault();
+  /** เข้าชมโดยไม่ล็อกอิน — เซิร์ฟเวอร์ออกคุกกี้ session ให้ แล้วเข้าหน้าที่ตั้งใจจะไปตั้งแต่แรก */
+  async function enterAsGuest() {
     setBusy(true);
-    setError(null);
-    try {
-      const res =
-        mode === "login"
-          ? await auth.login(username, password, remember)
-          : await auth.register(username, password, remember);
-      qc.setQueryData(["me"], res);
-      navigate(next, { replace: true });
-    } catch (err) {
-      if (err instanceof ApiError && err.status === 401 && mode === "login") {
-        setError(`${err.message} — ตรวจตัวสะกดชื่อผู้ใช้อีกครั้ง (ตัวพิมพ์เล็กใหญ่ไม่มีผล) หรือกด “ลืมรหัสผ่าน?” ใต้ช่องรหัสผ่าน`);
-      } else {
-        setError(err instanceof ApiError ? err.message : "ติดต่อเซิร์ฟเวอร์ไม่ได้ — ตรวจการเชื่อมต่อแล้วลองใหม่อีกครั้ง");
-      }
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function guest() {
-    setBusy(true);
-    setError(null);
+    setGuestErr(null);
     try {
       const res = await auth.guest();
       qc.setQueryData(["me"], res);
       navigate(next, { replace: true });
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "ติดต่อเซิร์ฟเวอร์ไม่ได้ — ตรวจการเชื่อมต่อแล้วลองใหม่อีกครั้ง");
-    } finally {
+      setGuestErr(err instanceof ApiError ? err.message : "เข้าโหมดเยี่ยมชมไม่ได้ — ตรวจการเชื่อมต่อแล้วลองใหม่");
       setBusy(false);
     }
   }
-
-  const invalid = error !== null;
-  const describedBy = [invalid && ids.err, mode === "register" && ids.hint].filter(Boolean).join(" ") || undefined;
 
   return (
     <div className="login-shell">
@@ -145,146 +127,55 @@ export function LoginPage() {
       </section>
 
       <section className="login-side">
-        <form className="login-card" onSubmit={submit} data-testid="login-form">
+        <div className="login-card" data-testid="login-card">
           <span className="lc-corner tl" aria-hidden="true" />
           <span className="lc-corner tr" aria-hidden="true" />
           <span className="lc-corner bl" aria-hidden="true" />
           <span className="lc-corner br" aria-hidden="true" />
 
           <div className="lc-head">
-            <h1>{mode === "login" ? "ยินดีต้อนรับกลับ" : "สร้างบัญชีใหม่"}</h1>
-            <p>
-              {mode === "login"
-                ? "รีวิวเดโมของทีมทีละรอบ แล้วดูสถิติของตัวเอง"
-                : "ตั้งชื่อผู้ใช้และรหัสผ่านสำหรับเข้าดูเดโมของทีม"}
-            </p>
+            <h1>ยินดีต้อนรับ, Operator</h1>
+            <p>ล็อกอินด้วย Steam เพื่อผูกสถิติกับบัญชีของคุณ หรือเข้าชมก่อนก็ได้</p>
           </div>
 
-          {/* ทางหลัก: Steam — เป็นทางเดียวที่ระบบรู้ว่าคนไหนในเดโมคือผู้ใช้ จึงเป็นทางที่พาไปถึงสถิติของตัวเอง
-              หน้านี้มีปุ่มพื้นส้มได้ปุ่มเดียว (ดู DESIGN.md) ปุ่มนี้จึงเอาไป และฟอร์มข้างล่างเป็นปุ่มขอบ */}
           <a className="lc-steam" href={`/auth/steam/login?next=${encodeURIComponent(next)}`}>
             <IconSteam />
             <span>เข้าสู่ระบบด้วย Steam</span>
-            <IconArrow />
           </a>
-          <p className="lc-why">ผูก SteamID ให้เอง แล้วเห็นสถิติของตัวเองจากเดโมที่มีในระบบทันที</p>
 
           <p className="lc-or">
-            <span>หรือใช้ชื่อผู้ใช้ของทีม</span>
+            <span>หรือ</span>
           </p>
 
-          <div className="field">
-            <label htmlFor={ids.user}>ชื่อผู้ใช้</label>
-            <div className={`field-box${invalid ? " bad" : ""}`}>
-              <IconUser />
-              <input
-                id={ids.user}
-                name="username"
-                autoComplete="username"
-                autoCapitalize="none"
-                spellCheck={false}
-                value={username}
-                onChange={(e) => {
-                  setUsername(e.target.value);
-                  setError(null);
-                }}
-                aria-invalid={invalid}
-                aria-describedby={describedBy}
-                required
-                autoFocus
-              />
-            </div>
-          </div>
-
-          <div className="field">
-            <label htmlFor={ids.pw}>รหัสผ่าน</label>
-            <div className={`field-box${invalid ? " bad" : ""}`}>
-              <IconLock />
-              <input
-                id={ids.pw}
-                name="password"
-                type={showPw ? "text" : "password"}
-                autoComplete={mode === "login" ? "current-password" : "new-password"}
-                value={password}
-                onChange={(e) => {
-                  setPassword(e.target.value);
-                  setError(null);
-                }}
-                aria-invalid={invalid}
-                aria-describedby={describedBy}
-                required
-              />
-              <button
-                type="button"
-                className="pw-toggle"
-                aria-label={showPw ? "ซ่อนรหัสผ่าน" : "แสดงรหัสผ่าน"}
-                aria-pressed={showPw}
-                onClick={() => setShowPw((v) => !v)}
-              >
-                {showPw ? <IconEyeOff /> : <IconEye />}
-              </button>
-            </div>
-            {mode === "login" && (
-              <button
-                type="button"
-                className="lc-link quiet field-foot"
-                aria-expanded={forgotOpen}
-                aria-controls={ids.forgot}
-                onClick={() => setForgotOpen((o) => !o)}
-              >
-                ลืมรหัสผ่าน?
-              </button>
-            )}
-            {mode === "login" && forgotOpen && (
-              <p id={ids.forgot} className="lc-note">
-                ระบบนี้ยังไม่มีการรีเซ็ตรหัสผ่านด้วยตัวเอง — ติดต่อผู้ดูแลระบบของทีมให้ตั้งรหัสผ่านใหม่ให้
-              </p>
-            )}
-            {mode === "register" && (
-              <p id={ids.hint} className="lc-hint">
-                ชื่อผู้ใช้ 3–32 ตัว (a–z 0–9 _ . -) · รหัสผ่านอย่างน้อย 8 ตัว
-              </p>
-            )}
-          </div>
-
-          <label className="lc-check">
-            <input type="checkbox" checked={remember} onChange={(e) => setRemember(e.target.checked)} />
-            <span>จดจำการเข้าสู่ระบบ 7 วัน</span>
-          </label>
+          {/* ปุ่มรอง: เส้นขอบไม่ใช่พื้นทึบ เพื่อให้เห็นชัดว่าทางหลักคือ Steam */}
+          <button type="button" className="lc-guest" onClick={enterAsGuest} disabled={busy} data-testid="guest-button">
+            <IconVisitor />
+            <span>{busy ? "กำลังเข้า…" : "เข้าชมโดยไม่ต้องล็อกอิน"}</span>
+          </button>
 
           {error && (
-            <p id={ids.err} className="lc-error" role="alert">
+            <p className="lc-error" role="alert">
               <IconAlert />
               <span>{error}</span>
             </p>
           )}
 
-          <button type="submit" className="lc-action" disabled={busy} aria-busy={busy}>
-            {busy && <span className="lc-spin" aria-hidden="true" />}
-            <span>{busy ? "กำลังตรวจสอบ…" : mode === "login" ? "เข้าสู่ระบบ" : "สมัครและเข้าสู่ระบบ"}</span>
-          </button>
+          <p className="lc-note">
+            โหมดเยี่ยมชมใช้งานได้ทุกอย่างเหมือนกัน แต่ไม่มีสถิติของตัวเอง เพราะยังไม่ได้ผูกกับบัญชี Steam
+            — ล็อกอินภายหลังได้จากแถบบนของทุกหน้า
+          </p>
+        </div>
 
-          <div className="lc-foot">
-            <p className="lc-switch">
-              {mode === "login" ? "ยังไม่มีบัญชี?" : "มีบัญชีแล้ว?"}{" "}
-              <button
-                type="button"
-                className="lc-link"
-                onClick={() => {
-                  setMode(mode === "login" ? "register" : "login");
-                  setError(null);
-                  setForgotOpen(false);
-                }}
-              >
-                {mode === "login" ? "สมัครสมาชิก" : "เข้าสู่ระบบ"}
-              </button>
-            </p>
-            {/* ทางรอง: คนที่แค่มาลองดู — เงียบที่สุดในหน้า เพราะไม่ใช่สิ่งที่อยากให้คนของทีมเลือก */}
-            <button type="button" className="lc-link quiet" onClick={guest} disabled={busy} data-testid="guest-login">
-              เข้าดูแบบผู้เยี่ยมชม · ดูอย่างเดียว ไม่ต้องสมัคร
-            </button>
-          </div>
-        </form>
+        <ul className="channels" aria-label="ช่องทางของโปรเจกต์">
+          {CHANNELS.map((c) => (
+            <li key={c.name}>
+              <a href={c.href} target="_blank" rel="noopener noreferrer">
+                {c.icon}
+                <span>{c.name}</span>
+              </a>
+            </li>
+          ))}
+        </ul>
         <p className="login-foot">SP-404 Senior Project · UTCC STECH</p>
       </section>
     </div>
@@ -300,32 +191,6 @@ function Icon({ children, size = 20 }: { children: ReactNode; size?: number }) {
     </svg>
   );
 }
-const IconUser = () => (
-  <Icon>
-    <circle cx="12" cy="8" r="4" />
-    <path d="M4 20c1.6-3.6 4.4-5.4 8-5.4s6.4 1.8 8 5.4" />
-  </Icon>
-);
-const IconLock = () => (
-  <Icon>
-    <rect x="4.5" y="10.5" width="15" height="10" rx="2" />
-    <path d="M8 10.5V7.5a4 4 0 0 1 8 0v3" />
-    <path d="M12 14.5v2.5" />
-  </Icon>
-);
-const IconEye = () => (
-  <Icon>
-    <path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12Z" />
-    <circle cx="12" cy="12" r="3" />
-  </Icon>
-);
-const IconEyeOff = () => (
-  <Icon>
-    <path d="M3 3l18 18" />
-    <path d="M10.6 5.6A9.7 9.7 0 0 1 12 5.5c6 0 9.5 6.5 9.5 6.5a17 17 0 0 1-3 3.8M6.3 7.2A16.6 16.6 0 0 0 2.5 12S6 18.5 12 18.5a9 9 0 0 0 4.2-1" />
-    <path d="M9.9 9.9a3 3 0 0 0 4.2 4.2" />
-  </Icon>
-);
 const IconAlert = () => (
   <Icon>
     <path d="M12 3.5 22 20.5H2L12 3.5Z" />
@@ -333,12 +198,39 @@ const IconAlert = () => (
     <path d="M12 17.5v.01" />
   </Icon>
 );
-const IconArrow = () => (
-  <Icon>
-    <path d="M4.5 12h15" />
-    <path d="M13.5 6l6 6-6 6" />
+
+/** ผู้เยี่ยมชม — คนในกรอบเล็ง สื่อว่า "เข้ามาดูได้" โดยไม่ต้องมีบัญชี */
+const IconVisitor = () => (
+  <Icon size={22}>
+    <circle cx="12" cy="9.5" r="3.2" />
+    <path d="M5.5 19.5c1.3-3 3.8-4.5 6.5-4.5s5.2 1.5 6.5 4.5" />
+    <path d="M3 8V3h5M21 8V3h-5M3 16v5h5M21 16v5h-5" />
   </Icon>
 );
+
+/** โลโก้ X — ขีดไขว้ตามรูปแบรนด์ ไม่ใช้ตัวอักษร X เพราะฟอนต์แต่ละเครื่องหน้าตาไม่เหมือนกัน */
+function IconX() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <path
+        fill="currentColor"
+        d="M18.9 2.3h3.5l-7.6 8.7 8.9 11.8h-6.9l-5.4-7-6.2 7H1.7l7.9-9L1 2.3h7.1l5 6.6 5.8-6.6Zm-1.2 18.2h1.9L6.4 4.1H4.4l13.3 16.4Z"
+      />
+    </svg>
+  );
+}
+
+/** โลโก้ Discord */
+function IconDiscord() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <path
+        fill="currentColor"
+        d="M19.3 5.3A16.8 16.8 0 0 0 15.1 4l-.3.6a12.5 12.5 0 0 1 3.7 1.2 12.6 12.6 0 0 0-10.9 0A12.4 12.4 0 0 1 11.3 4.6L11 4a16.8 16.8 0 0 0-4.2 1.3C4.1 9.3 3.4 13.2 3.7 17a16.6 16.6 0 0 0 5.1 2.6l.6-1a10.9 10.9 0 0 1-1.7-.8l.4-.3a11.9 11.9 0 0 0 10 0l.4.3a10.9 10.9 0 0 1-1.7.8l.6 1A16.6 16.6 0 0 0 22.3 17c.4-4.4-.6-8.3-3-11.7ZM9.3 14.7c-1 0-1.8-.9-1.8-2s.8-2 1.8-2 1.8.9 1.8 2-.8 2-1.8 2Zm5.4 0c-1 0-1.8-.9-1.8-2s.8-2 1.8-2 1.8.9 1.8 2-.8 2-1.8 2Z"
+      />
+    </svg>
+  );
+}
 
 /** เครื่องหมาย Steam — วาดเป็น path เองให้เส้นเข้าชุดกับไอคอนอื่นในหน้านี้ */
 function IconSteam() {

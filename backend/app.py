@@ -7,7 +7,7 @@ backend/app.py — "หลังบ้าน" (backend) ของเว็บ CS
   - ไฟล์นี้ = พนักงานที่คอยรับคำสั่ง ไปหยิบของจากคลัง (PostgreSQL) แล้วส่งกลับไปให้
 
 หน้าที่ของไฟล์นี้มี 3 อย่าง (หน้าเว็บทั้งหมดอยู่ที่ frontend/ — React)
-  1) ล็อกอินด้วย Steam OpenID 2.0 (backend/auth.py) — ทางเข้าเดียวของระบบ
+  1) ล็อกอินด้วย username/password (backend/auth.py)
   2) จำว่า "ใครล็อกอินอยู่" ด้วย JWT ในคุกกี้ httpOnly (JavaScript อ่านไม่ได้)
   3) ตอบ /api/* — ดึงสถิติจากฐานข้อมูลแล้วส่งเป็น JSON ให้หน้าเว็บเอาไปวาด
 
@@ -26,6 +26,8 @@ import mimetypes
 import os
 import re
 import sys
+import time
+import traceback
 import urllib.parse
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -35,7 +37,6 @@ from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, Request,
 from fastapi.concurrency import run_in_threadpool  # เอางานหนักที่ไม่ใช่ async ไปรันในเธรดแยก ไม่ให้เซิร์ฟเวอร์ค้าง
 from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
 
 from backend import auth  # ล็อกอิน: hash รหัสผ่าน + JWT ใน httpOnly cookie
 from backend.db import (  # noqa: F401  (load_dotenv ทำงานตอน import)
@@ -63,14 +64,23 @@ from backend.site_model import available_times, load_site_model, predict_a, read
 ROOT = Path(__file__).resolve().parent.parent   # โฟลเดอร์โปรเจกต์
 ASSETS_DIR = ROOT / "assets"                    # ภาพเรดาร์ของแต่ละแมพ + ค่าปรับเทียบพิกัด (radars.json)
 # ไฟล์ .dem ที่ผู้ใช้อัปโหลดเข้ามา (ไม่ถูก commit — ดู .gitignore)
-# แยกจาก demos/reference/ ที่เป็นชุดตั้งต้นของโมเดล — research/demoparser.py อ่านเฉพาะโฟลเดอร์นั้น
-# ของสองอย่างนี้ห้ามอยู่โฟลเดอร์เดียวกัน ไม่งั้นวันหนึ่งเดโมของผู้ใช้จะถูกรวมเข้าชุดเทรนโดยไม่มีใครรู้
-DEMOS_DIR = ROOT / "demos" / "uploads"
+# คนละโฟลเดอร์กับ demos/reference/ ที่โมเดลเทรนจากมัน — ของที่ผู้ใช้อัปต้องไม่ไหลเข้าชุดเทรน
+# ต้องชี้ที่เดียวกับ backend/jobs.py (worker เป็นคนอ่านไฟล์ที่นี่) — backend/tests/test_data_separation.py เฝ้าไว้
+DEMOS_DIR = Path(os.environ.get("DEMOS_DIR", ROOT / "demos" / "uploads"))
 
 MAX_DEMO_MB = int(os.environ.get("MAX_DEMO_MB", "600"))   # เพดานขนาดไฟล์ที่ยอมรับ กันคนอัปของใหญ่จนดิสก์เต็ม
 # ชื่อไฟล์ที่ยอมรับ — อนุญาตเฉพาะตัวอักษร ตัวเลข และ . _ - ( ) เท่านั้น
 # สำคัญกว่าที่คิด: ถ้าปล่อยให้มี / หรือ .. ในชื่อ คนอัปจะเขียนไฟล์ทับที่ไหนก็ได้ในเครื่อง (path traversal)
 DEMO_NAME_RE = re.compile(r"^[A-Za-z0-9._()-]{1,120}\.dem$", re.IGNORECASE)
+
+# ลายเซ็น 8 ไบต์แรกของไฟล์เดโม CS2 — "PBDEMS2\0" (Protobuf Demo, Source 2)
+# นามสกุลไฟล์เป็นแค่ชื่อ ใครก็เปลี่ยนได้ การเช็คไบต์จริงบอกได้ว่าเป็นเดโม CS2 จริงหรือเปล่า
+# เดโมของ CS:GO รุ่นเก่าขึ้นต้นด้วย "HL2DEMO\0" ซึ่ง parser ตัวนี้อ่านไม่ได้ จึงต้องปฏิเสธด้วย
+DEMO_MAGIC = b"PBDEMS2\x00"
+
+# โควตาอัปโหลดต่อคนต่อชั่วโมง — นับจากตาราง matches ไม่ใช่ตัวนับในหน่วยความจำ
+# ตัวนับในหน่วยความจำหายทุกครั้งที่รีสตาร์ต และถ้ารันหลาย replica จะนับแยกกัน
+UPLOAD_MAX_PER_HOUR = int(os.environ.get("UPLOAD_MAX_PER_HOUR", "20"))
 
 # คอนโซลของ Windows ดีฟอลต์เป็น cp1252 ซึ่งพิมพ์ภาษาไทยไม่ได้ ถ้าไม่ตั้งบรรทัดนี้
 # print() ที่มีข้อความไทยจะโยน UnicodeEncodeError ออกมากลางคัน ทำให้ทั้ง request พัง
@@ -90,10 +100,6 @@ def log(msg: str) -> None:
 
 
 # ค่าจาก .env ที่รากโปรเจกต์ (backend/db.py โหลดเข้า environment ให้แล้วตอน import)
-ALLOW_REGISTER = os.environ.get("ALLOW_REGISTER", "1") == "1"   # 1 = ให้สมัครสมาชิกเองได้ที่หน้า /login
-# 1 = มีปุ่ม "ลองใช้ทันที" ที่หน้า /login เข้าเป็นบัญชี guest คลิกเดียว (ดูได้ทุกอย่าง แต่อัปโหลดเดโมไม่ได้)
-GUEST_LOGIN = os.environ.get("GUEST_LOGIN", "1") == "1"
-GUEST_USERNAME = "guest"
 # ที่อยู่ที่เบราว์เซอร์เห็น (Steam ต้องส่งผู้ใช้กลับมาที่นี่) — ว่าง = เดาจาก Host ของคำขอ ซึ่งถูกต้องเมื่ออยู่หลัง nginx ของ compose
 PUBLIC_URL = os.environ.get("PUBLIC_URL", "").rstrip("/")
 
@@ -128,6 +134,21 @@ app.mount("/assets", StaticFiles(directory=ASSETS_DIR), name="assets")  # URL �
 mimetypes.add_type("image/webp", ".webp")
 
 
+# ---------------------------------------------------------------------------
+# ตัวดักข้อผิดพลาดที่ไม่มีใครดัก — ให้ทุก error ออกมาหน้าตาเดียวกัน {"detail": "..."}
+#
+# ไม่มีตัวนี้ bug ที่หลุดมาจะกลายเป็น 500 ตัวเปล่า หน้าเว็บแยกไม่ออกว่า
+# "เซิร์ฟเวอร์พัง" หรือ "ไม่มีข้อมูล" และรายละเอียดจริงหายไปกับ log ที่ไม่มีใครเปิดดู
+#
+# ข้อความจริงของ exception ไม่ถูกส่งกลับไปให้ผู้ใช้ (อาจมีชื่อตาราง/พาธในเครื่อง)
+# แต่ถูกพิมพ์ลง log ฝั่งเซิร์ฟเวอร์ครบพร้อม traceback
+# ---------------------------------------------------------------------------
+@app.exception_handler(Exception)
+async def unhandled_error(request: Request, exc: Exception):
+    log(f"[ERROR] {request.method} {request.url.path} -> {type(exc).__name__}: {exc}\n{traceback.format_exc()}")
+    return JSONResponse(status_code=500, content={"detail": "เซิร์ฟเวอร์มีข้อผิดพลาดภายใน — ดูรายละเอียดได้ใน log ของเซิร์ฟเวอร์"})
+
+
 async def db(request: Request) -> asyncpg.Connection:
     """Dependency: ขอ connection จากบ่อหนึ่งเส้นให้ route นี้ใช้ แล้วคืนอัตโนมัติเมื่อจบ"""
     pool: asyncpg.Pool | None = request.app.state.pool
@@ -140,85 +161,74 @@ async def db(request: Request) -> asyncpg.Connection:
 # ---------------------------------------------------------------------------
 # ส่วนที่ 3 — ใครล็อกอินอยู่: JWT ในคุกกี้ httpOnly (สร้าง/ตรวจที่ backend/auth.py)
 # ---------------------------------------------------------------------------
-def require_login(request: Request) -> dict:
-    """Dependency: route ไหนใส่อันนี้ = ต้องล็อกอินก่อน ไม่งั้นตอบ 401 ทันที — คืน {id, username}"""
-    user = auth.user_from_token(request.cookies.get(auth.COOKIE_NAME))
-    if not user:
-        raise HTTPException(401, "ยังไม่ได้ล็อกอิน หรือ session หมดอายุ")
-    return user
+def require_viewer(request: Request) -> dict:
+    """Dependency: route ไหนใส่อันนี้ = ต้องมี session ก่อน — ประตูบานเดียวของทั้งระบบ
 
+    คืนค่าเหมือน auth.viewer_from_token():
+        {"type": "steam", "id": int,  "username": str,  "guest_id": None}
+        {"type": "guest", "id": None, "username": None, "guest_id": str}
 
-def is_guest(user: dict) -> bool:
-    """บัญชี guest ดูได้อย่างเดียว — route ที่เปลี่ยนข้อมูล (อัปโหลดเดโม) ต้องเช็กด้วย forbid_guest"""
-    return str(user.get("username", "")).lower() == GUEST_USERNAME
-
-
-def forbid_guest(user: dict = Depends(require_login)) -> dict:
-    """Dependency: ต้องล็อกอิน *และ* ไม่ใช่ guest — ไม่งั้นตอบ 403"""
-    if is_guest(user):
-        raise HTTPException(403, "บัญชีผู้เยี่ยมชมดูได้อย่างเดียว — อัปโหลดเดโมต้องเข้าสู่ระบบด้วยบัญชีของทีม")
-    return user
+    ตอนนี้ทั้งสองแบบมีสิทธิ์เท่ากันทุก endpoint ยังไม่แบ่ง role
+    ทุก route เรียกตัวนี้ตัวเดียว เวลาจะแยกสิทธิ์จริงจึงแก้ได้ที่นี่กับ can_modify_match()
+    ไม่ต้องไปตามแก้ 13 route (ดูตัวอย่างกฎที่จะเขียนได้ในคอมเมนต์ของ can_modify_match)
+    """
+    viewer = auth.viewer_from_token(request.cookies.get(auth.COOKIE_NAME))
+    if not viewer:
+        raise HTTPException(401, "ยังไม่ได้เข้าใช้งาน หรือ session หมดอายุ — ล็อกอินด้วย Steam หรือกดเข้าชมที่หน้าแรก")
+    return viewer
 
 
 # ---------------------------------------------------------------------------
-# ส่วนที่ 4 — ล็อกอิน / ออกจากระบบ
+# ส่วนที่ 4 — ล็อกอินด้วย Steam (ทางเดียวของระบบ)
 #
-# เข้าได้สามทาง โดยตั้งใจ:
-#   Steam OpenID 2.0   ทางหลัก — ทางเดียวที่ระบบรู้ว่าคนไหนในเดโมคือผู้ใช้ จึงเป็นทางที่ได้สถิติรายคน
-#   username/password  บัญชีของทีม (และ dev user ที่ระบบสร้างให้) — ปิดการสมัครได้ด้วย ALLOW_REGISTER=0
-#   guest              คลิกเดียว ดูได้อย่างเดียว — ไว้ให้คนที่มาลองดูโดยไม่ต้องมีบัญชี (GUEST_LOGIN=0 เพื่อปิด)
+# ระบบนี้รองรับเฉพาะผู้ใช้ที่มีบัญชี Steam เพราะ CS2 เล่นผ่าน Steam
+# จึงไม่มีการล็อกอินด้วย username/password และไม่มีหน้าสมัครสมาชิก
+# โครงตารางบังคับข้อนี้ไว้ด้วย: accounts.steam_id เป็น NOT NULL + UNIQUE (migration 0009)
 # ---------------------------------------------------------------------------
-class Credentials(BaseModel):
-    username: str
-    password: str
-    remember: bool = True        # ติ๊ก "จดจำการเข้าสู่ระบบ 7 วัน" — False = คุกกี้หมดเมื่อปิดเบราว์เซอร์
+
+# ---- จำกัดจำนวนครั้งที่ยิงเข้ามาที่ /auth/* ต่อหนึ่ง IP ----
+# ไม่มีรหัสผ่านให้เดาแล้ว แต่ยังต้องกันการยิง callback ถล่ม เพราะ callback หนึ่งครั้ง
+# ทำให้เซิร์ฟเวอร์ต้องโทรออกไปหา Steam สองครั้ง (verify + ขอโปรไฟล์) ซึ่งช้าและมีโควตาของ Valve
+#
+# เก็บในหน่วยความจำของโปรเซสเดียว ไม่ใช้ Redis เพราะระบบนี้รัน api container เดียว
+# ถ้าวันหนึ่งรันหลาย replica ต้องย้ายไปนับที่ Redis ไม่งั้นแต่ละตัวนับแยกกัน
+#
+# นับเป็นช่วงเวลา (window) ไม่ใช่นับสะสม — ครบเวลาแล้วเริ่มนับใหม่
+AUTH_MAX_TRIES = int(os.environ.get("AUTH_MAX_TRIES", "20"))     # กี่ครั้งต่อหนึ่งช่วงเวลา
+AUTH_WINDOW_SEC = int(os.environ.get("AUTH_WINDOW_SEC", "300"))  # ความยาวช่วงเวลา (วินาที)
+_auth_hits: dict[str, tuple[int, float]] = {}                    # ip -> (นับได้กี่ครั้ง, ช่วงเวลานี้เริ่มเมื่อไร)
 
 
-def _logged_in(account, remember: bool = True) -> JSONResponse:
-    """ตอบกลับพร้อมติดคุกกี้ JWT — ใช้ร่วมกันทุกทางเข้า"""
-    user = {"id": account["id"], "username": account["username"]}
-    response = JSONResponse({"user": {**user, "guest": is_guest(user)}})   # รูปเดียวกับ /auth/me — หน้าเว็บใช้แทนกันได้ทันที
-    auth.set_auth_cookie(response, auth.create_token(user["id"], user["username"]), persistent=remember)
-    return response
+def _client_ip(request: Request) -> str:
+    return (request.client.host if request.client else None) or "unknown"
 
 
-@app.post("/auth/register")
-async def auth_register(body: Credentials, conn: asyncpg.Connection = Depends(db)):
-    """สมัครสมาชิกแล้วล็อกอินให้เลย — ปิดได้ด้วย ALLOW_REGISTER=0"""
-    if not ALLOW_REGISTER:
-        raise HTTPException(403, "ระบบนี้ปิดการสมัครสมาชิก")
-    username = body.username.strip()
-    if (err := auth.validate_credentials(username, body.password)):
-        raise HTTPException(400, err)
-    password_hash = await run_in_threadpool(auth.hash_password, body.password)
-    try:
-        row = await conn.fetchrow("""
-            INSERT INTO accounts (username, password_hash, last_login) VALUES ($1, $2, now())
-            RETURNING id, username""", username, password_hash)
-    except asyncpg.UniqueViolationError:
-        raise HTTPException(409, "ชื่อผู้ใช้นี้มีคนใช้แล้ว") from None
-    log(f"[AUTH] สมัครสมาชิก {username} (id {row['id']})")
-    return _logged_in(row, body.remember)
+def rate_limit_auth(request: Request) -> None:
+    """Dependency: เกินโควตาแล้วตอบ 429 ทันที โดยไม่ต้องโทรหา Steam หรือแตะฐานข้อมูล"""
+    ip = _client_ip(request)
+    now = time.monotonic()
+    hits, started = _auth_hits.get(ip, (0, now))
+    if now - started > AUTH_WINDOW_SEC:       # ช่วงเวลาเก่าหมดอายุ เริ่มนับใหม่
+        hits, started = 0, now
+    hits += 1
+    _auth_hits[ip] = (hits, started)
 
+    # กันหน่วยความจำบวมเมื่อมี IP แปลก ๆ เข้ามาเยอะ — เก็บกวาดรายการที่หมดอายุแล้ว
+    if len(_auth_hits) > 1000:
+        for k, (_, t) in list(_auth_hits.items()):
+            if now - t > AUTH_WINDOW_SEC:
+                _auth_hits.pop(k, None)
 
-@app.post("/auth/login")
-async def auth_login(body: Credentials, conn: asyncpg.Connection = Depends(db)):
-    """ตรวจรหัสผ่าน ผ่านแล้วติดคุกกี้ JWT — ผิดทั้งชื่อหรือรหัสตอบข้อความเดียวกัน ไม่บอกว่าชื่อนี้มีอยู่ไหม"""
-    row = await conn.fetchrow(
-        "SELECT id, username, password_hash FROM accounts WHERE lower(username) = lower($1)", body.username.strip())
-    if row is None:
-        await run_in_threadpool(auth.burn_time_like_verify, body.password)   # เวลาตอบเท่ากับกรณีมีชื่อจริง
-        raise HTTPException(401, "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง")
-    if not await run_in_threadpool(auth.verify_password, body.password, row["password_hash"]):
-        raise HTTPException(401, "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง")
-    await conn.execute("UPDATE accounts SET last_login = now() WHERE id = $1", row["id"])
-    return _logged_in(row, body.remember)
+    if hits > AUTH_MAX_TRIES:
+        wait = int(AUTH_WINDOW_SEC - (now - started))
+        raise HTTPException(429, f"เรียกเข้าสู่ระบบบ่อยเกินไป — รออีก {wait} วินาทีแล้วลองใหม่")
 
 
 # ---- ล็อกอินด้วย Steam (OpenID 2.0) — บัญชีที่มาทางนี้ไม่มีรหัสผ่านในระบบเรา (backend/auth.py)
 def _safe_next(next_path: str | None) -> str:
     """กัน open redirect: รับเฉพาะ path ในเว็บเรา (ขึ้นต้น / แต่ไม่ใช่ //) — เหมือน safeNext ฝั่งหน้าเว็บ"""
     p = (next_path or "").strip()
+    # ตกไปที่ /player เพราะหน้าแรกหลังล็อกอินคือ "สถิติของฉัน"
     return p if p.startswith("/") and not p.startswith("//") and not p.startswith("/login") else "/player"
 
 
@@ -240,7 +250,9 @@ def auth_steam_login(request: Request, next: str = "/player"):
 
 
 @app.get("/auth/steam/callback")
-async def auth_steam_callback(request: Request, next: str = "/player", conn: asyncpg.Connection = Depends(db)):
+async def auth_steam_callback(request: Request, next: str = "/player",
+                              _rl: None = Depends(rate_limit_auth),
+                              conn: asyncpg.Connection = Depends(db)):
     """Steam ส่งกลับมาที่นี่ — ตรวจกับ Steam ก่อนเสมอ ผ่านแล้วค่อยสร้าง/หาบัญชีแล้วติดคุกกี้ JWT"""
     params = dict(request.query_params)
     steamid = await run_in_threadpool(auth.verify_steam_openid, params)
@@ -258,8 +270,8 @@ async def auth_steam_callback(request: Request, next: str = "/player", conn: asy
         for username in (auth.username_for_steam(profile["name"], steamid), f"steam_{steamid}"):
             try:
                 row = await conn.fetchrow("""
-                    INSERT INTO accounts (username, password_hash, steam_id, avatar, last_login)
-                    VALUES ($1, NULL, $2, $3, now()) RETURNING id, username""",
+                    INSERT INTO accounts (username, steam_id, avatar, last_login)
+                    VALUES ($1, $2, $3, now()) RETURNING id, username""",
                     username, int(steamid), profile["avatar"])
                 break
             except asyncpg.UniqueViolationError:
@@ -277,37 +289,43 @@ async def auth_steam_callback(request: Request, next: str = "/player", conn: asy
 
 
 @app.post("/auth/guest")
-async def auth_guest(conn: asyncpg.Connection = Depends(db)):
-    """เข้าเป็นบัญชี guest คลิกเดียว (ปิดได้ด้วย GUEST_LOGIN=0) — บัญชีไม่มีรหัสผ่าน จึงล็อกอินทางฟอร์มไม่ได้
-    คุกกี้เป็นแบบ session (หายเมื่อปิดเบราว์เซอร์) เพราะเครื่องที่คนมาลองมักเป็นเครื่องส่วนกลาง"""
-    if not GUEST_LOGIN:
-        raise HTTPException(403, "ระบบนี้ปิดการเข้าใช้แบบผู้เยี่ยมชม")
-    row = await conn.fetchrow("SELECT id, username FROM accounts WHERE lower(username) = $1", GUEST_USERNAME)
-    if row is None:
-        row = await conn.fetchrow(
-            "INSERT INTO accounts (username, last_login) VALUES ($1, now()) RETURNING id, username", GUEST_USERNAME)
-        log(f"[AUTH] สร้างบัญชี {GUEST_USERNAME} (id {row['id']})")
-    else:
-        await conn.execute("UPDATE accounts SET last_login = now() WHERE id = $1", row["id"])
-    return _logged_in(row, remember=False)
+def auth_guest(request: Request, _: None = Depends(rate_limit_auth)):
+    """เข้าชมโดยไม่ล็อกอิน — ออกคุกกี้ session ที่ไม่มีแถวใน accounts
+
+    ทำไมยังต้องออกคุกกี้ ทั้งที่ไม่มีบัญชี
+        1. มีอะไรให้นับโควตาอัปโหลด — ไม่งั้น guest อัปได้ไม่จำกัด (ดู check_upload_quota)
+        2. บันทึกที่มาของเดโมได้ว่ามาจาก session ไหน เผื่อคัดข้อมูลตอนเทรน ML
+        3. หน้าเว็บถาม /auth/me ที่เดียวก็รู้ว่าเป็นใคร ไม่ต้องเก็บสถานะซ้อนใน localStorage
+
+    ผู้ที่เคยล็อกอิน Steam อยู่แล้วเรียกอันนี้ = ลดสิทธิ์ตัวเอง จึงกันไว้ ให้กดออกจากระบบก่อน
+    """
+    if auth.viewer_from_token(request.cookies.get(auth.COOKIE_NAME)) is not None:
+        raise HTTPException(409, "มี session อยู่แล้ว — กดออกจากระบบก่อนถ้าต้องการเปลี่ยนเป็นโหมดเยี่ยมชม")
+    guest_id = auth.new_guest_id()
+    response = JSONResponse({"user": {"type": auth.GUEST, "id": None, "username": None, "guest_id": guest_id}})
+    auth.set_auth_cookie(response, auth.create_guest_token(guest_id=guest_id), persistent=False)
+    log(f"[AUTH] เข้าโหมดเยี่ยมชม {guest_id}")
+    return response
 
 
 @app.get("/auth/me")
-async def auth_me(request: Request, user: dict = Depends(require_login)):
-    """หน้าเว็บถามว่า 'ตอนนี้ฉันล็อกอินอยู่ไหม เป็นใคร' — ยังไม่ล็อกอินตอบ 401 · guest = ดูได้อย่างเดียว
+async def auth_me(request: Request, viewer: dict = Depends(require_viewer)):
+    """หน้าเว็บถามว่า 'ตอนนี้ฉันเข้าใช้งานอยู่ไหม เป็นใคร' — ไม่มี session ตอบ 401
 
-    avatar (รูปโปรไฟล์ Steam) ดึงจากฐานข้อมูล แต่ถ้าฐานข้อมูลล่มก็ยังตอบว่าล็อกอินอยู่ได้
+    หน้าเว็บดูฟิลด์ type ตัวเดียวเพื่อรู้ว่าเป็นผู้ใช้ Steam หรือโหมดเยี่ยมชม
+
+    avatar (รูปโปรไฟล์ Steam) อ่านจากฐานข้อมูล แต่ถ้าฐานข้อมูลล่มก็ยังตอบว่าเข้าใช้งานอยู่ได้
     เพราะตัวตนอยู่ใน JWT อยู่แล้ว — ไม่ควรให้ทั้งเว็บเด้งออกเพราะดึงรูปไม่ได้
     """
     avatar = None
     pool = request.app.state.pool
-    if pool is not None:
+    if viewer["type"] == auth.STEAM and pool is not None:
         try:
             async with pool.acquire() as conn:
-                avatar = await conn.fetchval("SELECT avatar FROM accounts WHERE id = $1", user["id"])
-        except Exception as e:                                    # noqa: BLE001 — รูปหายดีกว่าล็อกอินหลุด
-            log(f"[AUTH] ดึง avatar ของ user {user['id']} ไม่ได้: {e}")
-    return {"user": {**user, "guest": is_guest(user), "avatar": avatar}}
+                avatar = await conn.fetchval("SELECT avatar FROM accounts WHERE id = $1", viewer["id"])
+        except Exception as e:                                    # noqa: BLE001 — รูปหายดีกว่า session หลุด
+            log(f"[AUTH] ดึง avatar ของ user {viewer['id']} ไม่ได้: {e}")
+    return {"user": {**viewer, "avatar": avatar}}
 
 
 @app.post("/auth/logout")
@@ -328,7 +346,11 @@ def rows(records) -> list[dict]:
 
 @app.get("/api/health")
 async def api_health(request: Request):
-    """เช็คว่า DB ต่อได้ไหม มีข้อมูลเท่าไร — ไม่ต้องล็อกอิน ไว้ให้ docker/monitor ถาม"""
+    """เช็คว่า DB ต่อได้ไหม มีข้อมูลเท่าไร — ไม่ต้องล็อกอิน ไว้ให้ docker/monitor ถาม
+
+    จำนวนแมตช์/คิลเป็นตัวเลขรวม ไม่มีชื่อคนหรือข้อมูลของแมตช์ใด — หน้า /login เอาไปโชว์
+    ก่อนผู้ใช้ล็อกอิน (frontend/src/LoginPage.tsx) จึงตั้งใจให้เรียกได้โดยไม่ต้องมี session
+    """
     pool = request.app.state.pool
     if pool is None:
         return JSONResponse({"ok": False, "db": "ยังไม่ได้ต่อ"}, status_code=503)
@@ -342,13 +364,13 @@ async def api_health(request: Request):
 
 
 @app.get("/api/matches")
-async def api_matches(_: dict = Depends(require_login), conn: asyncpg.Connection = Depends(db)):
+async def api_matches(_: dict = Depends(require_viewer), conn: asyncpg.Connection = Depends(db)):
     """รายชื่อแมตช์ทั้งหมดพร้อมสรุป (จาก view match_summary)"""
     return rows(await conn.fetch("SELECT * FROM match_summary ORDER BY id"))
 
 
 @app.get("/api/matches/{match_id}")
-async def api_match(match_id: int, _: dict = Depends(require_login), conn: asyncpg.Connection = Depends(db)):
+async def api_match(match_id: int, _: dict = Depends(require_viewer), conn: asyncpg.Connection = Depends(db)):
     """แมตช์เดียวแบบละเอียด: สรุป + รายรอบ + สกอร์บอร์ดของนักแข่งในแมตช์นั้น"""
     match = await conn.fetchrow("SELECT * FROM match_summary WHERE id = $1", match_id)
     if not match:
@@ -406,7 +428,7 @@ async def api_match(match_id: int, _: dict = Depends(require_login), conn: async
 
 
 @app.get("/api/matches/{match_id}/status")
-async def api_match_status(match_id: int, _: dict = Depends(require_login), conn: asyncpg.Connection = Depends(db)):
+async def api_match_status(match_id: int, _: dict = Depends(require_viewer), conn: asyncpg.Connection = Depends(db)):
     """สถานะงานแกะเดโมของแมตช์ — หน้าเว็บ poll ตัวนี้จนกว่าจะ done หรือ error
 
     status        queued -> parsing -> done | error   (worker เป็นคนขยับ)
@@ -429,10 +451,16 @@ async def api_match_status(match_id: int, _: dict = Depends(require_login), conn
 #   /api/players/me/... = คนที่ล็อกอินอยู่ (ต้องล็อกอินด้วย Steam ถึงจะรู้ว่าเป็น SteamID ไหน)
 #   ตัวเลขทุกตัวมาจากเดโมที่โหลดเข้าระบบเท่านั้น — ไม่มีข้อมูล = บอกว่าไม่มี ไม่เดาค่าให้
 # ---------------------------------------------------------------------------
-async def _player_id(conn: asyncpg.Connection, who: str, user: dict) -> int:
-    """'me' = SteamID ของบัญชีที่ล็อกอินอยู่ (บัญชีรหัสผ่านล้วนยังไม่มี) · หรือใส่ SteamID64 ตรง ๆ"""
+async def _player_id(conn: asyncpg.Connection, who: str, viewer: dict) -> int:
+    """'me' = SteamID ของบัญชีที่ล็อกอินอยู่ · หรือใส่ SteamID64 ตรง ๆ
+
+    โหมดเยี่ยมชมไม่มี "ฉัน" ให้ชี้ (ไม่มีบัญชี ไม่มี steam_id) จึงตอบ 409 ให้หน้าเว็บ
+    เอาไปแสดงปุ่มล็อกอิน — แต่ยังเปิดดูสถิติของผู้เล่นคนอื่นด้วย SteamID64 ได้ตามปกติ
+    """
     if who == "me":
-        row = await conn.fetchrow("SELECT steam_id FROM accounts WHERE id = $1", user["id"])
+        if viewer["type"] == auth.GUEST:
+            raise HTTPException(409, "โหมดเยี่ยมชมไม่มีสถิติของตัวเอง — ล็อกอินด้วย Steam เพื่อดูสถิติของตัวเอง")
+        row = await conn.fetchrow("SELECT steam_id FROM accounts WHERE id = $1", viewer["id"])
         if not row or row["steam_id"] is None:
             raise HTTPException(409, "บัญชีนี้ยังไม่ได้ผูกกับ Steam — ล็อกอินด้วย Steam เพื่อดูสถิติของตัวเอง")
         return int(row["steam_id"])
@@ -442,9 +470,9 @@ async def _player_id(conn: asyncpg.Connection, who: str, user: dict) -> int:
 
 
 @app.get("/api/players/{who}/summary")
-async def api_player_summary(who: str, user: dict = Depends(require_login), conn: asyncpg.Connection = Depends(db)):
+async def api_player_summary(who: str, viewer: dict = Depends(require_viewer), conn: asyncpg.Connection = Depends(db)):
     """สรุปของผู้เล่นคนเดียว: ภาพรวม + entry แยกฝั่ง + clutch 1v1..1v5 (ทั้งหมดจากเดโมที่โหลดไว้)"""
-    steam_id = await _player_id(conn, who, user)
+    steam_id = await _player_id(conn, who, viewer)
     row = await conn.fetchrow("SELECT * FROM player_stats WHERE steam_id = $1", steam_id)
     if row is None or not row["rounds"]:
         raise HTTPException(404, "ยังไม่มีข้อมูลของผู้เล่นคนนี้ในเดโมที่โหลดไว้")
@@ -483,9 +511,9 @@ async def api_player_summary(who: str, user: dict = Depends(require_login), conn
 
 @app.get("/api/players/{who}/matches")
 async def api_player_matches(who: str, limit: int = Query(20, ge=1, le=100),
-                             user: dict = Depends(require_login), conn: asyncpg.Connection = Depends(db)):
+                             viewer: dict = Depends(require_viewer), conn: asyncpg.Connection = Depends(db)):
     """แมตช์ล่าสุดของผู้เล่นคนนี้ พร้อมผลแพ้/ชนะและ rating รายแมตช์"""
-    steam_id = await _player_id(conn, who, user)
+    steam_id = await _player_id(conn, who, viewer)
     return rows(await conn.fetch("""
         SELECT match_id, demo_file, map_name, team_a, team_b, imported_at, rounds, rounds_won, result,
                kills, deaths, assists, adr, kast, rating
@@ -493,9 +521,9 @@ async def api_player_matches(who: str, limit: int = Query(20, ge=1, le=100),
 
 
 @app.get("/api/players/{who}/maps")
-async def api_player_maps(who: str, user: dict = Depends(require_login), conn: asyncpg.Connection = Depends(db)):
+async def api_player_maps(who: str, viewer: dict = Depends(require_viewer), conn: asyncpg.Connection = Depends(db)):
     """รวมรายแมพ: เล่นกี่แมตช์ ชนะกี่แมตช์ rating/ADR เฉลี่ย"""
-    steam_id = await _player_id(conn, who, user)
+    steam_id = await _player_id(conn, who, viewer)
     return rows(await conn.fetch("""
         SELECT map_name, matches, wins, losses, rounds, win_rate, rating, adr
         FROM player_map_stats WHERE steam_id = $1 ORDER BY matches DESC, wins DESC""", steam_id))
@@ -503,9 +531,9 @@ async def api_player_maps(who: str, user: dict = Depends(require_login), conn: a
 
 @app.get("/api/players/{who}/weapons")
 async def api_player_weapons(who: str, limit: int = Query(8, ge=1, le=30),
-                             user: dict = Depends(require_login), conn: asyncpg.Connection = Depends(db)):
+                             viewer: dict = Depends(require_viewer), conn: asyncpg.Connection = Depends(db)):
     """อาวุธที่ใช้ฆ่าบ่อยที่สุด + %หัวของอาวุธนั้น (นับเฉพาะการดวล)"""
-    steam_id = await _player_id(conn, who, user)
+    steam_id = await _player_id(conn, who, viewer)
     return rows(await conn.fetch("""
         SELECT weapon, kills, headshots, hs_rate FROM player_weapon_stats
         WHERE steam_id = $1 ORDER BY kills DESC LIMIT $2""", steam_id, limit))
@@ -532,6 +560,11 @@ def save_upload(file: UploadFile, dest: Path) -> int:
     try:
         with open(part, "wb") as out:
             while chunk := file.file.read(1024 * 1024):
+                # ก้อนแรกมีหัวไฟล์อยู่ — ตรวจลายเซ็นตรงนี้เลย จะได้ตัดจบก่อนเขียนครบทั้งไฟล์
+                # ถ้าไปตรวจตอนท้าย จะเสียเวลาและพื้นที่ดิสก์ไปกับไฟล์ที่รู้อยู่แล้วว่าใช้ไม่ได้
+                if size == 0 and not chunk.startswith(DEMO_MAGIC):
+                    raise HTTPException(400, "ไฟล์นี้ไม่ใช่เดโมของ CS2 — หัวไฟล์ไม่ใช่ PBDEMS2 "
+                                             "(เดโมของ CS:GO รุ่นเก่าใช้กับระบบนี้ไม่ได้)")
                 size += len(chunk)
                 if size > limit:
                     raise HTTPException(413, f"ไฟล์ใหญ่เกิน {MAX_DEMO_MB} MB")
@@ -547,11 +580,66 @@ def save_upload(file: UploadFile, dest: Path) -> int:
         part.unlink(missing_ok=True)   # เหลือ .part ค้างอยู่ = อัปไม่สำเร็จ เก็บกวาดทิ้ง
 
 
+async def check_upload_quota(conn: asyncpg.Connection, viewer: dict) -> None:
+    """เกินโควตาต่อชั่วโมงแล้วตอบ 429 — นับจาก matches.imported_at ของคนนั้น
+
+    นับจากฐานข้อมูลไม่ใช่หน่วยความจำ เพราะตัวนับในหน่วยความจำหายทุกครั้งที่รีสตาร์ต
+    และการอัปโหลดหนึ่งครั้งกิน CPU ของ worker เป็นนาที จึงต้องนับให้แม่น
+
+    นับแยกกันตามชนิดของผู้ดู โดยใช้ index ที่ทำไว้ให้ตรงกับ query ทั้งสองแบบ
+        steam  uploaded_by    -> matches_uploaded_by_time_idx     (migration 0010)
+        guest  uploader_guest -> matches_uploader_guest_time_idx  (migration 0011)
+
+    ถ้านับ guest ด้วย uploaded_by จะไม่ได้ผลเลย เพราะค่าของ guest เป็น NULL
+    และ NULL = NULL ไม่เป็นจริงใน SQL — เท่ากับเปิดให้อัปได้ไม่จำกัด
+    """
+    if viewer["type"] == auth.GUEST:
+        column, value = "uploader_guest", viewer["guest_id"]
+    else:
+        column, value = "uploaded_by", viewer["id"]
+    used = await conn.fetchval(f"""
+        SELECT count(*) FROM matches
+        WHERE {column} = $1 AND imported_at > now() - interval '1 hour';
+    """, value)
+    if used >= UPLOAD_MAX_PER_HOUR:
+        raise HTTPException(429, f"อัปโหลดครบโควตาแล้ว ({UPLOAD_MAX_PER_HOUR} ไฟล์ต่อชั่วโมง) "
+                                 "— รอสักครู่แล้วลองใหม่")
+
+
+def is_match_owner(match: dict, viewer: dict) -> bool:
+    """ผู้ดูคนนี้เป็นเจ้าของแมตช์นี้จริงไหม — ไม่เกี่ยวกับว่า "ทำได้หรือไม่" (นั่นคือ can_modify_match)
+
+    uploaded_by เป็น NULL ได้สามกรณี และทั้งสามถือว่า "ไม่มีเจ้าของที่เป็นบัญชี Steam":
+        1. แมตช์เก่าที่โหลดเข้าระบบก่อนมี migration 0010
+        2. แมตช์ที่เจ้าของถูกลบบัญชีไปแล้ว (FK เป็น ON DELETE SET NULL)
+        3. แมตช์ที่ผู้อัปโหลดใช้โหมดเยี่ยมชม (เทียบด้วย uploader_guest แทน)
+    แยกสามกรณีนี้ออกจากกันได้ที่คอลัมน์ uploader_type (migration 0011)
+    """
+    if viewer["type"] == auth.GUEST:
+        return match.get("uploader_guest") is not None and match["uploader_guest"] == viewer["guest_id"]
+    owner = match.get("uploaded_by")
+    return owner is not None and owner == viewer["id"]
+
+
+def can_modify_match(match: dict, viewer: dict) -> bool:
+    """แก้/ลบแมตช์นี้ได้ไหม — กฎสิทธิ์ทั้งหมดของข้อมูลแมตช์อยู่ในฟังก์ชันนี้ที่เดียว
+
+    ตอนนี้: ผู้ดูทุกคนทำได้เท่ากัน ทั้งผู้ใช้ Steam และโหมดเยี่ยมชม ตามที่ตกลงว่ายังไม่แยกสิทธิ์
+    แต่ is_match_owner() ที่คำนวณความเป็นเจ้าของยังอยู่ครบและถูกทดสอบไว้ — ไม่ได้ลบทิ้งไปกับ role
+
+    วันที่จะแยกสิทธิ์จริง แก้บรรทัด return ข้างล่างบรรทัดเดียว เช่น
+        return is_match_owner(match, viewer)                              เฉพาะเจ้าของ
+        return viewer["type"] == auth.STEAM and is_match_owner(...)       เฉพาะเจ้าของที่เป็นผู้ใช้ Steam
+        return viewer["type"] == auth.STEAM                               ผู้ใช้ Steam ทุกคน guest อ่านได้เท่านั้น
+    """
+    return True
+
+
 @app.post("/api/demos")
 async def api_upload_demo(
     file: UploadFile = File(..., description="ไฟล์ .dem หนึ่งไฟล์"),
     force: str = Form("0"),                     # "1" = แมตช์นี้เคยโหลดแล้วให้ลบของเดิมทิ้งแล้วโหลดใหม่
-    _: dict = Depends(forbid_guest),            # guest ดูได้อย่างเดียว
+    viewer: dict = Depends(require_viewer),     # เข้าใช้งานแล้วอัปได้ทุกคน ทั้ง Steam และโหมดเยี่ยมชม
     conn: asyncpg.Connection = Depends(db),
 ):
     """รับเดโมหนึ่งไฟล์ เก็บลงดิสก์ แล้วส่งงานแกะเข้าคิว — ตอบ 202 ทันที ไม่รอแกะ
@@ -575,29 +663,48 @@ async def api_upload_demo(
         raise HTTPException(409, f"แมตช์ {name} มีอยู่ในระบบแล้ว (Match ID: {existing['id']}, สถานะ {existing['status']}) "
                                  "— ติ๊ก \"โหลดทับของเดิม\" ถ้าต้องการโหลดใหม่")
 
-    # ---- 3) เขียนไฟล์ลงดิสก์ --------------------------------------------
+    # ---- 3) โควตาต่อชั่วโมง — เช็คก่อนเขียนดิสก์ จะได้ไม่เสียพื้นที่ไปกับไฟล์ที่จะถูกปฏิเสธ
+    await check_upload_quota(conn, viewer)
+
+    # ---- 4) เขียนไฟล์ลงดิสก์ --------------------------------------------
     DEMOS_DIR.mkdir(parents=True, exist_ok=True)
     dem_path = DEMOS_DIR / name
     size = await run_in_threadpool(save_upload, file, dem_path)
 
-    # ---- 4) สร้าง/รีเซ็ตแถว matches เป็น queued แล้วส่งงานเข้าคิว ------------
+    # ---- 5) สร้าง/รีเซ็ตแถว matches เป็น queued แล้วส่งงานเข้าคิว ------------
     # ตัวเซิร์ฟเวอร์ไม่แกะเดโมเองอีกแล้ว (เดโมใหญ่แกะเป็นนาที request จะค้าง)
     # worker (python -m backend.jobs) หยิบงานไปทำ แล้วหน้าเว็บ poll ที่ /api/matches/{id}/status
+    # ที่มาของไฟล์ บันทึกตั้งแต่ตอนรับ ไม่ใช่ตอนแกะเสร็จ — แมตช์ที่แกะพังก็ยังรู้ว่าใครอัป
+    # เก็บทั้งชนิดและตัวตน เพื่อให้วันหน้าคัด "เฉพาะข้อมูลของผู้ใช้ Steam" ไปเทรน ML ได้ (migration 0011)
+    up_type = viewer["type"]
+    up_account = viewer["id"]           # guest เป็น None — ไม่มีแถวใน accounts ให้ผูก
+    up_guest = viewer["guest_id"]       # ผู้ใช้ Steam เป็น None (CHECK ในฐานข้อมูลบังคับไว้)
     if existing:
         match_id = existing["id"]     # เก็บ id เดิมไว้ ลิงก์/บุ๊กมาร์กเก่าจะได้ไม่พัง
+        # imported_at = now() ด้วย เพราะการอัปทับคือ "การรับคำขอครั้งใหม่" ต้องนับเข้าโควตา
+        # ถ้าไม่อัปเดต เวลาจะค้างอยู่ที่การอัปครั้งแรก แล้วยิงอัปทับซ้ำ ๆ เลี่ยงโควตาได้ไม่จำกัด
+        # ที่มาเปลี่ยนเป็นคนล่าสุด เพราะเนื้อข้อมูลในแถวนี้มาจากไฟล์ของเขา
         await conn.execute("""
             UPDATE matches SET status = 'queued', error_message = NULL, job_id = NULL,
-                               started_at = NULL, finished_at = NULL
+                               started_at = NULL, finished_at = NULL, imported_at = now(),
+                               uploaded_by = $2, uploader_type = $3, uploader_guest = $4
             WHERE id = $1;
-        """, match_id)
+        """, match_id, up_account, up_type, up_guest)
     else:
-        match_id = await conn.fetchval(
-            "INSERT INTO matches (demo_file, status) VALUES ($1, 'queued') RETURNING id;", name)
+        match_id = await conn.fetchval("""
+            INSERT INTO matches (demo_file, status, uploaded_by, uploader_type, uploader_guest)
+            VALUES ($1, 'queued', $2, $3, $4) RETURNING id;
+        """, name, up_account, up_type, up_guest)
 
     try:
         job_id = await run_in_threadpool(enqueue_parse, match_id)
     except QueueUnavailable as e:
         await conn.execute("UPDATE matches SET status = 'error', error_message = $2 WHERE id = $1;", match_id, str(e))
+        # ไฟล์เพิ่งเขียนลงดิสก์ไปหลายร้อยเมกะ แต่ไม่มีใครจะมาแกะมันแล้ว — เก็บกวาดทิ้ง
+        # ไม่ลบ = อัปซ้ำตอน Redis ล่มทีละไฟล์ ดิสก์เต็มโดยไม่มีอะไรเตือน
+        # แต่ถ้าเป็นการอัปทับของเดิม (replace) ห้ามลบ ไฟล์เดิมที่ใช้งานได้จะหายไปด้วย
+        if not existing:
+            dem_path.unlink(missing_ok=True)
         log(f"[UPLOAD] {name}: {e}")
         raise HTTPException(503, f"รับไฟล์แล้วแต่ส่งงานเข้าคิวไม่ได้ — เปิด Redis ด้วย docker compose up -d redis ({e})")
     await conn.execute("UPDATE matches SET job_id = $2 WHERE id = $1;", match_id, job_id)
@@ -632,11 +739,18 @@ async def _review_match(conn: asyncpg.Connection, demo_file: str) -> dict:
 
 
 async def _review_roster(conn: asyncpg.Connection, match_id: int) -> list[dict]:
-    """ทุกคนในแมตช์ + ทีม — แมตช์ที่โหลดก่อน migration 0004 (team_clan ว่าง) ผูกทีมจาก player_rounds ตอนนี้แทน"""
+    """ทุกคนในแมตช์ + ทีม + ฝั่งที่เริ่มเกม
+
+    team       ใช้จัดกล่องทีมและแบ่งกลุ่มสี/หมายเลข (review.player_groups)
+    start_side ทางถอยของการแบ่งกลุ่มเมื่อเดโมไม่มีชื่อทีม — ไม่เปลี่ยนตลอดแมตช์
+
+    แมตช์ที่โหลดก่อน migration 0004 (team_clan ว่าง) ผูกทีมจาก player_rounds ตอนนี้แทน
+    """
     rows = await conn.fetch("""
-        SELECT mp.steam_id, p.name, mp.team_clan FROM match_players mp JOIN players p USING (steam_id)
-        WHERE mp.match_id = $1""", match_id)
-    roster = [{"steam_id": r["steam_id"], "name": r["name"], "team": r["team_clan"]} for r in rows]
+        SELECT mp.steam_id, p.name, mp.team_clan, mp.start_side FROM match_players mp
+        JOIN players p USING (steam_id) WHERE mp.match_id = $1""", match_id)
+    roster = [{"steam_id": r["steam_id"], "name": r["name"], "team": r["team_clan"],
+               "start_side": r["start_side"]} for r in rows]
     if roster and all(r["team"] for r in roster):
         return roster
     pr = await conn.fetch("""
@@ -644,14 +758,14 @@ async def _review_roster(conn: asyncpg.Connection, match_id: int) -> list[dict]:
         JOIN rounds r ON r.id = pr.round_id JOIN players p USING (steam_id) WHERE r.match_id = $1""", match_id)
     team_of = assign_teams([dict(x) for x in pr])
     names = {x["steam_id"]: x["name"] for x in pr}
-    return [{"steam_id": sid, "name": names.get(sid), "team": team} for sid, team in team_of.items()]
+    # ฝั่งที่เริ่มเกม = ฝั่งของรอบแรกสุดที่คนนั้นลงเล่น
+    first = {}
+    for x in sorted(pr, key=lambda r: r["round_num"]):
+        first.setdefault(x["steam_id"], x["side"])
+    return [{"steam_id": sid, "name": names.get(sid), "team": team, "start_side": first.get(sid)}
+            for sid, team in team_of.items()]
 
 
-# ---------------------------------------------------------------------------
-# ส่วนที่ 8 — หน้า Analysis: เทียบ "แมตช์ที่อัปโหลด" กับ "ชุดอ้างอิงที่โมเดลเทรนจากมัน"
-#
-# ชุดอ้างอิง (source='reference') คือเดโมชุดเดียวกับที่ research/grid_ml1.py เทรน
-# แมตช์ที่ผู้ใช้อัปโหลด (source='upload') ไม่เคยเข้าไปในโมเดล — หน้านี้เอามาวัดเทียบกับโมเดลอย่างเดียว
 # ---------------------------------------------------------------------------
 ANALYSIS_SCOPES = {
     "reference": "เดโมทีมอาชีพ",
@@ -666,7 +780,7 @@ async def api_analysis_deaths(
     scope: str = Query("reference", description="reference = ชุดที่โมเดลเทรนจากมัน | upload = แมตช์ที่ผู้ใช้อัปโหลด"),
     side: str = Query("all", description="ฝั่งของ 'คนที่ตาย': all | ct | t"),
     demo: str | None = Query(None, description="เจาะจงแมตช์เดียว (ต้องอยู่ในชุดที่เลือก)"),
-    _: dict = Depends(require_login),
+    _: dict = Depends(require_viewer),
     conn: asyncpg.Connection = Depends(db),
 ):
     """จุดที่ผู้เล่นตาย นับลงกริด 32x32 เดียวกับโมเดล — คืนเป็นสัดส่วนต่อช่อง เทียบข้ามชุดได้"""
@@ -709,7 +823,7 @@ async def api_analysis_deaths(
 
 @app.get("/api/analysis/readability")
 async def api_readability(demo: str = Query(..., description="ชื่อไฟล์เดโมของแมตช์ที่ทีมอัปโหลด"),
-                          _: dict = Depends(require_login), conn: asyncpg.Connection = Depends(db)):
+                          _: dict = Depends(require_viewer), conn: asyncpg.Connection = Depends(db)):
     """แมตช์นี้ "อ่านทางออกง่าย" แค่ไหน — โมเดลที่เทรนจากเดโมทีมอาชีพมาอ่านทีละรอบ
 
     ต่อหนึ่งรอบ: ไล่ดูทีละวินาทีว่าโมเดลมั่นใจไปทางไซต์ที่เกิดขึ้นจริงถึง 80% เมื่อไร
@@ -786,7 +900,7 @@ async def api_readability(demo: str = Query(..., description="ชื่อไฟ
 
 
 @app.get("/api/review/grid")
-def api_review_grid(map: str = Query(..., description="เช่น de_mirage"), _: dict = Depends(require_login)):
+def api_review_grid(map: str = Query(..., description="เช่น de_mirage"), _: dict = Depends(require_viewer)):
     """ช่องกริด (จัดกลุ่มแล้ว) + วง hotspot เป็นพิกเซลบนภาพเรดาร์ — ไว้ให้ toggle ซ้อนบนแผนที่"""
     frame = radar_frame(map)
     model = load_grid_model()
@@ -796,7 +910,7 @@ def api_review_grid(map: str = Query(..., description="เช่น de_mirage"),
 
 
 @app.get("/api/review/{demo_file}/rounds")
-async def api_review_rounds(demo_file: str, _: dict = Depends(require_login), conn: asyncpg.Connection = Depends(db)):
+async def api_review_rounds(demo_file: str, _: dict = Depends(require_viewer), conn: asyncpg.Connection = Depends(db)):
     """รายรอบของแมตช์: ใครชนะ จบด้วยอะไร ตายกี่คน คนแรกตายวินาทีที่เท่าไหร่"""
     m = await _review_match(conn, demo_file)
     rounds_ = await conn.fetch("""
@@ -809,7 +923,7 @@ async def api_review_rounds(demo_file: str, _: dict = Depends(require_login), co
 
 
 @app.get("/api/review/{demo_file}/rounds/{round_num}")
-async def api_review_round(demo_file: str, round_num: int, _: dict = Depends(require_login),
+async def api_review_round(demo_file: str, round_num: int, _: dict = Depends(require_viewer),
                            conn: asyncpg.Connection = Depends(db)):
     """รอบเดียวแบบละเอียด: ทีม / การตายทุกครั้ง (พิกัด + พิกเซลบนเรดาร์) / บริบทจาก grid_ml1 / สรุปรอบ"""
     m = await _review_match(conn, demo_file)
@@ -837,7 +951,7 @@ async def api_review_round(demo_file: str, round_num: int, _: dict = Depends(req
 
 
 @app.get("/api/review/{demo_file}/rounds/{round_num}/positions")
-async def api_review_positions(demo_file: str, round_num: int, _: dict = Depends(require_login),
+async def api_review_positions(demo_file: str, round_num: int, _: dict = Depends(require_viewer),
                                conn: asyncpg.Connection = Depends(db)):
     """ตำแหน่งผู้เล่นรายวินาทีของรอบนี้ (สำหรับโหมดเล่นย้อน) — ~9 KB ต่อรอบ ขอเฉพาะตอนเปิดโหมด"""
     m = await _review_match(conn, demo_file)

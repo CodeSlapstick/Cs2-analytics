@@ -182,12 +182,12 @@ def nearest_within(x: float, y: float, centers: list[tuple[float, float]], radiu
 # ==================================================================================================
 GRID_JSON = Path(os.environ.get("GRID_ML1_JSON", ROOT / "output" / "grid_ml1.json"))
 
-# สีบนเรดาร์ยึด "ฝั่ง" เป็นหลัก: CT = น้ำเงิน, T = ส้ม (กติกาเดียวกับทั้งเว็บ)
-# ในฝั่งเดียวกันไล่คนละเฉด จะได้ยังแยกออกว่าจุดไหนใคร ตอนผู้เล่นยืนซ้อนกันบนแผนที่
-SIDE_PALETTES = {
-    "ct": ("#4d8bff", "#8fb6ff", "#2f6fe0", "#c3d8ff", "#1b4fa8"),   # น้ำเงินไล่จากกลาง -> อ่อน -> เข้ม
-    "t":  ("#ff7a18", "#ffb066", "#d95f05", "#ffd4a8", "#a34700"),   # ส้มไล่แบบเดียวกัน
-}
+# สีประจำตัวผู้เล่น — ใช้ตรงที่มี "ชื่อ" กำกับอยู่แล้ว (ไทม์ไลน์ / ตารางรายชื่อ)
+# บนแผนที่ไม่ใช้สีนี้แยกตัวคน ใช้สีของฝั่ง (CT ฟ้า / T ส้ม) + หมายเลข 1-5 จาก player_slots()
+TEAM_PALETTES = (
+    ("#22d3ee", "#34d399", "#a3e635", "#60a5fa", "#2dd4bf", "#86efac"),   # ทีมแรก (เรียงตามชื่อ): โทนฟ้า-เขียว
+    ("#f472b6", "#c084fc", "#fb7185", "#facc15", "#fb923c", "#e879f9"),   # ทีมที่สอง: โทนชมพู-ม่วง-เหลือง
+)
 UNKNOWN_COLOUR = "#94a3b8"
 
 
@@ -355,20 +355,46 @@ def _t(tick, start_tick, tickrate) -> float | None:
     return round((int(tick) - int(start_tick)) / int(tickrate), 1)
 
 
-def player_colours(side_now: dict[int, str]) -> dict[int, str]:
-    """สีต่อคนในรอบนี้ — เฉดของฝั่งที่เขาเล่นอยู่รอบนั้น (CT น้ำเงิน / T ส้ม)
+def player_groups(roster: list[dict]) -> list[list[int]]:
+    """แบ่งผู้เล่นเป็นกลุ่มละทีม แต่ละกลุ่มเรียงตาม steam_id — กฎเดียวที่สีและหมายเลขใช้ร่วมกัน
 
-    ทีมสลับฝั่งทุกครึ่ง สีของคนจึงสลับตามไปด้วยโดยตั้งใจ:
-    บนเรดาร์ "ใครอยู่ฝั่งไหน" คือสิ่งที่ต้องอ่านออกทันที ส่วน "ใครอยู่ทีมไหน"
-    ดูได้จากกล่องรายชื่อทีมข้าง ๆ ซึ่งจัดกลุ่มตาม team_clan อยู่แล้ว
-    เรียงตาม steam_id เพื่อให้คนเดิมได้เฉดเดิมทุกรอบที่เขาอยู่ฝั่งเดิม
+    ปกติแบ่งตามชื่อทีม (team_clan) เรียงตามตัวอักษร
+
+    เดโมจาก Matchmaking / Faceit ไม่มีชื่อทีม ถ้าแบ่งตามชื่อจะได้กลุ่มเดียว 10 คน
+    แล้วหมายเลขผู้เล่นจะกลายเป็น 1-10 แทนที่จะเป็น 1-5 สองชุด
+    กรณีนั้นจึงถอยไปแบ่งตามฝั่งที่ "เริ่มเกม" (start_side) ซึ่งไม่เปลี่ยนตลอดแมตช์
+    จึงให้ผลคงที่เท่ากับชื่อทีม ต่างจาก side ของรอบที่สลับกันครึ่งหลัง
+
+    เรียงสมาชิกตาม steam_id ไม่ใช่ชื่อ เพราะชื่อในเกมเปลี่ยนกลางแมตช์ได้ แต่ steam_id ไม่เปลี่ยน
+    เปิดดูแมตช์เดิมกี่ครั้งก็ได้ลำดับเดิม
     """
+    by_team = all((r.get("team") or "").strip() for r in roster)
+    key = "team" if by_team else "start_side"
+    keys = sorted({(r.get(key) or "").strip() for r in roster}) if by_team else ["ct", "t"]
+    groups = [sorted(int(r["steam_id"]) for r in roster if (r.get(key) or "").strip() == k) for k in keys]
+    return [g for g in groups if g]
+
+
+def player_colours(roster: list[dict]) -> dict[int, str]:
+    """สีต่อคน คงที่ทั้งแมตช์ (ไม่ผูกกับ CT/T เพราะทีมสลับฝั่งทุกครึ่ง)"""
     out = {}
-    for side, palette in SIDE_PALETTES.items():
-        members = sorted(sid for sid, s in side_now.items() if s == side)
+    for gi, members in enumerate(player_groups(roster)):
+        palette = TEAM_PALETTES[gi] if gi < len(TEAM_PALETTES) else (UNKNOWN_COLOUR,)
         for i, sid in enumerate(members):
             out[sid] = palette[i % len(palette)]
     return out
+
+
+def player_slots(roster: list[dict]) -> dict[int, int]:
+    """หมายเลข 1-5 ต่อคน คงที่ทั้งแมตช์ — เลขที่แสดงบนตัวผู้เล่นในโหมดเล่นย้อน
+
+    ใช้ player_groups() ตัวเดียวกับสี หมายเลขจึงไม่ขยับตอนสลับฝั่งครึ่งหลัง
+    (สลับฝั่งเปลี่ยนแค่ side ที่ใช้เลือกสีฟ้า/ส้ม ไม่แตะหมายเลข)
+
+    ทั้งสองทีมนับ 1 ใหม่ — ในหนึ่งรอบจึงมีเลข 1 สองคน แยกกันด้วยสีของฝั่ง
+    คนที่ไม่อยู่ในกลุ่มไหนเลย (ข้อมูลทีมและฝั่งขาดทั้งคู่) จะไม่มีหมายเลข หน้าเว็บแสดง ?
+    """
+    return {sid: i + 1 for members in player_groups(roster) for i, sid in enumerate(members)}
 
 
 def build_round_list(rounds: list[dict], first_deaths: dict[int, int], death_counts: dict[int, int],
@@ -387,13 +413,14 @@ NADE_RADIUS = {"smoke": 144, "molotov": 120}
 
 
 def _person_factory(roster: list[dict], in_round: list[dict]):
-    """คืน (person, info, side_now, colours) — person(sid, name, side) ประกอบข้อมูลคนหนึ่งคนให้หน้าเว็บ
+    """คืน (person, info, side_now, colours, slots) — person(sid, name, side) ประกอบข้อมูลคนหนึ่งคนให้หน้าเว็บ
 
-    สีมาจากฝั่งที่เล่นในรอบนี้ (CT น้ำเงิน / T ส้ม) จึงต้องรู้ side_now ก่อนถึงจะแจกสีได้
+    สีและหมายเลขมาจาก roster ทั้งแมตช์ ไม่ใช่เฉพาะรอบนี้ คนคนเดิมจึงได้สีและเลขเดิมทุกรอบ
     """
+    colours = player_colours(roster)
+    slots = player_slots(roster)
     info = {int(r["steam_id"]): r for r in roster}
     side_now = {int(p["steam_id"]): p["side"] for p in in_round}
-    colours = player_colours(side_now)
 
     def person(sid, name, side) -> dict | None:
         if sid is None:
@@ -401,9 +428,9 @@ def _person_factory(roster: list[dict], in_round: list[dict]):
         sid = int(sid)
         return {"steamid": str(sid), "name": name or info.get(sid, {}).get("name") or str(sid),
                 "side": side or side_now.get(sid), "team": info.get(sid, {}).get("team"),
-                "color": colours.get(sid, UNKNOWN_COLOUR)}
+                "color": colours.get(sid, UNKNOWN_COLOUR), "slot": slots.get(sid)}
 
-    return person, info, side_now, colours
+    return person, info, side_now, colours, slots
 
 
 def _death_rows(kills: list[dict], person, *, start, tickrate: int,
@@ -456,7 +483,7 @@ def _nade_rows(grenades: list[dict], person, *, start, tickrate: int, frame: Rad
 
 
 def _team_rows(side_now: dict[int, str], info: dict[int, dict], colours: dict[int, str],
-               deaths: list[dict]) -> list[dict]:
+               slots: dict[int, int], deaths: list[dict]) -> list[dict]:
     """จัดกล่องทีมตาม team_clan ไม่ใช่ side; หัวกล่องบอก side ของรอบนี้ CT อยู่ซ้าย/บน"""
     teams: dict[str, dict] = {}
     for sid in sorted(side_now):
@@ -466,6 +493,7 @@ def _team_rows(side_now: dict[int, str], info: dict[int, dict], colours: dict[in
         death = next((d for d in deaths if d["victim"] and d["victim"]["steamid"] == str(sid)), None)
         t["players"].append({
             "name": p.get("name") or str(sid), "steamid": str(sid), "color": colours.get(sid, UNKNOWN_COLOUR),
+            "slot": slots.get(sid),
             "side": side_now[sid],
             "survived": death is None,
             "died_at_t": death["t_round"] if death else None,
@@ -512,7 +540,7 @@ def build_round_detail(*, match: dict, rnd: dict, roster: list[dict], in_round: 
 
     match    {id, demo_file, map_name, tickrate, team_a, team_b}
     rnd      {round_num, start_tick, winner_side, end_reason, bomb_plant_tick, bomb_plant_x, bomb_plant_y, bomb_site}
-    roster   ทุกคนในแมตช์ [{steam_id, name, team}]  — ใช้ให้สีคงที่ทั้งแมตช์
+    roster   ทุกคนในแมตช์ [{steam_id, name, team, start_side}] — ใช้ให้สีและหมายเลขคงที่ทั้งแมตช์
     in_round คนที่เล่นรอบนี้ [{steam_id, side, survived}]
     kills    การตายในรอบนี้ เรียงตาม tick แล้ว (คอลัมน์ตามตาราง kills + attacker_name/victim_name/assister_name)
     grenades ระเบิดในรอบนี้ (คอลัมน์ตามตาราง grenades + thrower_name) — ใครขว้างอะไร จากไหน ตกที่ไหน
@@ -520,7 +548,7 @@ def build_round_detail(*, match: dict, rnd: dict, roster: list[dict], in_round: 
     tickrate = int(match["tickrate"] or 128)
     start = rnd["start_tick"]
     winner = rnd.get("winner_side")
-    person, info, side_now, colours = _person_factory(roster, in_round)
+    person, info, side_now, colours, slots = _person_factory(roster, in_round)
 
     deaths = _death_rows(kills, person, start=start, tickrate=tickrate, frame=frame, model=model)
     nades = _nade_rows(grenades, person, start=start, tickrate=tickrate, frame=frame)
@@ -532,7 +560,7 @@ def build_round_detail(*, match: dict, rnd: dict, roster: list[dict], in_round: 
         "radar": None if not frame else {"image": "/assets" + frame.image, "size": frame.size, "map": frame.map_name},
         "grid": None if not model or not frame or model.map_name != frame.map_name else {
             "source": model.source, "ct_win_overall": model.ct_win_overall, "min_kills": model.min_kills},
-        "teams": _team_rows(side_now, info, colours, deaths),
+        "teams": _team_rows(side_now, info, colours, slots, deaths),
         "deaths": deaths,
         "grenades": nades,
         "summary": _round_summary(deaths, winner),

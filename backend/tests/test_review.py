@@ -18,6 +18,9 @@ from backend.review import (
     in_frame,
     nearest_within,
     parse_grid_model,
+    player_colours,
+    player_groups,
+    player_slots,
     radar_frame,
     world_to_pixel,
 )
@@ -130,7 +133,11 @@ def as_db_rows(doc: dict, round_num: int):
     """แปลง doc ของ parser ให้หน้าตาเหมือนที่ app.py query จากฐานข้อมูล"""
     names = {p["steam_id"]: p["name"] for p in doc["players"]}
     team = assign_teams([{**x, "clan": x["team_clan"]} for x in doc["player_rounds"]])
-    roster = [{"steam_id": sid, "name": names.get(sid), "team": t} for sid, t in team.items()]
+    first_side = {}
+    for x in sorted(doc["player_rounds"], key=lambda r: r["round_num"]):
+        first_side.setdefault(x["steam_id"], x["side"])
+    roster = [{"steam_id": sid, "name": names.get(sid), "team": t, "start_side": first_side.get(sid)}
+              for sid, t in team.items()]
     rnd = next(r for r in doc["rounds"] if r["round_num"] == round_num)
     in_round = [{"steam_id": x["steam_id"], "side": x["side"], "survived": x["survived"]}
                 for x in doc["player_rounds"] if x["round_num"] == round_num]
@@ -188,21 +195,74 @@ def test_every_round_payload_is_consistent(sample_doc, model, frame):
         assert f"{model.matches} แมตช์" in d["grid"]["source"]["label"]
 
 
-def test_player_colours_follow_the_side_they_play(sample_doc, model, frame):
-    """สีบนเรดาร์บอกฝั่ง: CT ได้เฉดน้ำเงิน T ได้เฉดส้ม และในรอบเดียวกันต้องไม่ซ้ำกันเลย
-
-    ไม่ได้คงที่ทั้งแมตช์อีกแล้ว — ทีมสลับฝั่งตอนเปลี่ยนครึ่ง สีก็สลับตามโดยตั้งใจ
-    """
-    from backend.review import SIDE_PALETTES
-
+def test_player_colours_are_stable_across_rounds(sample_doc, model, frame):
+    """สีประจำตัวคงที่ทั้งแมตช์ — สีนี้ใช้ตรงที่มีชื่อกำกับ (ไทม์ไลน์/ตารางรายชื่อ)
+    ส่วนบนแผนที่แยกตัวคนด้วยสีของฝั่ง + หมายเลข ไม่ใช่ด้วยสีประจำตัว"""
+    seen: dict[str, str] = {}
     for r in sample_doc["rounds"]:
-        used = []
         for t in detail(sample_doc, r["round_num"], model, frame)["teams"]:
             for p in t["players"]:
-                assert p["color"] in SIDE_PALETTES[p["side"]], (
-                    f'รอบ {r["round_num"]}: {p["name"]} ฝั่ง {p["side"]} ได้สี {p["color"]}')
-                used.append(p["color"])
-        assert len(used) == len(set(used)) == 10       # 10 คน 10 สี ไม่ซ้ำกันในรอบเดียว
+                assert seen.setdefault(p["steamid"], p["color"]) == p["color"]
+    assert len(set(seen.values())) == 10
+
+
+def test_player_slots_are_stable_across_rounds(sample_doc, model, frame):
+    """หมายเลข 1-5 ต้องคงที่ทั้งแมตช์ ไม่สลับกันระหว่างรอบ และไม่ขยับตอนสลับฝั่งครึ่งหลัง"""
+    seen: dict[str, int] = {}
+    sides_seen: dict[str, set] = {}
+    for r in sample_doc["rounds"]:
+        for t in detail(sample_doc, r["round_num"], model, frame)["teams"]:
+            assert sorted(p["slot"] for p in t["players"]) == [1, 2, 3, 4, 5]   # ทีมละ 1-5 ไม่ใช่ 1-10
+            for p in t["players"]:
+                assert seen.setdefault(p["steamid"], p["slot"]) == p["slot"]
+                sides_seen.setdefault(p["steamid"], set()).add(p["side"])
+    assert len(seen) == 10
+    # เดโม fixture นี้มี 6 รอบ ยังไม่ถึงรอบสลับฝั่ง — ทุกคนจึงอยู่ฝั่งเดิมตลอด
+    # ส่วนที่ว่าเลขไม่ขยับตอนสลับฝั่งอยู่ใน test ถัดไป ซึ่งสลับฝั่งให้เห็นชัดได้โดยไม่ต้องมีเดโมยาว
+    assert all(len(v) == 1 for v in sides_seen.values())
+
+
+def test_player_slots_split_by_starting_side_when_demo_has_no_team_name():
+    """เดโม Matchmaking / Faceit ไม่มีชื่อทีม — ต้องถอยไปแบ่งตามฝั่งที่เริ่มเกม ไม่ใช่รวมเป็นกลุ่มเดียว"""
+    roster = [{"steam_id": 76561197960265700 + i, "name": f"p{i}", "team": None,
+               "start_side": "ct" if i < 5 else "t"} for i in range(10)]
+    slots = player_slots(roster)
+    groups = player_groups(roster)
+
+    assert len(groups) == 2 and [len(g) for g in groups] == [5, 5]
+    ct = [r["steam_id"] for r in roster if r["start_side"] == "ct"]
+    t = [r["steam_id"] for r in roster if r["start_side"] == "t"]
+    assert sorted(slots[sid] for sid in ct) == [1, 2, 3, 4, 5]
+    assert sorted(slots[sid] for sid in t) == [1, 2, 3, 4, 5]
+    # เรียงตาม steam_id เพื่อให้เปิดดูกี่ครั้งก็ได้เลขเดิม ไม่ขึ้นกับลำดับที่ query คืนมา
+    assert [slots[sid] for sid in sorted(ct)] == [1, 2, 3, 4, 5]
+    assert player_slots(list(reversed(roster))) == slots
+    # สีใช้กฎแบ่งกลุ่มเดียวกัน จึงต้องได้สองจานสีเหมือนตอนมีชื่อทีม ไม่ใช่จานเดียว 10 สี
+    colours = player_colours(roster)
+    assert len(set(colours.values())) == 10
+    assert len({colours[sid] for sid in ct} & {colours[sid] for sid in t}) == 0
+
+
+def test_player_slots_prefer_team_name_over_starting_side():
+    """มีชื่อทีมก็ใช้ชื่อทีม — ผู้เล่นที่ย้ายฝั่งกลางแมตช์ยังอยู่กลุ่มเดิม"""
+    roster = [{"steam_id": 76561197960265700 + i, "name": f"p{i}",
+               "team": "Alpha" if i < 5 else "Bravo",
+               "start_side": "t" if i == 0 else "ct" if i < 5 else "t"} for i in range(10)]
+    groups = player_groups(roster)
+    assert [len(g) for g in groups] == [5, 5]
+    assert groups[0] == sorted(r["steam_id"] for r in roster if r["team"] == "Alpha")   # Alpha มาก่อน Bravo
+    assert sorted(player_slots(roster).values()) == [1, 1, 2, 2, 3, 3, 4, 4, 5, 5]
+
+
+def test_player_slots_do_not_move_when_teams_swap_sides():
+    """ครึ่งหลังสลับฝั่ง: หมายเลขต้องเป็นค่าเดิมทุกคน (เปลี่ยนแค่สีฟ้า/ส้มที่หน้าเว็บเลือกจาก side)"""
+    roster = [{"steam_id": 76561197960265700 + i, "name": f"p{i}",
+               "team": "Alpha" if i < 5 else "Bravo",
+               "start_side": "ct" if i < 5 else "t"} for i in range(10)]
+    swapped = [{**r, "start_side": "t" if r["start_side"] == "ct" else "ct"} for r in roster]
+
+    assert player_slots(swapped) == player_slots(roster)
+    assert player_colours(swapped) == player_colours(roster)
 
 
 def test_bomb_icon_position_when_planted(sample_doc, model, frame):
