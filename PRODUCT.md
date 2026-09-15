@@ -23,14 +23,18 @@ Success: after reviewing a round, the team can say what happened and where the f
 ## Positioning
 
 - **Round-by-round map story.** One map per round shows every death, the shooter, and every grenade (who threw it, where it landed, how long it lasted), with the moment each happened; selecting a death shows only the utility active at that second.
-- **ML context per death.** Each death is placed in a grid-cell type and hotspot learned without labels (MeanShift + KMeans, `research/grid_ml1.py`) from 50 professional Mirage matches, so the team sees how that area of the map usually plays out across the dataset.
+- **One grid, two questions.** The 32×32 ML grid can be shaded one layer at a time, and the key under the map always states which. **ดวลบ่อย** answers "where do fights happen at all" with a single-hue ramp ordered by lightness (pale = few duels, deep = many; five steps, quantiles of that map's own cells). **CT / T ได้เปรียบ** answers "where does my side usually win" — three levels of that side's colour at ≥ 50 / 55 / 65 % of duels won, red only where the opposing side wins ≥ 65 %, so CT and T see different maps. Colour is never assigned arbitrarily: ordered values get an ordered ramp, and the two saturated side hues are never reused for anything else. All numbers come from 7,158 duels in 50 professional Mirage matches (`research/grid_ml1.py`, per-cell `ct_win` and `duels`). The per-death text panels from the model were removed (advisor feedback, 2026-09-15): the map shading plus its key is the only place the model appears.
+- **Players are numbers, not colours.** Every player is identified by side colour (CT blue / T orange) plus a number 1–5 that is the same in the team list, on the map and in the timeline; names appear on the map only for the selected or highlighted player.
 - **Facts, never judgments.** The product reports what happened and the dataset's numbers with their source; it never grades a player.
 - **Upload any demo.** Any CS2 `.dem` the team records can be uploaded and parsed automatically.
+- **The team's own demos never train the model.** Reference demos (`demos/reference/`, `matches.source='reference'`) and uploads (`demos/uploads/`, `source='upload'`) are separated on disk and in the database; no training script reads the upload folder, and `matches.source` defaults to `'upload'` so an unverified match can never drift into the training set. The `/analysis` page uses that separation as its feature: it measures the team's uploaded matches **against** the reference set the model learned from, rather than against itself.
 
 ## Operating Context
 
 - Sessions are collaborative review: several people looking at one laptop, or a projector / shared screen.
-- Main flow: log in → pick a match in the sidebar (or upload a demo) → step through rounds with the round strip or ← / → → select deaths, players and grenades on the map.
+- Landing: after login the first page is **สถิติของฉัน** (`/player`) — the player's own numbers, with their Steam avatar in the top bar; nav order is สถิติของฉัน → แมตช์ → เครื่องมือวิเคราะห์. Accounts without a Steam link land on an empty state that says why and offers the two pages that work without it.
+- Main flow: log in (or one-click guest) → pick a match in the sidebar (or upload a demo) → step through rounds with the round strip or ← / → → choose the side to shade, select deaths, players and grenades on the map, press play to watch positions over time.
+- Second flow (`/analysis`): compare the team's uploaded matches with the professional set on the same map. The page speaks plain Thai — "ทีมอาชีพ", not "training set" — because the people using it do not need the ML vocabulary; it answers where this team dies more often than the professional dataset and by how much. The death map is coloured by the side being viewed (CT blue, T orange, both sides red) in five steps, pale for few deaths to deep for many. Cells where the team has fewer than 3 deaths stay unpainted, because a one-match sample cannot support a claim.
 - All view state lives in the URL (`/matches/{demo_file}/rounds/{n}` plus query flags), so a teammate can open the exact same view from a shared link and refresh never loses the place.
 - Parsing runs in a background worker; a freshly uploaded match shows progress and opens round 1 when done.
 
@@ -45,7 +49,8 @@ Success: after reviewing a round, the team can say what happened and where the f
 - **Feature definitions** (opening kill, trade within 5 s, buy type thresholds, clutch, ADR, KAST) are fixed in `backend/features.py` and must not be redefined in the UI.
 - **Coordinates:** all game-to-pixel conversion happens in the backend (`backend/review.py`); the frontend never computes map positions.
 - **Language rules enforced by tests** (`backend/tests/test_review.py`): the UI must never call the grid model's `ct_win` a "round win probability" ("โอกาสชนะรอบ", "win probability"), and must never use judging language about players ("เล่นแย่", "ยืนผิด").
-- **Access:** username/password login (JWT in an httpOnly cookie); the whole app sits behind login on one origin (port 3000).
+- **Access:** username/password or Steam login (JWT in an httpOnly cookie); the whole app sits behind login on one origin (port 3000). A one-click **guest** account (`GUEST_LOGIN=1`) can view everything but cannot upload demos (`POST /api/demos` answers 403).
+- **Look:** light "coach's desk" theme (`frontend/src/styles.css`): paper-coloured page, the map is the only dark surface, the only saturated colours are CT blue and T orange (red = opposing side wins duels there / errors, green = survived). Type: Anuphan for text, Chakra Petch for identifying numbers. The `/login` page keeps its own dark tactical world by design.
 
 ## Brand Commitments
 
@@ -64,6 +69,6 @@ Success: after reviewing a round, the team can say what happened and where the f
 
 1. **Facts, not verdicts.** Show what the demo recorded and what the dataset says; let the team draw the conclusion.
 2. **Every model number carries its source.** Context from the ML model always says where it comes from, and is never presented as a prediction about the round.
-3. **One round, one readable map.** The core unit is a single round understood at a glance; everything else supports it.
+3. **One round, one readable map.** The core unit is a single round understood at a glance; everything else supports it. Every symbol drawn on the map is explained in the key under it.
 4. **Shareable exact views.** Any view the team is discussing can be reopened by anyone from the URL.
 5. **Readable together.** Designed for a group looking at one screen: laptop-first, legible on a projector.

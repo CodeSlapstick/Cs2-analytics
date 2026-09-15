@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """parser บนไฟล์ .dem จริง — ต้องมีเดโมในเครื่อง (ไฟล์ละ 100+ MB จึงไม่อยู่ใน git)
 
-    ตั้ง CS2_TEST_DEMO=path/to/file.dem   หรือมีไฟล์ใน demos/ อย่างน้อยหนึ่งไฟล์
+    ตั้ง CS2_TEST_DEMO=path/to/file.dem   หรือมีไฟล์ใน demos/ (รวมโฟลเดอร์ย่อย) อย่างน้อยหนึ่งไฟล์
     ไม่มีทั้งสองอย่าง -> เทสต์นี้ถูก skip (CI ดาวน์โหลดเดโมมาให้เองถ้าตั้ง CS2_TEST_DEMO_URL)
 """
 import os
@@ -16,7 +16,8 @@ def _demo_path() -> Path | None:
     env = os.environ.get("CS2_TEST_DEMO")
     if env and Path(env).is_file():
         return Path(env)
-    found = sorted((ROOT / "demos").glob("*.dem"), key=lambda p: p.stat().st_size)
+    # rglob เพราะเดโมถูกแยกเป็น demos/reference/ (ชุดเทรนโมเดล) กับ demos/uploads/ (ของผู้ใช้)
+    found = sorted((ROOT / "demos").rglob("*.dem"), key=lambda p: p.stat().st_size)
     return found[0] if found else None      # เอาไฟล์เล็กสุด ให้เทสต์เร็ว
 
 

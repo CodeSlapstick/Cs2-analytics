@@ -218,14 +218,74 @@ async def load_match_json(conn, json_path: Path, force: bool = False) -> int:
     return await load_match_doc(conn, doc, force=force)
 
 
+async def mark_reference(conn, folder: Path) -> int:
+    """ทำเครื่องหมายว่าแมตช์ไหนคือ "ชุดอ้างอิงที่ใช้เทรนโมเดล" — ดูจากไฟล์ .dem ที่อยู่ในโฟลเดอร์นั้นจริง ๆ
+
+    เดโมของผู้ใช้อยู่คนละโฟลเดอร์ (demos/uploads/) จึงไม่มีทางถูกทำเครื่องหมายเป็นชุดอ้างอิงโดยบังเอิญ
+    รันซ้ำได้ และแมตช์ที่ไม่อยู่ในโฟลเดอร์นี้จะถูกตีกลับเป็น 'upload' เสมอ
+    """
+    names = sorted(p.name for p in folder.glob("*.dem"))
+    if not names:
+        print(f"ไม่พบไฟล์ .dem ใน {folder} — ไม่ได้ทำเครื่องหมายอะไร")
+        return 0
+    rows = await conn.fetch("""
+        UPDATE matches SET source = CASE WHEN demo_file = ANY($1::text[]) THEN 'reference' ELSE 'upload' END
+        RETURNING demo_file, source;
+    """, names)
+    ref = sum(1 for r in rows if r["source"] == "reference")
+    missing = sorted(set(names) - {r["demo_file"] for r in rows})
+    print(f"[SOURCE] ชุดอ้างอิง {ref} แมตช์ · ผู้ใช้อัปโหลด {len(rows) - ref} แมตช์ (จาก {len(names)} ไฟล์ใน {folder})")
+    if missing:
+        print(f"[SOURCE] ไฟล์ที่ยังไม่ได้โหลดเข้าฐานข้อมูล {len(missing)} ไฟล์: {', '.join(missing[:3])}…")
+    return ref
+
+
+async def fix_bomb_sites(conn) -> int:
+    """แก้ rounds.bomb_site ของแถวที่โหลดไว้แล้ว — awpy เคยส่ง 'bombsite_b' มาทุกแถวซึ่งผิด
+
+    ตัดสินใหม่จากพิกัดจุดวางบอมบ์ด้วยสูตรเดียวกับ parser (backend/review.py site_of)
+    รันซ้ำได้ · รอบที่ไม่มีพิกัด (ไม่ได้วางบอมบ์) จะถูกตั้งเป็น NULL ไม่ใช่เดาให้
+    """
+    from backend.review import site_of
+
+    rows = await conn.fetch("""
+        SELECT r.id, m.map_name, r.bomb_plant_x, r.bomb_plant_y
+        FROM rounds r JOIN matches m ON m.id = r.match_id
+    """)
+    updates = [(r["id"], site_of(r["bomb_plant_x"], r["bomb_plant_y"], r["map_name"] or "")) for r in rows]
+    await conn.executemany("UPDATE rounds SET bomb_site = $2 WHERE id = $1", updates)
+    named = sum(1 for _, s in updates if s)
+    by_site: dict[str, int] = {}
+    for _, s in updates:
+        if s:
+            by_site[s] = by_site.get(s, 0) + 1
+    print(f"[SITE] ตั้งไซต์ให้ {named} รอบจากทั้งหมด {len(updates)} รอบ — " +
+          " · ".join(f"{k} {v}" for k, v in sorted(by_site.items())))
+    return named
+
+
 async def main() -> None:
     parser = argparse.ArgumentParser(description="ETL JSON -> PostgreSQL")
     parser.add_argument("path", nargs="?", default="output/json", help="ไฟล์ JSON หรือโฟลเดอร์")
     parser.add_argument("--force", action="store_true", help="เขียนทับข้อมูลเดิม")
+    parser.add_argument("--mark-reference", nargs="?", const="demos/reference", metavar="FOLDER",
+                        help="ทำเครื่องหมายแมตช์ในโฟลเดอร์นี้เป็นชุดอ้างอิง (ที่เหลือเป็นของผู้ใช้) แล้วจบ")
+    parser.add_argument("--fix-bomb-sites", action="store_true",
+                        help="คำนวณ rounds.bomb_site ใหม่จากพิกัดจุดวางบอมบ์ แล้วจบ")
     args = parser.parse_args()
 
     conn = await asyncpg.connect(DB_URL)
     await apply_schema(conn)          # view ต้องตรงรุ่นกับตาราง (ตารางเอง: alembic upgrade head)
+
+    if args.mark_reference:
+        await mark_reference(conn, Path(args.mark_reference))
+        await conn.close()
+        return
+
+    if args.fix_bomb_sites:
+        await fix_bomb_sites(conn)
+        await conn.close()
+        return
 
     target = Path(args.path)
     if target.is_file():

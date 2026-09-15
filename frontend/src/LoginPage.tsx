@@ -10,7 +10,7 @@ import { ApiError, auth } from "./api";
 // เส้นโครงสีฟ้าที่สกัดจากภาพเรดาร์ de_mirage จริงของเกม (ที่มาฝังอยู่ในไฟล์ PNG)
 import radarLines from "./assets/brief-mirage-lines.png";
 
-export const DEFAULT_AFTER_LOGIN = "/matches";
+export const DEFAULT_AFTER_LOGIN = "/player";   // หน้าแรกหลังล็อกอิน = สถิติของฉัน (ตรงกับ _safe_next ใน backend/app.py)
 
 /** ป้องกัน open redirect: รับเฉพาะ path ภายในเว็บเรา (ขึ้นต้น / แต่ไม่ใช่ //) */
 export function safeNext(next: string | null): string {
@@ -81,6 +81,20 @@ export function LoginPage() {
     }
   }
 
+  async function guest() {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await auth.guest();
+      qc.setQueryData(["me"], res);
+      navigate(next, { replace: true });
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "ติดต่อเซิร์ฟเวอร์ไม่ได้ — ตรวจการเชื่อมต่อแล้วลองใหม่อีกครั้ง");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const invalid = error !== null;
   const describedBy = [invalid && ids.err, mode === "register" && ids.hint].filter(Boolean).join(" ") || undefined;
 
@@ -138,14 +152,23 @@ export function LoginPage() {
           <span className="lc-corner br" aria-hidden="true" />
 
           <div className="lc-head">
-            <h1>{mode === "login" ? "ยินดีต้อนรับกลับ, Operator" : "สร้างบัญชี Operator"}</h1>
-            <p>{mode === "login" ? "เข้าสู่ระบบเพื่อเปิดรีวิวเดโมของทีม" : "ตั้งชื่อผู้ใช้และรหัสผ่านสำหรับเข้าดูเดโมของทีม"}</p>
+            <h1>{mode === "login" ? "ยินดีต้อนรับกลับ" : "สร้างบัญชีใหม่"}</h1>
+            <p>
+              {mode === "login"
+                ? "รีวิวเดโมของทีมทีละรอบ แล้วดูสถิติของตัวเอง"
+                : "ตั้งชื่อผู้ใช้และรหัสผ่านสำหรับเข้าดูเดโมของทีม"}
+            </p>
           </div>
 
+          {/* ทางหลัก: Steam — เป็นทางเดียวที่ระบบรู้ว่าคนไหนในเดโมคือผู้ใช้ จึงเป็นทางที่พาไปถึงสถิติของตัวเอง
+              หน้านี้มีปุ่มพื้นส้มได้ปุ่มเดียว (ดู DESIGN.md) ปุ่มนี้จึงเอาไป และฟอร์มข้างล่างเป็นปุ่มขอบ */}
           <a className="lc-steam" href={`/auth/steam/login?next=${encodeURIComponent(next)}`}>
             <IconSteam />
             <span>เข้าสู่ระบบด้วย Steam</span>
+            <IconArrow />
           </a>
+          <p className="lc-why">ผูก SteamID ให้เอง แล้วเห็นสถิติของตัวเองจากเดโมที่มีในระบบทันที</p>
+
           <p className="lc-or">
             <span>หรือใช้ชื่อผู้ใช้ของทีม</span>
           </p>
@@ -239,23 +262,28 @@ export function LoginPage() {
           <button type="submit" className="lc-action" disabled={busy} aria-busy={busy}>
             {busy && <span className="lc-spin" aria-hidden="true" />}
             <span>{busy ? "กำลังตรวจสอบ…" : mode === "login" ? "เข้าสู่ระบบ" : "สมัครและเข้าสู่ระบบ"}</span>
-            {!busy && <IconArrow />}
           </button>
 
-          <p className="lc-switch">
-            {mode === "login" ? "ยังไม่มีบัญชี?" : "มีบัญชีแล้ว?"}{" "}
-            <button
-              type="button"
-              className="lc-link"
-              onClick={() => {
-                setMode(mode === "login" ? "register" : "login");
-                setError(null);
-                setForgotOpen(false);
-              }}
-            >
-              {mode === "login" ? "สมัครสมาชิก" : "เข้าสู่ระบบ"}
+          <div className="lc-foot">
+            <p className="lc-switch">
+              {mode === "login" ? "ยังไม่มีบัญชี?" : "มีบัญชีแล้ว?"}{" "}
+              <button
+                type="button"
+                className="lc-link"
+                onClick={() => {
+                  setMode(mode === "login" ? "register" : "login");
+                  setError(null);
+                  setForgotOpen(false);
+                }}
+              >
+                {mode === "login" ? "สมัครสมาชิก" : "เข้าสู่ระบบ"}
+              </button>
+            </p>
+            {/* ทางรอง: คนที่แค่มาลองดู — เงียบที่สุดในหน้า เพราะไม่ใช่สิ่งที่อยากให้คนของทีมเลือก */}
+            <button type="button" className="lc-link quiet" onClick={guest} disabled={busy} data-testid="guest-login">
+              เข้าดูแบบผู้เยี่ยมชม · ดูอย่างเดียว ไม่ต้องสมัคร
             </button>
-          </p>
+          </div>
         </form>
         <p className="login-foot">SP-404 Senior Project · UTCC STECH</p>
       </section>

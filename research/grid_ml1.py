@@ -35,6 +35,8 @@ import pandas as pd
 
 matplotlib.use("Agg")            # วาดลงไฟล์ ไม่ต้องมีหน้าจอ
 import matplotlib.pyplot as plt
+from matplotlib.cm import ScalarMappable
+from matplotlib.colors import LinearSegmentedColormap, Normalize, to_rgba
 from matplotlib.patches import Circle, Patch
 from PIL import Image
 from sklearn.cluster import KMeans, MeanShift
@@ -339,8 +341,27 @@ print("  CT ชนะ = เฉลยที่โมเดลไม่เคย�
 # ===========================================================================
 img = np.asarray(Image.open(ROOT / "assets" / radar["image"].lstrip("/")).convert("RGB"))
 extent = [x_left, x_right, y_bottom, y_top]      # ภาพเรดาร์กินพื้นที่พิกัดเกมช่วงไหน
-HOT_COLORS = [plt.cm.tab20(i % 20) for i in range(len(hotspots))]
-TYPE_COLORS = [plt.cm.tab10(i) for i in range(k_best)]
+
+# --- สีในรูปนี้ ---------------------------------------------------------------------------------
+# กฎ: สีที่ "เรียงลำดับได้" ใช้กับค่าที่เรียงลำดับได้เท่านั้น ส่วนกลุ่มที่ไม่มีลำดับห้ามใช้ไล่เฉด
+#   Q1 จำนวนการดวล เป็นค่ามาก-น้อย -> ไล่เฉดม่วงเฉดเดียว เข้ม = น้อย สว่าง = บ่อย
+#      (ลำดับอยู่ที่ "ความสว่าง" ไม่ใช่ที่สี คนตาบอดสีจึงอ่านลำดับได้ · ชุดเดียวกับที่หน้าเว็บใช้ใน utils.tsx)
+#   Q2 ประเภทช่อง เป็นกลุ่มที่ไม่มีลำดับ -> สามสีที่แยกกันชัด ไม่ได้แปลว่าดี/แย่กว่ากัน
+FREQ_HEX = ["#FF0000", "#DF5B5B", "#FFA0A0", "#E9D5FF"]
+# วงของจุดที่ดวลน้อยสุดยังต้องเห็นบนเรดาร์พื้นเข้ม จึงตัดปลายล่างสุดของไล่เฉดออก
+_freq = LinearSegmentedColormap.from_list("duels", FREQ_HEX)
+FREQ_CMAP = LinearSegmentedColormap.from_list("duels_hot", _freq(np.linspace(0.15, 1.0, 256)))
+TYPE_HEX = ["#8B5CF6", "#0D9488", "#D97706"]     # ตรวจแล้วว่าตาบอดสีทุกแบบยังแยกออกจากกันได้
+
+hot_norm = Normalize(vmin=hotspots["duels"].min(), vmax=hotspots["duels"].max())
+HOT_COLORS = [FREQ_CMAP(hot_norm(d)) for d in hotspots["duels"]]
+TYPE_COLORS = [to_rgba(TYPE_HEX[i % len(TYPE_HEX)]) for i in range(k_best)]
+
+
+def ink(rgba) -> str:
+    """สีตัวอักษรที่วางบนพื้นสีนั้นแล้วยังอ่านออก — พื้นสว่างใช้หมึกเข้ม พื้นเข้มใช้หมึกขาว"""
+    r, g, b = rgba[:3]
+    return "#1B1023" if 0.299 * r + 0.587 * g + 0.114 * b > 0.62 else "white"
 
 fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(17, 15),
                                              gridspec_kw={"height_ratios": [1.35, 1]})
@@ -349,14 +370,21 @@ fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(17, 15),
 ax1.imshow(img, extent=extent, origin="upper")
 noise = df[df["hotspot"] < 0]
 ax1.scatter(noise["victim_X"], noise["victim_Y"], s=3, c="#bbbbbb", alpha=0.35, linewidths=0)
+# จุดตายทุกจุดในกลุ่มใช้สีอ่อนสีเดียว — ความหนาแน่นของจุดบอกเองว่าตรงไหนแน่น
+# สีที่ "ไล่ระดับ" เก็บไว้ให้วงกับเลข ซึ่งเป็นตัวที่แทนจำนวนการดวลของทั้งจุดนั้น
 for i, h in hotspots.iterrows():
     m = df[df["hotspot"] == i]
-    ax1.scatter(m["victim_X"], m["victim_Y"], s=4, color=HOT_COLORS[i], alpha=0.55, linewidths=0)
-    ax1.add_patch(Circle((h["x"], h["y"]), h["radius"], fill=False, ec=HOT_COLORS[i], lw=1.6))
+    ax1.scatter(m["victim_X"], m["victim_Y"], s=4, color="#C084FC", alpha=0.30, linewidths=0)
+    ax1.add_patch(Circle((h["x"], h["y"]), h["radius"], fill=False, ec=HOT_COLORS[i], lw=2.2))
     ax1.text(h["x"], h["y"], str(int(h["id"])), ha="center", va="center", fontsize=8, fontweight="bold",
-             color="white", bbox=dict(boxstyle="circle,pad=0.25", fc=HOT_COLORS[i], ec="white", lw=0.8))
+             color=ink(HOT_COLORS[i]),
+             bbox=dict(boxstyle="circle,pad=0.25", fc=HOT_COLORS[i], ec="white", lw=0.8))
+cb = fig.colorbar(ScalarMappable(norm=hot_norm, cmap=FREQ_CMAP), ax=ax1, fraction=0.036, pad=0.012)
+cb.set_label("duels in this hotspot  (dark = fewer, bright = more)", fontsize=9)
+cb.ax.tick_params(labelsize=8)
 ax1.set_title(f"Q1  Where fights cluster — MeanShift, bandwidth {BANDWIDTH} units\n"
-              f"{len(hotspots)} hotspots hold {1 - noise_share:.0%} of duels · grey = not near any peak · "
+              f"{len(hotspots)} hotspots hold {1 - noise_share:.0%} of duels · colour = how many duels, "
+              f"number 1 = busiest · grey = not near any peak\n"
               f"{hotspot_stability:.0%} of peaks recur under match bootstrap", fontsize=10)
 
 # --- บนขวา: ประเภทช่อง ---
@@ -371,7 +399,8 @@ ax2.legend(handles=[Patch(color=TYPE_COLORS[c], label=f"type {c + 1}: {r['name']
                     for c, r in clusters.iterrows()],
            loc="upper center", bbox_to_anchor=(0.5, -0.01), ncol=2, fontsize=9, frameon=False)
 ax2.set_title(f"Q2  What kind of fight happens in each cell — KMeans k={k_best} on label-free cell profiles\n"
-              f"{GRID_N}x{GRID_N} grid · cells with fewer than {MIN_KILLS} duels left blank", fontsize=10)
+              f"{GRID_N}x{GRID_N} grid · cells with fewer than {MIN_KILLS} duels left blank\n"
+              f"colours only name the groups — they are not a ranking", fontsize=10)
 
 for ax in (ax1, ax2):
     ax.set_xticks([])

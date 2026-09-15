@@ -25,7 +25,8 @@ SELECT m.id,
        m.status,                                              -- queued / parsing / done / error (Sprint 2)
        m.error_message,
        m.started_at,
-       m.finished_at
+       m.finished_at,
+       m.source                                               -- reference = ชุดที่โมเดลเทรนจากมัน | upload = ผู้ใช้อัปเอง
 FROM matches m
 LEFT JOIN rounds r ON r.match_id = m.id
 LEFT JOIN kills  k ON k.round_id = r.id

@@ -1,7 +1,7 @@
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, Navigate, useNavigate, useParams } from "react-router-dom";
-import { api, ApiError, isBusy, matchesQuery, type Match, type MatchStatus, type RoundListItem } from "./api";
+import { api, ApiError, auth, isBusy, matchesQuery, type Match, type MatchStatus, type RoundListItem } from "./api";
 import { RoundView } from "./RoundView";
 import { endReasonLabel, NotFound, roundUrl, sideLabel, useViewState, type ViewState } from "./utils";
 
@@ -86,13 +86,14 @@ function MatchBody({ entry, roundNum, view, setView, params }: BodyProps) {
           <p className="eyebrow">{entry.map_name}</p>
           <h1>{matchTitle(entry)}</h1>
         </div>
-        <span className="badge b-ct">CT {entry.ct_rounds}</span>
-        <span className="badge b-t">T {entry.t_rounds}</span>
+        <span className="score num">
+          <span className="side-tag ct">CT</span> {entry.ct_rounds} : {entry.t_rounds} <span className="side-tag t">T</span>
+        </span>
         <span className="muted">
           {entry.rounds} รอบ · {entry.kills} คิล
         </span>
         <button type="button" className="btn-ghost" onClick={() => setView({ board: !view.board })} aria-expanded={view.board}>
-          {view.board ? "▾ ซ่อนสกอร์บอร์ด" : "▸ สกอร์บอร์ดทั้งแมตช์"}
+          {view.board ? "ซ่อนสกอร์บอร์ด" : "สกอร์บอร์ดทั้งแมตช์"}
         </button>
       </div>
       {view.board && (
@@ -206,6 +207,9 @@ interface SidebarProps {
 export function MatchSidebar({ current, collapsed, onToggle, params }: SidebarProps) {
   const qc = useQueryClient();
   const matches = useQuery(matchesQuery);
+  // guest ดูได้อย่างเดียว — ซ่อนช่องอัปโหลด (backend ก็ตอบ 403 อยู่ดี แต่ไม่ควรให้กดแล้วค่อยรู้)
+  const me = useQuery({ queryKey: ["me"], queryFn: auth.me, retry: false, staleTime: 5 * 60_000 });
+  const guest = !!me.data?.user.guest;
   const [items, setItems] = useState<QueueItem[]>([]);
   const [force, setForce] = useState(false);
   const [drag, setDrag] = useState(false);
@@ -258,43 +262,51 @@ export function MatchSidebar({ current, collapsed, onToggle, params }: SidebarPr
         </button>
       </div>
 
-      <div
-        className={`sb-drop ${drag ? "drag" : ""}`}
-        onDragOver={(e) => {
-          e.preventDefault();
-          setDrag(true);
-        }}
-        onDragLeave={() => setDrag(false)}
-        onDrop={(e) => {
-          e.preventDefault();
-          setDrag(false);
-          onFiles(e.dataTransfer.files);
-        }}
-        onClick={() => inputRef.current?.click()}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" || e.key === " ") inputRef.current?.click();
-        }}
-        role="button"
-        tabIndex={0}
-      >
-        <b>↑ อัปโหลดเดโม .dem</b>
-        <span>ลากมาวางหรือคลิกเลือก · แกะในเบื้องหลัง</span>
-        <input
-          ref={inputRef}
-          type="file"
-          accept=".dem"
-          multiple
-          hidden
-          data-testid="file-input"
-          onChange={(e) => {
-            onFiles(e.target.files);
-            e.target.value = "";
-          }}
-        />
-      </div>
-      <label className="sb-force">
-        <input type="checkbox" checked={force} onChange={(e) => setForce(e.target.checked)} /> โหลดทับของเดิม
-      </label>
+      {guest ? (
+        <p className="sb-guest" data-testid="sidebar-guest">
+          บัญชีผู้เยี่ยมชมดูได้อย่างเดียว — อัปโหลดเดโมต้องเข้าสู่ระบบด้วยบัญชีของทีม
+        </p>
+      ) : (
+        <>
+          <div
+            className={`sb-drop ${drag ? "drag" : ""}`}
+            onDragOver={(e) => {
+              e.preventDefault();
+              setDrag(true);
+            }}
+            onDragLeave={() => setDrag(false)}
+            onDrop={(e) => {
+              e.preventDefault();
+              setDrag(false);
+              onFiles(e.dataTransfer.files);
+            }}
+            onClick={() => inputRef.current?.click()}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") inputRef.current?.click();
+            }}
+            role="button"
+            tabIndex={0}
+          >
+            <b>อัปโหลดเดโม .dem</b>
+            <span>ลากมาวางหรือคลิกเลือก · แกะในเบื้องหลัง</span>
+            <input
+              ref={inputRef}
+              type="file"
+              accept=".dem"
+              multiple
+              hidden
+              data-testid="file-input"
+              onChange={(e) => {
+                onFiles(e.target.files);
+                e.target.value = "";
+              }}
+            />
+          </div>
+          <label className="sb-force">
+            <input type="checkbox" checked={force} onChange={(e) => setForce(e.target.checked)} /> โหลดทับของเดิม
+          </label>
+        </>
+      )}
 
       {items.length > 0 && (
         <ul className="sb-uplist" data-testid="upload-list">
@@ -327,7 +339,7 @@ export function MatchSidebar({ current, collapsed, onToggle, params }: SidebarPr
                 {m.status === "done" ? (
                   <>
                     {" · "}
-                    <span className="ct">{m.ct_rounds}</span>:<span className="t">{m.t_rounds}</span>
+                    <span className="num"><span className="ct">{m.ct_rounds}</span>:<span className="t">{m.t_rounds}</span></span>
                   </>
                 ) : (
                   <span className={`badge b-${m.status}`}>{STATUS_LABEL[m.status]}</span>

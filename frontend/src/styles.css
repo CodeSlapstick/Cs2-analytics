@@ -1,319 +1,377 @@
-/* โทนเดียวกับหน้าเว็บ Sprint 1: พื้นน้ำเงินเข้ม CT = น้ำเงิน T = ส้ม */
+/* ================================================================================================
+   CS2 SCOUTING — "โต๊ะโค้ช": หน้ากระดาษสว่าง แผนที่เป็นจอมืดจอเดียวที่วางอยู่บนโต๊ะ
+   สีสดมีแค่สองสี: CT ฟ้า / T ส้ม (ตัวอักษรบนกระดาษใช้เฉดเข้มกว่าสีที่ระบายบนแผนที่) · แดง = ฝั่งตรงข้ามชนะดวลบ่อย / error · เขียว = รอด
+   ตัวอักษร: Anuphan ทั้งแอป · Chakra Petch (.num) เฉพาะตัวเลขที่เป็นชื่อ — เลขผู้เล่น เลขรอบ นาฬิกา สกอร์
+   ไม่มีการ์ดซ้อนการ์ด ไม่มีเงา มุมโค้ง 4px ที่เดียว · หน้า /login มีโลกของตัวเอง (พื้นมืด) อยู่ท้ายไฟล์
+   ================================================================================================ */
 :root {
-  --bg: #0b1220;
-  --card: #111a2c;
-  --line: #1f2b44;
-  --text: #e6edf7;
-  --muted: #8b99b3;
-  --accent: #ff8a1e;
-  --ct: #4f8cff;
-  --t: #ff8a1e;
-  --ok: #3ccb7f;
-  --err: #ff5c5c;
+  --paper: #F3F4F6; --sheet: #FFFFFF; --rule: #D6DBE3; --rule-soft: #E8EBF0;
+  --ink: #171B22; --ink-soft: #5E6875; --ink-faint: #8A93A2;
+  --ct: #2B66D9; --ct-fill: #4F8CFF; --ct-wash: rgba(79, 140, 255, .13);
+  --t: #C96A00; --t-fill: #FF9A2E; --t-wash: rgba(255, 154, 46, .16);
+  --red: #D4384A; --red-wash: rgba(212, 56, 74, .12); --green: #1F9D5B; --green-wash: rgba(31, 157, 91, .14);
+  --screen: #0B0E14;
+  --body: "Anuphan", system-ui, sans-serif;
+  --num: "Chakra Petch", "Anuphan", system-ui, sans-serif;
+  --r: 4px;
+  --topbar-h: 50px;
 }
 * { box-sizing: border-box; }
-body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.5 system-ui, "Segoe UI", sans-serif; }
+html { color-scheme: light; }
+body { margin: 0; background: var(--paper); color: var(--ink); font: 400 15px/1.5 var(--body); }
 a { color: var(--ct); text-decoration: none; }
 a:hover { text-decoration: underline; }
-h1 { font-size: 26px; margin: 4px 0 16px; }
-h2 { font-size: 17px; margin: 2px 0 12px; }
-.topbar { display: flex; align-items: center; gap: 24px; padding: 12px 28px; border-bottom: 1px solid var(--line); background: #0d1526; }
-.brand { font-weight: 800; letter-spacing: .5px; color: var(--text); display: flex; align-items: center; gap: 8px; }
-.dot { width: 12px; height: 12px; background: var(--accent); border-radius: 3px; display: inline-block; }
-.topbar nav { display: flex; gap: 18px; }
-.topbar nav a { color: var(--muted); }
-.page { max-width: 1140px; margin: 0 auto; padding: 24px 28px 60px; }
-.eyebrow { color: var(--accent); font-size: 11px; letter-spacing: 2px; font-weight: 700; margin: 0; }
-.muted { color: var(--muted); }
-.err { color: var(--err); }
-.small { font-size: 12px; }
-.mono { font-family: ui-monospace, Consolas, monospace; font-size: 12px; }
-.card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 18px 20px; margin-top: 18px; }
+h1 { font-size: 24px; font-weight: 600; line-height: 1.25; margin: 4px 0 14px; letter-spacing: -.01em; }
+h2 { font-size: 17px; font-weight: 600; margin: 2px 0 10px; }
+h3 { font-size: 14px; font-weight: 600; margin: 0; }
+button, input, select { font: inherit; color: inherit; }
+button { cursor: pointer; }
+button:disabled { cursor: default; }
+.num { font-family: var(--num); font-weight: 600; font-variant-numeric: tabular-nums; letter-spacing: .01em; }
+.muted { color: var(--ink-soft); }
+.err { color: var(--red); }
+.small { font-size: 13px; }
+.eyebrow { color: var(--ink-soft); font-size: 13px; margin: 0; }
+:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; border-radius: var(--r); }
 
-.dropzone { border: 2px dashed #2d4470; border-radius: 12px; padding: 34px; text-align: center; cursor: pointer; background: rgba(79,140,255,.04); transition: .15s; }
-.dropzone.drag, .dropzone:hover { border-color: var(--ct); background: rgba(79,140,255,.10); }
-.dz-icon { width: 44px; height: 44px; border-radius: 50%; margin: 0 auto 10px; background: #1c2a48; color: var(--ct); font-size: 22px; line-height: 44px; }
-.dz-title { font-size: 16px; }
-.dz-title b { color: var(--accent); }
-.dz-sub { color: var(--muted); font-size: 13px; margin-top: 4px; }
-.check { display: block; margin: 10px 2px; }
-.check input { margin-right: 8px; }
+/* ---------------- แถบบน ---------------- */
+.topbar { min-height: var(--topbar-h); display: flex; align-items: center; flex-wrap: wrap; gap: 6px 22px; padding: 6px 20px; background: var(--sheet); border-bottom: 1px solid var(--rule); }
+.brand { display: inline-flex; align-items: center; gap: 9px; color: var(--ink); font: 700 15px/1 var(--num); letter-spacing: .08em; white-space: nowrap; }
+.brand:hover { text-decoration: none; }
+.topbar nav { display: flex; gap: 4px; }
+.topbar nav a { color: var(--ink-soft); padding: 6px 10px; border-radius: var(--r); white-space: nowrap; }
+.topbar nav a:hover { color: var(--ink); background: var(--paper); text-decoration: none; }
+.topbar nav a.active { color: var(--ink); font-weight: 600; box-shadow: inset 0 -2px 0 var(--ink); border-radius: 0; }
+.usermenu { margin-left: auto; display: flex; align-items: center; gap: 12px; font-size: 14px; }
+.usermenu button { background: none; border: 1px solid var(--rule); border-radius: var(--r); padding: 5px 10px; font-size: 13px; }
+.usermenu button:hover { border-color: var(--ink); }
+.guest-tag { font-size: 13px; color: var(--ink-soft); padding: 3px 9px; border: 1px dashed var(--rule); border-radius: 999px; white-space: nowrap; }
+.me-link { display: inline-flex; align-items: center; gap: 8px; color: var(--ink); padding: 3px 8px 3px 3px; border-radius: 999px; }
+.me-link:hover { background: var(--paper); text-decoration: none; }
+.me-avatar { width: 26px; height: 26px; border-radius: 50%; object-fit: cover; flex: none; background: var(--rule-soft); }
+.me-avatar.ph { display: grid; place-items: center; font: 700 12px/1 var(--num); color: var(--ink-soft); }
+.me-name { font-size: 13px; max-width: 14ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-.uplist { list-style: none; padding: 0; margin: 12px 0 0; }
-.uplist li { display: grid; grid-template-columns: 1fr 90px 2fr; gap: 12px; padding: 8px 12px; border: 1px solid var(--line); border-radius: 8px; margin-bottom: 6px; background: var(--card); }
-.uplist .q-size { color: var(--muted); }
-.up-failed { border-color: rgba(255,92,92,.5) !important; }
-.up-queued { border-color: rgba(60,203,127,.5) !important; }
+/* ---------------- หน้าทั่วไป ---------------- */
+.page { max-width: 1140px; margin: 0 auto; padding: 22px 24px 60px; }
+.card { background: var(--sheet); border: 1px solid var(--rule); border-radius: var(--r); padding: 16px 18px; margin-top: 16px; }
+.btn-primary { display: inline-block; background: var(--ink); color: var(--sheet); border: 0; border-radius: var(--r); padding: 10px 16px; font-weight: 600; text-decoration: none; }
+.btn-primary:hover { background: #2A3140; text-decoration: none; }
+.btn-primary:disabled { opacity: .6; }
+.btn-ghost { background: var(--sheet); border: 1px solid var(--rule); color: var(--ink); border-radius: var(--r); padding: 6px 12px; font-size: 14px; }
+.btn-ghost:hover { border-color: var(--ink); }
+.link-btn { background: none; border: 0; padding: 0; color: var(--ct); font-size: 13px; }
+.link-btn:hover { text-decoration: underline; }
+.link-btn:disabled { color: var(--ink-faint); text-decoration: none; }
 
+/* ป้ายฝั่ง (CT / T) — ตัวเดียวกันทุกหน้า */
+.side-tag, .badge { display: inline-block; padding: 1px 8px; border-radius: 999px; font: 700 12px/1.6 var(--num); letter-spacing: .04em; }
+.side-tag.ct, .badge.b-ct, .b-parsing { background: var(--ct-wash); color: var(--ct); }
+.side-tag.t, .badge.b-t { background: var(--t-wash); color: var(--t); }
+.b-done { background: var(--green-wash); color: var(--green); }
+.b-queued { background: var(--rule-soft); color: var(--ink-soft); }
+.b-error { background: var(--red-wash); color: var(--red); }
+.badge.big { font-size: 14px; }
+
+/* ตาราง (สกอร์บอร์ด) */
 .tbl { width: 100%; border-collapse: collapse; }
-.tbl th, .tbl td { padding: 9px 10px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
-.tbl th { color: var(--muted); font-size: 11px; letter-spacing: 1px; text-transform: uppercase; }
-.tbl .num { text-align: right; font-variant-numeric: tabular-nums; }
+.tbl th, .tbl td { padding: 8px 10px; border-bottom: 1px solid var(--rule-soft); text-align: left; vertical-align: top; }
+.tbl th { color: var(--ink-soft); font-size: 13px; font-weight: 500; }
+.tbl .num { text-align: right; font-weight: 500; }
+.tbl th.num { font-family: var(--body); }
 .tbl.compact td, .tbl.compact th { padding: 6px 8px; }
-.tbl tr.st-error td { background: rgba(255,92,92,.05); }
-.tbl tr.st-parsing td, .tbl tr.st-queued td { background: rgba(79,140,255,.05); }
 td.ct { color: var(--ct); }
 td.t { color: var(--t); }
 
-.badge { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 12px; font-weight: 700; }
-.b-ct { background: rgba(79,140,255,.18); color: var(--ct); }
-.b-t { background: rgba(255,138,30,.18); color: var(--t); }
-.b-done { background: rgba(60,203,127,.18); color: var(--ok); }
-.b-queued { background: rgba(139,153,179,.18); color: var(--muted); }
-.b-parsing { background: rgba(79,140,255,.18); color: var(--ct); }
-.b-error { background: rgba(255,92,92,.18); color: var(--err); }
-
-.scoreline { display: flex; gap: 10px; align-items: center; margin: -6px 0 6px; }
-.timeline { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
-.rbox { width: 34px; height: 34px; border-radius: 6px; display: grid; place-items: center; font-weight: 700; font-size: 13px; }
-.rbox.ct { background: var(--ct); color: #fff; }
-.rbox.t { background: var(--t); color: #1a0d00; }
-.rbox.none { background: var(--line); color: var(--muted); }
-a.rbox { text-decoration: none; }
-a.rbox:hover { outline: 2px solid #fff; text-decoration: none; }
-
-/* ---------------- Round Review ---------------- */
-.review .review-head { display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap; }
-.review h1 { display: flex; align-items: center; gap: 12px; }
-.badge.big { font-size: 14px; padding: 4px 12px; }
-.round-strip { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; margin: 4px 0 10px; }
-.round-strip .rbox { width: 30px; height: 30px; font-size: 12px; }
-.round-strip .rbox.active { outline: 3px solid #fff; outline-offset: 1px; }
-.round-strip button { background: var(--card); color: var(--text); border: 1px solid var(--line); border-radius: 6px; width: 30px; height: 30px; cursor: pointer; }
-.round-strip button:disabled { opacity: .3; cursor: default; }
-.page:has(.review) { max-width: 1500px; }
-
-.roster { display: flex; flex-direction: column; gap: 12px; }
-.team-box { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; }
-.team-head { display: flex; gap: 8px; align-items: center; margin-bottom: 6px; }
-.team-box ul { list-style: none; margin: 0; padding: 0; }
-.team-box li { padding: 6px 0; border-top: 1px solid var(--line); }
-.team-box li.dim { opacity: .4; }
-.team-box li.on .pname { color: #fff; font-weight: 700; }
-.pname { background: none; border: 0; color: var(--text); cursor: pointer; padding: 0; font: inherit; display: flex; align-items: center; gap: 7px; width: 100%; text-align: left; }
-.pname .kills { margin-left: auto; font-size: 11px; color: var(--muted); }
-.pdot { width: 11px; height: 11px; border-radius: 50%; display: inline-block; flex: none; box-shadow: 0 0 0 2px #0b1220; }
-.pstat { font-size: 12px; color: var(--muted); padding-left: 18px; }
-.pstat .alive { color: var(--ok); }
-.link-btn { background: none; border: 0; color: var(--ct); cursor: pointer; margin-top: 8px; padding: 0; }
-
-.death-dot { cursor: pointer; }
-.death-num { font-size: 22px; font-weight: 800; fill: #0b1220; pointer-events: none; }
-.hs-label { font-size: 22px; font-weight: 800; fill: #fff; paint-order: stroke; stroke: #0b1220; stroke-width: 5px; }
-.bomb-label { font-size: 13px; font-weight: 800; fill: #fff; }
-.dot-name { font-size: 20px; font-weight: 700; fill: #fff; paint-order: stroke; stroke: #0b1220; stroke-width: 5px; pointer-events: none; }
-.dot-name.atk { font-size: 17px; }
-.nade-label { font-size: 16px; font-weight: 700; paint-order: stroke; stroke: #0b1220; stroke-width: 4px; pointer-events: none; }
-.timeline-list li.tl-nade { cursor: default; color: var(--muted); font-size: 12px; padding: 3px 4px; }
-.nade-dot { width: 10px; height: 10px; border-radius: 50%; align-self: center; justify-self: center; }
-.legend { display: flex; flex-wrap: wrap; gap: 14px; font-size: 12px; margin-top: 8px; }
-.legend i { width: 12px; height: 12px; display: inline-block; border-radius: 3px; vertical-align: -1px; margin-right: 4px; }
-
-.timeline-list { list-style: none; margin: 6px 0 14px; padding: 0; }
-.timeline-list li { display: grid; grid-template-columns: 24px 40px 1fr; gap: 6px; padding: 6px 4px; border-bottom: 1px solid var(--line); font-size: 13px; cursor: pointer; border-radius: 6px; }
-.timeline-list li.sel, .ctx-list li.sel { background: rgba(79,140,255,.14); }
-.timeline-list li.dim, .ctx-list li.dim { opacity: .35; }
-.timeline-list li.tl-bomb { grid-template-columns: 1fr; color: #fca5a5; cursor: default; }
-.tl-num { width: 20px; height: 20px; border-radius: 50%; display: inline-grid; place-items: center; font-size: 11px; font-weight: 800; color: #0b1220; flex: none; }
-.tl-t { font-variant-numeric: tabular-nums; color: var(--muted); }
-.tl-meta { color: var(--muted); }
-.who { white-space: nowrap; }
-.who .pdot { width: 8px; height: 8px; margin-right: 3px; }
-.summary { border-top: 1px solid var(--line); padding-top: 10px; margin-top: 4px; font-size: 13px; }
-.summary p { margin: 4px 0; }
-.ctx { border-top: 1px solid var(--line); padding-top: 10px; margin-top: 10px; }
-.ctx-source { font-size: 12px; color: var(--muted); margin: 4px 0 8px; }
-.ctx-list { list-style: none; padding: 0; margin: 0; }
-.ctx-list li { padding: 8px 6px; border-bottom: 1px solid var(--line); cursor: pointer; border-radius: 6px; }
-.ctx-list p { margin: 4px 0 0; }
-.ctx-head { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; font-size: 13px; }
-.ctype { font-weight: 700; display: inline-flex; align-items: center; gap: 5px; }
-.ctype i { width: 9px; height: 9px; border-radius: 2px; flex: none; }
-.tag-warn { margin-left: auto; font-size: 11px; background: rgba(255,92,92,.15); color: #fca5a5; padding: 2px 8px; border-radius: 999px; }
-
-/* ---------------- ปุ่มหลักทั่วแอป (หน้า 404) ---------------- */
-.btn-primary { background: var(--accent); color: #1a0d00; border: 0; border-radius: 8px; padding: 10px 14px; font-weight: 800; cursor: pointer; font: inherit; font-weight: 800; }
-.btn-primary:disabled { opacity: .6; cursor: default; }
-.usermenu { margin-left: auto; display: flex; align-items: center; gap: 12px; font-size: 13px; }
-.usermenu button { background: none; border: 1px solid var(--line); color: var(--text); border-radius: 6px; padding: 5px 10px; cursor: pointer; }
-.usermenu button:hover { border-color: var(--ct); }
-
-/* ---------------- หน้าหลักหน้าเดียว: sidebar + เนื้อหารอบ ---------------- */
+/* ---------------- หน้าหลักหน้าเดียว: แถบซ้าย + เนื้อหารอบ ---------------- */
 .page:has(.match-layout) { max-width: none; padding: 0; }
-.match-layout { display: grid; grid-template-columns: 290px minmax(0, 1fr); height: calc(100dvh - 49px); }
-.match-layout.sb-collapsed { grid-template-columns: 46px minmax(0, 1fr); }
-.sidebar { border-right: 1px solid var(--line); background: #0d1526; padding: 12px; position: sticky; top: 0; height: calc(100vh - 49px); overflow-y: auto; }
-.sidebar.collapsed { padding: 10px 7px; }
+.match-layout { display: grid; grid-template-columns: 280px minmax(0, 1fr); height: calc(100dvh - var(--topbar-h)); }
+.match-layout.sb-collapsed { grid-template-columns: 44px minmax(0, 1fr); }
+.sidebar { border-right: 1px solid var(--rule); background: var(--sheet); padding: 12px; position: sticky; top: 0; height: calc(100dvh - var(--topbar-h)); overflow-y: auto; }
+.sidebar.collapsed { padding: 10px 6px; }
 .sb-head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
-.sb-toggle { margin-left: auto; background: none; border: 1px solid var(--line); color: var(--text); border-radius: 6px; width: 30px; height: 30px; cursor: pointer; flex: none; }
-.sb-toggle:hover { border-color: var(--ct); }
-.sb-drop { border: 2px dashed #2d4470; border-radius: 10px; padding: 10px 12px; text-align: center; cursor: pointer; display: flex; flex-direction: column; gap: 2px; font-size: 12px; color: var(--muted); }
-.sb-drop b { color: var(--text); font-size: 13px; }
-.sb-drop.drag, .sb-drop:hover, .sb-drop:focus { border-color: var(--ct); background: rgba(79,140,255,.08); outline: none; }
-.sb-force { display: block; font-size: 12px; color: var(--muted); margin: 6px 2px 0; }
+.sb-toggle { margin-left: auto; background: none; border: 1px solid var(--rule); border-radius: var(--r); width: 30px; height: 30px; flex: none; }
+.sb-toggle:hover { border-color: var(--ink); }
+.sb-drop { border: 1px dashed var(--ink-faint); border-radius: var(--r); padding: 10px 12px; text-align: center; cursor: pointer; display: flex; flex-direction: column; gap: 2px; font-size: 13px; color: var(--ink-soft); }
+.sb-drop b { color: var(--ink); font-weight: 600; }
+.sb-drop.drag, .sb-drop:hover, .sb-drop:focus { border-color: var(--ink); background: var(--paper); outline: none; }
+.sb-force { display: block; font-size: 13px; color: var(--ink-soft); margin: 6px 2px 0; }
+.sb-guest { margin: 0; padding: 10px 12px; font-size: 13px; color: var(--ink-soft); border: 1px dashed var(--rule); border-radius: var(--r); }
 .sb-uplist { list-style: none; margin: 8px 0 0; padding: 0; }
-.sb-uplist li { display: flex; flex-direction: column; padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px; margin-bottom: 4px; font-size: 12px; }
+.sb-uplist li { display: flex; flex-direction: column; padding: 6px 8px; border: 1px solid var(--rule); border-radius: var(--r); margin-bottom: 4px; font-size: 13px; }
 .sb-uplist .q-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.up-failed { border-color: var(--red) !important; }
+.up-queued { border-color: var(--green) !important; }
 .sb-list { list-style: none; margin: 12px 0 0; padding: 0; }
-.sb-list a { display: block; padding: 8px 9px; border-radius: 8px; color: var(--text); border: 1px solid transparent; }
-.sb-list a:hover { background: rgba(79,140,255,.08); text-decoration: none; }
-.sb-list a.active { background: rgba(79,140,255,.16); border-color: rgba(79,140,255,.45); }
-.sb-title { display: block; font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.sb-meta { display: flex; gap: 6px; align-items: center; font-size: 11px; color: var(--muted); margin-top: 2px; }
-.sb-meta .ct { color: var(--ct); font-weight: 700; }
-.sb-meta .t { color: var(--t); font-weight: 700; }
-.sb-meta .badge { font-size: 10px; padding: 1px 7px; margin-left: auto; }
+.sb-list a { display: block; padding: 8px 10px; border-radius: var(--r); color: var(--ink); border-left: 3px solid transparent; }
+.sb-list a:hover { background: var(--paper); text-decoration: none; }
+.sb-list a.active { background: var(--paper); border-left-color: var(--ink); }
+.sb-title { display: block; font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sb-meta { display: flex; gap: 6px; align-items: center; font-size: 12.5px; color: var(--ink-soft); margin-top: 2px; }
+.sb-meta .ct { color: var(--ct); }
+.sb-meta .t { color: var(--t); }
+.sb-meta .badge { font-size: 11px; margin-left: auto; }
 /* match-main สูงเท่าจอพอดีและเลื่อนในตัวเอง — หน้ารอบจึงรู้ว่าเหลือความสูงเท่าไร (ดูส่วนหน้ารอบด้านล่าง) */
-.match-main { padding: 12px 20px 14px; min-width: 0; display: flex; flex-direction: column; overflow-y: auto; container: main / inline-size; }
-.match-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 4px; }
-.match-head h1 { margin: 0; }
-.btn-ghost { margin-left: auto; background: none; border: 1px solid var(--line); color: var(--text); border-radius: 8px; padding: 6px 12px; cursor: pointer; font: inherit; font-size: 13px; }
-.btn-ghost:hover { border-color: var(--ct); }
-.board-panel { margin-top: 10px; overflow-x: auto; }
-.review h2 { display: flex; align-items: center; gap: 12px; margin: 0; }
+.match-main { padding: 12px 18px 14px; min-width: 0; display: flex; flex-direction: column; overflow-y: auto; container: main / inline-size; }
+.match-head { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 6px; }
+.match-head h1 { margin: 0; font-size: 21px; overflow-wrap: anywhere; }
+.match-head .score { font-size: 18px; display: inline-flex; align-items: center; gap: 6px; }
+.match-head .btn-ghost { margin-left: auto; }
+.board-panel { margin: 4px 0 8px; overflow-x: auto; }
 .notfound, .empty-state, .progress-state { text-align: center; padding: 80px 20px; }
-.notfound .btn-primary { display: inline-block; margin-top: 14px; text-decoration: none; }
-.progress-bar { width: min(420px, 90%); height: 6px; margin: 18px auto; background: var(--line); border-radius: 999px; overflow: hidden; }
-.progress-bar i { display: block; height: 100%; width: 40%; background: var(--ct); animation: cs2-slide 1.2s infinite ease-in-out; }
+.notfound .btn-primary { margin-top: 14px; }
+.progress-bar { width: min(420px, 90%); height: 6px; margin: 18px auto; background: var(--rule); border-radius: 999px; overflow: hidden; }
+.progress-bar i { display: block; height: 100%; width: 40%; background: var(--ink); animation: cs2-slide 1.2s infinite ease-in-out; }
 @keyframes cs2-slide { from { transform: translateX(-100%); } to { transform: translateX(250%); } }
 
-/* ---------------- หน้ารอบ: แผนที่ + ข้อมูลรอบข้างเห็นพร้อมกันในจอเดียว (laptop 1366–1536 px / projector) ----------------
+/* แถบรอบ — สีฝั่งที่ชนะ */
+.round-strip { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; margin: 2px 0 10px; }
+.rbox { width: 30px; height: 30px; border-radius: var(--r); display: grid; place-items: center; font: 600 13px/1 var(--num); }
+.rbox.ct { background: var(--ct-fill); color: #fff; }
+.rbox.t { background: var(--t-fill); color: #2A1500; }
+.rbox.none { background: var(--rule-soft); color: var(--ink-soft); }
+a.rbox:hover { text-decoration: none; box-shadow: 0 0 0 2px var(--ink); }
+.round-strip .rbox.active { box-shadow: 0 0 0 2px var(--sheet), 0 0 0 4px var(--ink); }
+.round-strip button { background: var(--sheet); border: 1px solid var(--rule); border-radius: var(--r); width: 30px; height: 30px; }
+.round-strip button:disabled { opacity: .3; }
+
+/* ---------------- หน้ารอบ ----------------
+   ซ้าย: ชั้นข้อมูล → แผนที่ (จอมืด) → key → แถบเล่นย้อน · ขวา: สองทีม + ไทม์ไลน์ (เลื่อนในช่องของตัวเอง)
    .review กินความสูงที่เหลือใต้หัวแมตช์และแถบรอบ · แผนที่เป็นจัตุรัส = ด้านที่สั้นกว่าของช่อง (container query units)
-   รายชื่อทีมกับไทม์ไลน์เลื่อนในช่องของตัวเอง · จำนวนคอลัมน์ดูจากความกว้างจริงของเนื้อหา ไม่ใช่ขนาดจอ
-   (ย่อ/ขยาย sidebar แล้วจัดใหม่เอง): < 640 px เรียงลงมา · 640–1149 px สองคอลัมน์ · ≥ 1150 px สามคอลัมน์
-   laptop 1366 ที่เปิด sidebar ได้สองคอลัมน์ — แผนที่ใหญ่กว่าสามคอลัมน์ ~40% เพราะรายชื่อทีมย้ายไปอยู่เหนือไทม์ไลน์ */
-.review-head { display: flex; align-items: baseline; gap: 6px 16px; flex-wrap: wrap; margin-bottom: 8px; }
-.review-head .toggles { margin-left: auto; display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 13px; }
-.toggles label { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; white-space: nowrap; }
-.toggles input { margin: 0; accent-color: var(--ct); }
-.toggle-group { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 4px 10px; }
-.nade-toggle { display: inline-flex; align-items: center; gap: 5px; padding: 2px 8px 2px 6px; border: 1px solid var(--line);
-  border-radius: 999px; cursor: pointer; opacity: .55; transition: opacity .15s, border-color .15s; }
-.nade-toggle.on { opacity: 1; border-color: #3a4a6b; }
-.nade-toggle:has(input:disabled) { opacity: .3; cursor: default; }
-.nade-toggle:has(input:focus-visible) { outline: 2px solid var(--ct); outline-offset: 2px; }
-.nade-toggle i { width: 9px; height: 9px; border-radius: 50%; }
-.map-play { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; font-size: 12px; }
-.pb-mode { background: var(--card); color: var(--text); border: 1px solid var(--line); border-radius: 999px;
-  padding: 4px 12px; font: inherit; font-size: 12px; cursor: pointer; }
-.pb-mode:hover { border-color: var(--ct); }
-.pb-mode.on { background: rgba(79, 140, 255, .16); border-color: #3a4a6b; color: #fff; }
-.pb-play { width: 28px; height: 28px; display: grid; place-items: center; border-radius: 50%;
-  border: 1px solid var(--line); background: var(--card); color: var(--text); cursor: pointer; }
-.pb-play:hover { border-color: var(--ct); }
-.pb-range { flex: 1 1 150px; min-width: 110px; accent-color: var(--ct); }
-.pb-clock { font-variant-numeric: tabular-nums; color: var(--muted); }
-.pb-speed { background: none; border: 1px solid var(--line); color: var(--muted); border-radius: 6px;
-  padding: 2px 7px; font: inherit; font-size: 12px; cursor: pointer; }
-.pb-speed.on { border-color: #3a4a6b; color: var(--text); }
-.pb-note { margin: 0; }
-.map-zoom { display: flex; align-items: center; gap: 8px; font-size: 12px; }
-.map-zoom button:not(.link-btn) { width: 28px; height: 28px; border-radius: 6px; border: 1px solid var(--line);
-  background: var(--card); color: var(--text); font-size: 16px; line-height: 1; cursor: pointer; }
-.map-zoom button:not(.link-btn):hover:not(:disabled) { border-color: var(--ct); }
-.map-zoom button:disabled { opacity: .35; cursor: default; }
-.review-grid { display: grid; gap: 12px; grid-template-columns: minmax(0, 1fr); grid-template-areas: "map" "roster" "panel"; }
-.roster-col { grid-area: roster; min-width: 0; }
-.map-col { grid-area: map; min-width: 0; display: flex; flex-direction: column; gap: 6px; background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 8px; }
-.map-stage { container-type: size; aspect-ratio: 1; display: grid; place-items: center; }
-svg.radar { width: 100cqmin; height: 100cqmin; display: block; background: #0a0f1a; border-radius: 6px; touch-action: none; }
+   < 720 px เรียงลงมา · ≥ 720 px สองคอลัมน์ (วัดจากความกว้างจริงของเนื้อหา ย่อ/ขยาย sidebar แล้วจัดใหม่เอง) */
+.review-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
+.review-head h2 { margin: 0; font-size: 18px; }
+.review-grid { display: grid; gap: 12px; grid-template-columns: minmax(0, 1fr); grid-template-areas: "map" "side"; }
+.map-col { grid-area: map; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+.map-stage { container-type: size; aspect-ratio: 1; display: grid; place-items: center; background: var(--screen); border-radius: var(--r); }
+svg.radar { width: 100cqmin; height: 100cqmin; display: block; touch-action: none; }
 svg.radar.zoomed { cursor: grab; }
 svg.radar.zoomed:active { cursor: grabbing; }
-.map-col .legend { margin-top: 0; gap: 4px 14px; }
-.breakdown { grid-area: panel; min-width: 0; background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; }
-.panel-h { font-size: 13px; font-weight: 700; color: var(--text); margin: 0 0 4px; }
-.summary .panel-h, .ctx .panel-h { margin-top: 2px; }
+/* ตัวหนังสือบนแผนที่ (พื้นมืด): เลขผู้เล่นเป็น Chakra Petch · ชื่อ/ป้ายมีขอบมืดกันกลืนกับภาพ */
+.map-num { font-family: var(--num); font-weight: 700; pointer-events: none; }
+.map-num.halo { paint-order: stroke; stroke: var(--screen); }
+.death-dot { cursor: pointer; }
+.dot-name { font-family: var(--body); font-weight: 600; fill: #fff; paint-order: stroke; stroke: var(--screen); pointer-events: none; }
+.hs-label { font-family: var(--body); font-weight: 600; fill: #fff; paint-order: stroke; stroke: var(--screen); pointer-events: none; }
+.bomb-label { font-family: var(--num); font-weight: 700; fill: #fff; pointer-events: none; }
 
-@container main (min-width: 640px) {
+/* แถวชั้นข้อมูล */
+.layers { display: flex; align-items: center; flex-wrap: wrap; gap: 5px 14px; font-size: 13px; }
+.seg { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 4px; }
+.seg-h { color: var(--ink-soft); margin-right: 4px; }
+.seg-btn { background: var(--sheet); border: 1px solid var(--rule); border-radius: var(--r); padding: 3px 10px; font-size: 13px; color: var(--ink-soft); }
+/* ปุ่มที่เลือกอยู่พื้นเข้มแล้ว ห้ามให้ hover เปลี่ยนตัวอักษรเป็นสีหมึก ไม่งั้นกลายเป็นดำบนดำ อ่านไม่ออก */
+.seg-btn:hover:not(.on):not(:disabled) { border-color: var(--ink); color: var(--ink); }
+.seg-btn.on:hover:not(:disabled) { filter: brightness(1.3); }
+.seg-btn:disabled { opacity: .4; }
+.seg-btn.on { background: var(--ink); border-color: var(--ink); color: var(--sheet); }
+.seg-btn.ct.on { background: var(--ct); border-color: var(--ct); }
+/* ส้มสว่างเกินกว่าจะรองรับตัวอักษรขาวได้ ใช้หมึกเข้มแทน (เหมือนกล่องรอบและเลขผู้เล่นฝั่ง T) */
+.seg-btn.t.on { background: var(--t); border-color: var(--t); color: #2A1500; }
+/* ปุ่มชั้นความถี่ใช้สีของไล่เฉด (ม่วง) ไม่ใช่สีฝั่ง — ชั้นนี้ไม่เกี่ยวกับ CT หรือ T */
+.seg-btn.freq.on { background: #7E22CE; border-color: #7E22CE; }
+.nade-toggle { display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px 3px 7px; border: 1px solid var(--rule); background: var(--sheet); border-radius: var(--r); cursor: pointer; color: var(--ink-soft); }
+.nade-toggle input { position: absolute; opacity: 0; width: 0; height: 0; }
+.nade-toggle i { width: 10px; height: 10px; border-radius: 50%; border: 1px solid rgba(0, 0, 0, .25); }
+.nade-toggle.on { color: var(--ink); border-color: var(--ink-faint); }
+.nade-toggle:has(input:disabled) { opacity: .4; cursor: default; }
+.nade-toggle:has(input:focus-visible) { outline: 2px solid var(--ink); outline-offset: 2px; }
+.seg-check { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; color: var(--ink-soft); }
+.seg-check:has(input:checked) { color: var(--ink); }
+.seg-check input { margin: 0; accent-color: var(--ink); }
+.seg-check:has(input:disabled) { opacity: .4; cursor: default; }
+.zoom { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; }
+.zoom > button:not(.link-btn) { width: 28px; height: 28px; border-radius: var(--r); border: 1px solid var(--rule); background: var(--sheet); font-size: 16px; line-height: 1; }
+.zoom > button:not(.link-btn):hover:not(:disabled) { border-color: var(--ink); }
+.zoom > button:disabled { opacity: .35; }
+
+/* key ใต้แผนที่ — ทุกสัญลักษณ์บนแผนที่มีคำอธิบายที่นี่ */
+.map-key { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 3px 16px; font-size: 12.5px; line-height: 1.4; color: var(--ink-soft); }
+.map-key li { display: inline-flex; align-items: center; gap: 5px; flex-wrap: wrap; }
+.key-nade { display: inline-flex; align-items: center; gap: 4px; margin-right: 4px; }
+.key-band { display: inline-flex; align-items: center; gap: 4px; margin-left: 8px; }
+.key-band .ks.adv { margin: 0; }
+.ks { display: inline-grid; place-items: center; width: 18px; height: 18px; border-radius: 50%; font: 700 11px/1 var(--num); color: var(--screen); flex: none; }
+.ks.live { border: 1.5px solid var(--screen); }
+.ks.dead { background: var(--screen); border: 2px solid; }
+.ks.bomb { border-radius: 3px; background: #E5484D; color: #fff; font-size: 9px; }
+.ks.nade { border: 1px solid rgba(0, 0, 0, .25); }
+.ks.hs { border: 2px dashed var(--ink-soft); background: var(--screen); }
+/* ขั้นจางสุดของไล่เฉดเกือบขาว ถ้าไม่มีเส้นขอบจะหายไปกับพื้นกระดาษของคำอธิบายสี */
+.ks.adv { border-radius: 2px; width: 16px; height: 16px; border: 1px solid rgba(23, 27, 34, .35); }
+.ks.adv + .ks.adv { margin-left: -2px; }
+.ks.adv.avoid { margin-left: 8px; }
+
+/* แถบเล่นย้อน */
+.playbar { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; font-size: 13px; }
+.pb-play { width: 32px; height: 32px; display: grid; place-items: center; border-radius: 50%; border: 0; background: var(--ink); color: var(--sheet); flex: none; }
+.pb-play:hover:not(:disabled) { background: #2A3140; }
+.pb-play:disabled { opacity: .35; }
+.pb-range { flex: 1 1 160px; min-width: 120px; accent-color: var(--ink); }
+.pb-clock { color: var(--ink); min-width: 92px; }
+.pb-speed { background: none; border: 1px solid var(--rule); color: var(--ink-soft); border-radius: var(--r); padding: 2px 7px; font-size: 12px; }
+.pb-speed.on { border-color: var(--ink); color: var(--ink); }
+.pb-speed:disabled { opacity: .4; }
+.pb-status { flex: 1 1 200px; min-width: 0; }
+
+/* คอลัมน์ขวา: สองทีม + ไทม์ไลน์ */
+.side-col { grid-area: side; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
+.panel-h { padding-top: 8px; border-top: 1px solid var(--rule); }
+.roster { display: flex; flex-direction: column; gap: 8px; }
+/* ฝั่งของทีมบอกด้วยป้าย CT/T กับสีของเลขผู้เล่นอยู่แล้ว — ไม่ต้องมีแถบสีข้างกล่องซ้ำอีก */
+.team { padding-left: 2px; }
+.team + .team { margin-top: 2px; }
+.team-head { display: flex; gap: 8px; align-items: center; margin-bottom: 4px; }
+.team ul { list-style: none; margin: 0; padding: 0; }
+.team li.dim { opacity: .45; }
+.team li.on .prow { background: var(--paper); }
+.prow { display: grid; grid-template-columns: 22px minmax(0, 1fr) auto auto; align-items: center; gap: 8px; width: 100%; padding: 3px 6px 3px 2px; margin: 0 0 0 -2px; border: 0; border-radius: var(--r); background: none; text-align: left; font-size: 14px; }
+.prow:hover { background: var(--paper); }
+.pname { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pstat { font-size: 12.5px; color: var(--ink-soft); white-space: nowrap; }
+.pstat .alive { color: var(--green); }
+.kills { min-width: 26px; text-align: right; font-size: 12px; color: var(--ink-soft); }
+/* เลขประจำตัว 1–5 — ตัวเดียวกับบนแผนที่ (สีฝั่ง + Chakra Petch) */
+.pnum { display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; font: 700 11.5px/1 var(--num); color: #fff; background: var(--ink-faint); flex: none; }
+.pnum.ct { background: var(--ct-fill); }
+.pnum.t { background: var(--t-fill); color: #2A1500; }
+
+.timeline-list { list-style: none; margin: 0; padding: 0; }
+.timeline-list li { display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: 8px; padding: 6px 6px; border-bottom: 1px solid var(--rule-soft); font-size: 14px; border-radius: var(--r); }
+.timeline-list li.tl-death { cursor: pointer; }
+.timeline-list li.tl-death:hover { background: var(--paper); }
+.timeline-list li.sel { background: var(--paper); box-shadow: inset 3px 0 0 var(--ink); }
+.timeline-list li.dim { opacity: .35; }
+.timeline-list li.tl-bomb .tl-text { color: var(--red); font-weight: 600; }
+.timeline-list li.tl-nade { color: var(--ink-soft); font-size: 13px; padding-top: 3px; padding-bottom: 3px; }
+.tl-t { color: var(--ink-soft); font-weight: 500; padding-top: 1px; }
+.tl-text { display: inline; line-height: 1.55; }
+.tl-meta { color: var(--ink-soft); }
+.who { white-space: nowrap; display: inline-flex; align-items: center; gap: 4px; }
+.who .pnum { width: 18px; height: 18px; font-size: 10.5px; }
+.nade-dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; border: 1px solid rgba(0, 0, 0, .25); vertical-align: -1px; }
+
+@container main (min-width: 720px) {
   .review { flex: 1 0 auto; min-height: 440px; display: flex; flex-direction: column; }
   .review-grid {
     flex: 1 1 0; min-height: 0; align-items: stretch;
-    grid-template-columns: minmax(0, 1fr) minmax(270px, 330px);
-    grid-template-rows: auto minmax(0, 1fr);
-    grid-template-areas: "map roster" "map panel";
+    grid-template-columns: minmax(0, 1fr) minmax(300px, 380px);
+    grid-template-areas: "map side";
   }
   .map-stage { flex: 1 1 0; min-height: 0; aspect-ratio: auto; }
-  .roster-col, .breakdown { min-height: 0; overflow-y: auto; }
-  /* สองคอลัมน์: สองทีมเคียงกัน เหลือชื่อ + คิล (รายละเอียดการตายอยู่ในไทม์ไลน์ใต้ลงไปแล้ว) */
-  .roster-col .roster { flex-direction: row; gap: 8px; }
-  .roster-col .team-box { flex: 1 1 0; min-width: 0; padding: 6px 8px; }
-  .roster-col .team-box li { padding: 3px 0; }
-  .roster-col .pstat { display: none; }
-}
-@container main (min-width: 1150px) {
-  .review-grid {
-    grid-template-columns: minmax(200px, 250px) minmax(0, 1fr) minmax(320px, 400px);
-    grid-template-rows: minmax(0, 1fr);
-    grid-template-areas: "roster map panel";
-  }
-  .roster-col .roster { flex-direction: column; gap: 10px; }
-  .roster-col .team-box { flex: none; padding: 8px 10px; }
-  .roster-col .team-box li { padding: 5px 0; }
-  .roster-col .pstat { display: block; }
+  .side-col { min-height: 0; overflow-y: auto; padding-right: 2px; }
 }
 
-/* พื้นผิวของเบราว์เซอร์ให้เข้าโทนเดียวกัน: แถบเลื่อน + วงโฟกัสคีย์บอร์ด */
-.match-main, .sidebar, .roster-col, .breakdown { scrollbar-width: thin; scrollbar-color: #2a3a5c transparent; }
-.review :is(button, input, [role="button"]):focus-visible { outline: 2px solid var(--ct); outline-offset: 2px; border-radius: 6px; }
-.timeline-list li:hover, .ctx-list li:hover { background: rgba(79,140,255,.07); }
-.timeline-list li.tl-nade:hover, .timeline-list li.tl-bomb:hover { background: none; }
+/* พื้นผิวของเบราว์เซอร์ให้เข้าโทนเดียวกัน */
+.match-main, .sidebar, .side-col { scrollbar-width: thin; scrollbar-color: var(--rule) transparent; }
 
 /* จอแคบ (มือถือ): sidebar ย้ายขึ้นไปอยู่บนเนื้อหา ไม่แย่งความกว้างของแผนที่ */
 @media (max-width: 700px) {
-  .match-layout, .match-layout.sb-collapsed { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
-  .sidebar { position: static; height: auto; max-height: 34dvh; border-right: 0; border-bottom: 1px solid var(--line); }
-  .match-main { padding: 10px 12px; }
+  .topbar { padding: 6px 12px; gap: 4px 12px; }
+  .usermenu { gap: 8px; }
+  .match-layout, .match-layout.sb-collapsed { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); height: auto; }
+  .sidebar { position: static; height: auto; max-height: 34dvh; border-right: 0; border-bottom: 1px solid var(--rule); }
+  .match-main { padding: 10px 12px; overflow: visible; }
+  .zoom { margin-left: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .progress-bar i { animation: none; width: 100%; opacity: .5; }
+}
+
+/* ---------------- หน้าเครื่องมือวิเคราะห์ /analysis ----------------
+   เทียบแมตช์ที่อัปโหลดกับชุดอ้างอิง — แผนที่ซ้าย (จอมืดจอเดียวเหมือนหน้ารอบ) ตัวเลขขวา */
+.analysis { max-width: 1280px; margin: 0 auto; }
+.an-head { margin-bottom: 14px; }
+.an-head h1 { margin: 0 0 4px; }
+.an-head p { margin: 0; max-width: 72ch; font-size: 14px; }
+.an-controls { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 20px; padding-bottom: 12px; border-bottom: 1px solid var(--rule); }
+.an-select { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--ink-soft); }
+.an-select select { background: var(--sheet); border: 1px solid var(--rule); border-radius: var(--r); padding: 4px 8px; color: var(--ink); max-width: 260px; }
+.an-select select:hover { border-color: var(--ink); }
+.an-grid { display: grid; gap: 18px; grid-template-columns: minmax(0, 1fr); margin-top: 14px; }
+.an-map-col { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.an-map { background: var(--screen); border-radius: var(--r); display: grid; place-items: center; }
+.an-map .radar { width: 100%; height: auto; max-height: 68dvh; display: block; }
+.an-side { min-width: 0; }
+.an-side h2 { margin: 0 0 4px; }
+.an-tbl { margin-top: 10px; }
+.an-place { font-weight: 600; white-space: nowrap; }
+.an-place .num { font-weight: 500; font-size: 12px; }
+.an-tbl td.num, .an-tbl th.num { font-family: var(--num); }
+.an-note { margin-top: 10px; max-width: 46ch; }
+.an-empty { padding: 50px 20px; text-align: center; }
+
+/* "อ่านทางเราออกไหม" — ผลของโมเดลทายไซต์ ไม่มีแผนที่ ใช้ตัวเลขกับตารางแทน */
+.read-report { margin-top: 16px; }
+.rr-hero { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; }
+.rr-stat { display: flex; flex-direction: column; gap: 6px; padding: 14px 16px; background: var(--sheet); border: 1px solid var(--rule); border-radius: var(--r); }
+.rr-label { font-size: 13px; color: var(--ink-soft); }
+.rr-stat b { font-size: 40px; line-height: 1; }
+.rr-bar { height: 8px; background: var(--rule-soft); border-radius: 999px; overflow: hidden; }
+.rr-bar i { display: block; height: 100%; background: var(--ink); border-radius: 999px; }
+/* ทีมอาชีพเป็นเส้นเทียบ ไม่ใช่พระเอกของหน้า จึงเบากว่าหนึ่งระดับ */
+.rr-stat.pro b { color: var(--ink-soft); }
+.rr-stat.pro .rr-bar i { background: var(--ink-faint); }
+.rr-verdict { margin: 14px 0 4px; max-width: 78ch; font-size: 15px; }
+.rr-tbl { margin-top: 4px; }
+.rr-tbl tr.rr-early td { background: var(--red-wash); }
+.rr-site { font: 700 12px/1.6 var(--num); padding: 1px 9px; border-radius: 999px; background: var(--rule-soft); }
+.rr-note { margin-top: 8px; }
+@media (min-width: 900px) {
+  .an-grid { grid-template-columns: minmax(0, 1fr) minmax(300px, 380px); align-items: start; }
 }
 
 /* ---------------- หน้าสถิติรายคน /player ---------------- */
 .player { max-width: 1280px; margin: 0 auto; }
 .pl-head { display: flex; align-items: center; gap: 16px; margin-bottom: 8px; }
 .pl-head h1 { margin: 0; }
-.pl-head p { margin: 2px 0 0; font-size: 13px; }
-.pl-avatar { width: 64px; height: 64px; border-radius: 10px; border: 1px solid var(--line); object-fit: cover; flex: none; }
-.pl-avatar.ph { background: linear-gradient(160deg, #1c2a48, #111a2c); display: block; }
+.pl-head p { margin: 2px 0 0; font-size: 14px; }
+.pl-avatar { width: 64px; height: 64px; border-radius: var(--r); border: 1px solid var(--rule); object-fit: cover; flex: none; }
+.pl-avatar.ph { background: var(--rule-soft); display: block; }
 .pl-mode { margin-left: auto; }
 .pl-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 14px; margin-top: 14px; }
 .pl-card { margin: 0; display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; }
-.pl-card h2 { margin: 0; font-size: 13px; letter-spacing: .04em; color: var(--muted); text-transform: uppercase; }
+.pl-card h2 { margin: 0; font-size: 14px; color: var(--ink-soft); font-weight: 600; }
 .pl-card p { margin: 0; }
 .pl-wide { grid-column: span 2; }
 @media (max-width: 780px) { .pl-wide { grid-column: span 1; } }
 .pl-gauge { width: 128px; height: 128px; }
-.pl-track { fill: none; stroke: var(--line); stroke-width: 10; }
+.pl-track { fill: none; stroke: var(--rule-soft); stroke-width: 10; }
 .pl-arc { fill: none; stroke: var(--ct); stroke-width: 10; stroke-linecap: round; }
-.pl-gauge-v { fill: var(--text); font-size: 26px; font-weight: 800; }
-.pl-gauge-s { fill: var(--muted); font-size: 14px; }
+.pl-gauge-v { fill: var(--ink); font-family: var(--num); font-size: 26px; font-weight: 700; }
+.pl-gauge-s { fill: var(--ink-soft); font-size: 14px; }
 .pl-nums { list-style: none; margin: 4px 0 0; padding: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 10px 14px; width: 100%; }
-.pl-nums b { display: block; font-size: 22px; }
-.pl-nums span { color: var(--muted); font-size: 12px; }
+.pl-nums b { display: block; font: 700 22px/1.2 var(--num); }
+.pl-nums span { color: var(--ink-soft); font-size: 13px; }
 .pl-clutches, .pl-donuts { display: flex; flex-wrap: wrap; justify-content: center; gap: 14px; width: 100%; }
-.pl-pie, .pl-donut { display: flex; flex-direction: column; align-items: center; gap: 2px; font-size: 12px; }
+.pl-pie, .pl-donut { display: flex; flex-direction: column; align-items: center; gap: 2px; font-size: 13px; }
 .pl-pie svg { width: 68px; height: 68px; }
-.pl-pie.none .pl-arc { stroke: var(--line); }
+.pl-pie.none .pl-arc { stroke: var(--rule-soft); }
 .pl-donut svg { width: 104px; height: 104px; }
 .pl-donut.t .pl-arc { stroke: var(--t); }
 .pl-donut.ct .pl-arc { stroke: var(--ct); }
 .pl-panels { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; align-items: start; }
-.pl-panels h2 { font-size: 14px; margin: 0 0 10px; }
+.pl-panels h2 { font-size: 15px; margin: 0 0 10px; }
 .pl-matches { list-style: none; margin: 0; padding: 0; }
-.pl-matches a { display: grid; grid-template-columns: 46px 1fr auto; gap: 10px; align-items: center; padding: 7px 8px; border-radius: 8px; color: var(--text); }
-.pl-matches a:hover { background: rgba(79,140,255,.08); text-decoration: none; }
+.pl-matches a { display: grid; grid-template-columns: 46px 1fr auto; gap: 10px; align-items: center; padding: 7px 8px; border-radius: var(--r); color: var(--ink); }
+.pl-matches a:hover { background: var(--paper); text-decoration: none; }
 /* แพ้/ชนะบอกด้วยป้ายสีของผลเอง ไม่ใช่แถบสีข้างการ์ด */
-.pl-res { font-size: 12px; font-weight: 700; text-align: center; padding: 2px 0; border-radius: 999px; color: var(--muted); background: rgba(139,153,179,.14); }
-.pl-matches li.r-win .pl-res { color: var(--ok); background: rgba(60,203,127,.16); }
-.pl-matches li.r-loss .pl-res { color: var(--err); background: rgba(255,92,92,.16); }
-.pl-mt { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.pl-rt { font-variant-numeric: tabular-nums; font-weight: 700; }
+.pl-res { font-size: 12px; font-weight: 600; text-align: center; padding: 2px 0; border-radius: 999px; color: var(--ink-soft); background: var(--rule-soft); }
+.pl-matches li.r-win .pl-res { color: var(--green); background: var(--green-wash); }
+.pl-matches li.r-loss .pl-res { color: var(--red); background: var(--red-wash); }
+.pl-mt { font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pl-rt { font-family: var(--num); font-weight: 700; }
 .pl-bars { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
-.pl-bars li { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; font-size: 13px; }
+.pl-bars li { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; font-size: 14px; }
 .pl-bl { font-weight: 600; }
-.pl-bv { font-variant-numeric: tabular-nums; color: var(--muted); }
-.pl-bar { grid-column: 1 / -1; height: 6px; background: var(--line); border-radius: 999px; overflow: hidden; }
-.pl-bar i { display: block; height: 100%; background: var(--accent); border-radius: 999px; }
+.pl-bv { font-family: var(--num); color: var(--ink-soft); }
+.pl-bar { grid-column: 1 / -1; height: 6px; background: var(--rule-soft); border-radius: 999px; overflow: hidden; }
+.pl-bar i { display: block; height: 100%; background: var(--ink); border-radius: 999px; }
 .pl-bars .small { grid-column: 1 / -1; }
-.pl-empty { text-align: center; padding: 70px 20px; }
-.pl-empty .btn-primary { display: inline-block; margin-top: 14px; text-decoration: none; }
+/* หน้านี้เป็นหน้าแรกหลังล็อกอิน — จัดกลางแนวตั้งไว้ ไม่ให้ดูเหมือนหน้าโหลดไม่ขึ้น */
+.pl-empty { text-align: center; padding: 40px 20px; min-height: 66dvh; display: grid; align-content: center; }
+.pl-empty p { max-width: 56ch; margin-inline: auto; }
+.pl-empty-go { display: flex; justify-content: center; flex-wrap: wrap; gap: 10px; margin: 18px 0 10px; }
 
 /* ================================================================================================
    หน้า /login — กระดานบรีฟแท็กติก: ซ้ายเรดาร์ de_mirage จริง + ตัวเลขจริงของระบบ · ขวาแผ่นฟอร์ม
@@ -476,15 +534,19 @@ html:has(.login-shell) { color-scheme: dark; scrollbar-color: #2E3647 #0B0E14; }
 .lc-error svg { flex: none; color: var(--l-red); margin-top: 1px; }
 @keyframes l-in { from { opacity: 0; transform: translateY(-4px); } }
 
-/* ปุ่มหลัก: วางมุมเล็งสี่มุมเข้าหาปุ่มตอน hover / โฟกัส + แสงส้ม */
-.lc-action {
+/* ลำดับความสำคัญของปุ่มในหน้านี้ (ทฤษฎี: หนึ่งหน้ามีปุ่มหลักได้ปุ่มเดียว ที่เหลือต้องเบากว่าอย่างเห็นได้ชัด)
+   1. Steam  — พื้นส้มทึบ + มุมเล็ง  เป็นทางเดียวที่พาไปถึง "สถิติของฉัน" ซึ่งเป็นหน้าแรกหลังล็อกอิน
+   2. ฟอร์มทีม — ปุ่มขอบเหล็ก ใช้ได้เหมือนกันแต่ไม่แย่งสายตา
+   3. ผู้เยี่ยมชม — เป็นลิงก์ตัวหนังสือท้ายการ์ด */
+.lc-steam {
   position: relative; height: 56px; display: flex; align-items: center; justify-content: center; gap: 10px;
   border: 0; border-radius: 4px; background: var(--l-orange); color: var(--l-bg); cursor: pointer;
-  font: 700 18px/1 var(--l-display); letter-spacing: .06em;
+  font: 700 18px/1 var(--l-display); letter-spacing: .04em; text-decoration: none;
   box-shadow: 0 0 0 1px var(--l-orange), 0 10px 26px -14px rgba(255, 107, 0, .8);
   transition: box-shadow .3s cubic-bezier(.16, 1, .3, 1), background-color .2s, transform .12s;
 }
-.lc-action::before {
+.lc-steam svg { color: currentColor; }
+.lc-steam::before {
   --c: var(--l-orange-hi);
   content: ""; position: absolute; inset: -9px; pointer-events: none; opacity: 0;
   background:
@@ -494,41 +556,43 @@ html:has(.login-shell) { color-scheme: dark; scrollbar-color: #2E3647 #0B0E14; }
     linear-gradient(var(--c), var(--c)) bottom right / 14px 2px no-repeat, linear-gradient(var(--c), var(--c)) bottom right / 2px 14px no-repeat;
   transition: inset .35s cubic-bezier(.16, 1, .3, 1), opacity .2s ease-out;
 }
-.lc-action:hover:not(:disabled), .lc-action:focus-visible {
-  outline: none; background: #FF7A1A;
+.lc-steam:hover, .lc-steam:focus-visible {
+  outline: none; text-decoration: none; background: #FF7A1A;
   box-shadow: 0 0 0 1px var(--l-orange-hi), 0 0 28px -4px rgba(255, 107, 0, .75), 0 14px 32px -12px rgba(255, 107, 0, .9);
 }
-.lc-action:hover:not(:disabled)::before, .lc-action:focus-visible::before { inset: -5px; opacity: 1; }
-.lc-action:active:not(:disabled) { transform: translateY(1px); }
-.lc-action:disabled { cursor: progress; background: #C9580A; box-shadow: none; }
-.lc-spin { width: 18px; height: 18px; border-radius: 50%; border: 2.5px solid rgba(11, 14, 20, .3); border-top-color: var(--l-bg); animation: l-spin .8s linear infinite; }
-@keyframes l-spin { to { transform: rotate(360deg); } }
-/* ปุ่ม Steam: รองจากปุ่มหลัก — เส้นขอบฟ้า ไม่ใช่พื้นส้ม เพราะปุ่มส้มมีได้ปุ่มเดียวต่อหน้า */
-.lc-steam {
-  display: flex; align-items: center; justify-content: center; gap: 10px; height: 52px;
-  border: 1px solid var(--l-steel-hi); border-radius: 4px; background: #182330; color: var(--l-text);
-  font: 700 16px/1 var(--l-display); letter-spacing: .04em; text-decoration: none;
+.lc-steam:hover::before, .lc-steam:focus-visible::before { inset: -5px; opacity: 1; }
+.lc-steam:active { transform: translateY(1px); }
+/* บอกว่ากดปุ่มบนแล้วได้อะไร — คนตัดสินใจจากผลลัพธ์ ไม่ใช่จากชื่อปุ่ม */
+.lc-why { margin: -10px 0 0; font-size: 13.5px; line-height: 1.45; color: var(--l-muted); text-align: center; }
+
+.lc-action {
+  height: 52px; display: flex; align-items: center; justify-content: center; gap: 10px;
+  border: 1px solid var(--l-steel-hi); border-radius: 4px; background: #182330; color: var(--l-text); cursor: pointer;
+  font: 700 16px/1 var(--l-display); letter-spacing: .04em;
   transition: border-color .15s ease-out, background-color .15s ease-out, box-shadow .25s ease-out;
 }
-.lc-steam svg { color: var(--l-cyan); }
-.lc-steam:hover, .lc-steam:focus-visible {
-  text-decoration: none; border-color: var(--l-cyan); background: #1B2836;
+.lc-action:hover:not(:disabled), .lc-action:focus-visible {
+  outline: none; border-color: var(--l-cyan); background: #1B2836;
   box-shadow: 0 0 0 3px rgba(0, 229, 255, .14), 0 0 22px -8px rgba(0, 229, 255, .6);
 }
+.lc-action:disabled { cursor: progress; opacity: .7; }
+.lc-spin { width: 18px; height: 18px; border-radius: 50%; border: 2.5px solid rgba(242, 245, 249, .25); border-top-color: var(--l-text); animation: l-spin .8s linear infinite; }
+@keyframes l-spin { to { transform: rotate(360deg); } }
+
+.lc-foot { display: flex; flex-direction: column; align-items: center; gap: 6px; padding-top: 4px; border-top: 1px solid var(--l-steel); }
 .lc-or { display: flex; align-items: center; gap: 12px; margin: 0; font-size: 13.5px; color: var(--l-muted); }
 .lc-or::before, .lc-or::after { content: ""; flex: 1; height: 1px; background: var(--l-steel); }
 .lc-switch { margin: 0; text-align: center; font-size: 15px; color: var(--l-muted); }
 .login-foot { position: absolute; bottom: 16px; margin: 0; font-size: 13px; color: var(--l-muted); }
 
-/* laptop เตี้ย (สูง < 720): บีบระยะ ให้การ์ดทั้งใบอยู่ในจอเดียว */
-/* laptop เตี้ย (สูง < 760): ปุ่ม Steam + ฟอร์มรหัสผ่าน + ข้อความ error ต้องอยู่ในจอเดียวโดยไม่ต้องเลื่อน */
+/* laptop เตี้ย (สูง < 760): ปุ่ม Steam + guest + ฟอร์มรหัสผ่าน + ข้อความ error ต้องอยู่ในจอเดียวโดยไม่ต้องเลื่อน */
 @media (min-width: 1024px) and (max-height: 760px) {
   .login-card { gap: 13px; padding: 24px 30px 20px; }
   .lc-head h1 { font-size: 26px; }
   .lc-head p { font-size: 15px; }
   .field-box { height: 48px; }
-  .lc-steam { height: 46px; }
-  .lc-action { height: 50px; }
+  .lc-steam { height: 50px; }
+  .lc-action { height: 46px; }
   .login-side { padding: 20px clamp(20px, 3vw, 48px); }
   .brief-lead { margin-bottom: 22px; }
 }
@@ -553,5 +617,5 @@ html:has(.login-shell) { color-scheme: dark; scrollbar-color: #2E3647 #0B0E14; }
 @media (prefers-reduced-motion: reduce) {
   .brief-sweep { display: none; }
   .lc-error, .lc-note { animation: none; }
-  .lc-action, .lc-action::before, .field-box, .lc-check input::after { transition: none; }
+  .lc-action, .lc-steam, .lc-steam::before, .field-box, .lc-check input::after { transition: none; }
 }

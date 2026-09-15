@@ -182,20 +182,33 @@ export function PlayerPage() {
   );
 }
 
-/** ยังไม่ผูก Steam (409) หรือไม่มีข้อมูลในเดโม (404) — บอกตรง ๆ ว่าทำอะไรต่อ ไม่โชว์ตัวเลขปลอม */
+/**
+ * ยังไม่ผูก Steam (409) หรือไม่มีข้อมูลในเดโม (404)
+ * หน้านี้เป็นหน้าแรกหลังล็อกอิน คนที่ยังไม่มีสถิติจึงต้องเจอทางไปต่อ ไม่ใช่หน้าว่าง ๆ ที่ทำอะไรไม่ได้
+ * บอกตรง ๆ ว่าทำไมยังไม่มีตัวเลข และไม่แสดงตัวเลขปลอมมากลบช่องว่าง
+ */
 function PlayerEmpty({ status, message, mine }: { status: number; message: string; mine: boolean }) {
+  const needSteam = status === 409;
   return (
     <div className="pl-empty" data-testid="player-empty">
-      <h1>{status === 409 ? "ยังไม่ได้ผูกบัญชีกับ Steam" : "ยังไม่มีสถิติของคุณ"}</h1>
+      <h1>{needSteam ? "ยังไม่ได้ผูกบัญชีกับ Steam" : "ยังไม่มีสถิติของคุณ"}</h1>
       <p className="muted">{message}</p>
       {mine && (
         <p className="muted">
-          สถิติจะขึ้นเมื่อมีเดโมที่คุณลงเล่นอยู่ในระบบ — อัปโหลดเดโมของทีมที่หน้าแมตช์ แล้วกลับมาที่หน้านี้
+          {needSteam
+            ? "สถิติรายคนดูจาก SteamID ว่าคนไหนในเดโมคือคุณ — ออกจากระบบแล้วเข้าใหม่ด้วยปุ่ม Steam จะผูกให้เอง"
+            : "สถิติจะขึ้นเมื่อมีเดโมที่คุณลงเล่นอยู่ในระบบ — อัปโหลดเดโมของทีมที่หน้าแมตช์ แล้วกลับมาที่หน้านี้"}
         </p>
       )}
-      <Link className="btn-primary" to="/matches">
-        ไปหน้าแมตช์
-      </Link>
+      <div className="pl-empty-go">
+        <Link className="btn-primary" to="/matches">
+          ดูแมตช์ที่มีในระบบ
+        </Link>
+        <Link className="btn-ghost" to="/analysis">
+          เปิดเครื่องมือวิเคราะห์
+        </Link>
+      </div>
+      <p className="muted small">สองหน้านี้ใช้ได้เลยโดยไม่ต้องผูก Steam</p>
     </div>
   );
 }
@@ -206,7 +219,7 @@ const ARC = 2 * Math.PI * 52;
 /** เกจวงกลม: สีไล่แดง -> เหลือง -> เขียว ตามสัดส่วนของค่าเทียบ max */
 function Gauge({ value, max, label, unit = false }: { value: number; max: number; label: string; unit?: boolean }) {
   const ratio = Math.max(0, Math.min(1, value / max));
-  const hue = Math.round(8 + ratio * 122); // 8 = แดง, 130 = เขียว
+  const hue = Math.round(8 + ratio * 122); // 8 = แดง, 130 = เขียว (ความสว่าง 42% ให้เห็นบนพื้นขาว)
   return (
     <svg className="pl-gauge" viewBox="0 0 120 120" role="img" aria-label={`${label}${unit ? "" : ` จาก ${max}`}`}>
       <circle cx="60" cy="60" r="52" className="pl-track" />
@@ -215,7 +228,7 @@ function Gauge({ value, max, label, unit = false }: { value: number; max: number
         cy="60"
         r="52"
         className="pl-arc"
-        style={{ stroke: `hsl(${hue} 85% 55%)` }}
+        style={{ stroke: `hsl(${hue} 70% 42%)` }}
         strokeDasharray={`${ratio * ARC} ${ARC}`}
         transform="rotate(-90 60 60)"
       />

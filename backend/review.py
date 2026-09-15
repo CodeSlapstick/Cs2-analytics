@@ -87,6 +87,27 @@ def load_radars() -> dict:
 
 
 @lru_cache(maxsize=32)
+def site_of(x: float | None, y: float | None, map_name: str) -> str | None:
+    """บอมบ์ลงไซต์ไหน ตัดสินจากพิกัดจุดวาง — 'A' / 'B' / None ถ้าไม่รู้
+
+    ทำไมไม่ใช้ค่าที่ parser ส่งมา: awpy ส่ง bomb_site เป็น 'bombsite_b' ทุกแถว ซึ่งผิด
+    (ในชุดอ้างอิง Mirage มี 61% ที่ลง A จริง ๆ) จึงตัดสินจากพิกัดเทียบศูนย์กลางไซต์ใน radars.json
+    ซึ่งวัดมาจากจุดตายที่เดโมระบุชื่อไซต์มาเอง — สูตรอยู่ที่นี่ที่เดียวทั้ง parser และ backfill
+    """
+    if x is None or y is None:
+        return None
+    sites = (load_radars().get(map_name) or {}).get("sites")
+    if not sites:
+        return None
+    best, best_d = None, None
+    for name in ("A", "B"):
+        cx, cy = sites[name]
+        d = (x - cx) ** 2 + (y - cy) ** 2
+        if best_d is None or d < best_d:
+            best, best_d = name, d
+    return best
+
+
 def radar_frame(map_name: str) -> RadarFrame | None:
     """ค่าปรับเทียบของแมพ — None ถ้าแมพนี้ยังไม่มีใน radars.json"""
     r = load_radars().get(map_name)
@@ -224,10 +245,13 @@ def load_grid_model(path: Path = GRID_JSON) -> GridModel | None:
 
 def grid_overlay(model: GridModel, frame: RadarFrame) -> dict:
     """ข้อมูลสำหรับ toggle ซ้อนบนแผนที่: ช่องทุกช่องเป็นพิกเซล + วง hotspot — คำนวณพิกเซลที่นี่ ไม่ใช่ใน frontend"""
+    # ct_win / duels ต่อช่อง = หน้าเว็บใช้ระบาย "พื้นที่ได้เปรียบ" แยกตามฝั่งที่เลือกดู (T = 1 - ct_win)
+    # ช่องที่มีดวลน้อยกว่า min_kills ไม่อยู่ใน model.cells ตั้งแต่ต้น จึงไม่มีช่องที่ระบายจากข้อมูลบาง ๆ
     cells = []
     for (cx, cy), c in sorted(model.cells.items()):
         x, y, w = cell_rect_pixel(cx, cy, frame, model.grid_n)
-        cells.append({"cx": cx, "cy": cy, "cluster_id": int(c["cluster"]), "x": x, "y": y, "w": w})
+        cells.append({"cx": cx, "cy": cy, "cluster_id": int(c["cluster"]), "x": x, "y": y, "w": w,
+                      "ct_win": float(c["ct_win"]), "duels": int(c["kills"])})
     hotspots = []
     for h in model.hotspots:
         px, py = world_to_pixel(h["x"], h["y"], frame)
@@ -237,6 +261,44 @@ def grid_overlay(model: GridModel, frame: RadarFrame) -> dict:
                 for cid, c in sorted(model.clusters.items())]
     return {"available": True, "source": model.source, "ct_win_overall": model.ct_win_overall,
             "min_kills": model.min_kills, "clusters": clusters, "cells": cells, "hotspots": hotspots}
+
+
+# ---------------------------------------------------------------------------
+# หน้า Analysis — นับจุดตายลงกริด แล้วเอาสองชุดข้อมูลมาเทียบกัน
+# ---------------------------------------------------------------------------
+ANALYSIS_GRID_N = 32      # ช่องเดียวกับ grid_ml1 ผลของหน้านี้จึงวางทับผลของโมเดลได้ตรงช่อง
+
+
+def deaths_overlay(xs, ys, frame: RadarFrame, places=None, grid_n: int = ANALYSIS_GRID_N) -> dict:
+    """จุดตาย -> ช่องกริดพร้อมจำนวนและสัดส่วน เป็นพิกเซลบนภาพเรดาร์
+
+    ใช้สูตรพิกัดชุดเดียวกับหน้ารอบและ grid_ml1 (ดูหัวข้อ coordinate) — ช่องจึงเป็นช่องเดียวกันเสมอ
+    share = สัดส่วนของจุดตายทั้งหมดในชุดนั้น ไม่ใช่จำนวนดิบ เพราะสองชุดมีจำนวนแมตช์ไม่เท่ากัน
+    เทียบจำนวนดิบกันตรง ๆ จะแปลว่า "ชุดที่มีแมตช์เยอะกว่าตายเยอะกว่า" ซึ่งไม่ได้บอกอะไรเลย
+
+    places = ชื่อ callout ของแต่ละจุดตาย (kills.victim_place) — ช่องหนึ่งช่องคืนชื่อที่พบบ่อยสุด
+    ไว้ให้คนอ่านรู้ว่าช่องนั้นอยู่ตรงไหนของแมพ เลขช่องอย่างเดียวไม่มีใครอ่านออก
+    """
+    total = len(xs)
+    if total == 0:
+        return {"grid_n": grid_n, "deaths": 0, "cells": []}
+    cx, cy = cells_of(xs, ys, frame, grid_n)
+    names = list(places) if places is not None else [None] * total
+    counts: dict[tuple[int, int], int] = {}
+    by_place: dict[tuple[int, int], dict[str, int]] = {}
+    for a, b, place in zip(cx.tolist(), cy.tolist(), names, strict=True):
+        counts[(a, b)] = counts.get((a, b), 0) + 1
+        if place:
+            seen = by_place.setdefault((a, b), {})
+            seen[place] = seen.get(place, 0) + 1
+    cells = []
+    for (a, b), n in sorted(counts.items()):
+        x, y, w = cell_rect_pixel(a, b, frame, grid_n)
+        seen = by_place.get((a, b))
+        # เท่ากันให้เรียงตามตัวอักษร ผลจะได้เหมือนเดิมทุกครั้งที่เรียก
+        place = min(seen, key=lambda p: (-seen[p], p)) if seen else None
+        cells.append({"cx": a, "cy": b, "x": x, "y": y, "w": w, "deaths": n, "share": n / total, "place": place})
+    return {"grid_n": grid_n, "deaths": total, "cells": cells}
 
 
 # ---------------------------------------------------------------------------

@@ -114,7 +114,7 @@ def queue_health() -> dict:
 ROOT = Path(__file__).resolve().parent.parent
 
 
-DEMOS_DIR = Path(os.environ.get("DEMOS_DIR", ROOT / "demos"))
+DEMOS_DIR = Path(os.environ.get("DEMOS_DIR", ROOT / "demos" / "uploads"))   # ต้องชี้ที่เดียวกับ backend/app.py
 JSON_DIR = Path(os.environ.get("JSON_DIR", ROOT / "output" / "json"))
 ERROR_MAX_CHARS = 2000
 

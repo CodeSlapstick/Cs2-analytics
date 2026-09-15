@@ -18,7 +18,11 @@ export interface Match {
   error_message: string | null;
   started_at: string | null;
   finished_at: string | null;
+  /** reference = เดโมชุดที่โมเดลเทรนจากมัน · upload = ผู้ใช้อัปโหลดเอง (ไม่เคยเข้าโมเดล) */
+  source: MatchSource;
 }
+
+export type MatchSource = "reference" | "upload";
 
 export interface RoundRow {
   round_num: number;
@@ -262,8 +266,59 @@ export interface GridOverlay {
   ct_win_overall?: number;
   min_kills?: number;
   clusters?: { id: number; name: string; ct_win: number; n_cells: number; duels: number }[];
-  cells?: { cx: number; cy: number; cluster_id: number; x: number; y: number; w: number }[];
+  // ct_win = สัดส่วนที่ CT ชนะดวลในช่องนั้น (ทั้งดาต้าเซ็ต) · duels = จำนวนดวลที่นับ — หน้าเว็บระบาย "พื้นที่ได้เปรียบ" จากสองค่านี้
+  cells?: { cx: number; cy: number; cluster_id: number; x: number; y: number; w: number; ct_win: number; duels: number }[];
   hotspots?: { id: number; place: string; share: number; duels: number; ct_win: number; px: number; py: number; r: number }[];
+}
+
+/** หน้า Analysis — จุดที่ผู้เล่นตาย นับลงกริด 32×32 เดียวกับโมเดล (backend/review.py deaths_overlay) */
+export interface DeathCellCount {
+  cx: number;
+  cy: number;
+  x: number;
+  y: number;
+  w: number;
+  deaths: number;
+  share: number; // สัดส่วนของจุดตายทั้งหมดในชุดนั้น — ใช้เทียบข้ามชุดที่จำนวนแมตช์ไม่เท่ากัน
+  place: string | null; // ชื่อ callout ที่พบบ่อยสุดในช่องนั้น (เช่น BombsiteA) — null = เดโมไม่ได้บันทึกไว้
+}
+
+export interface DeathsOverlay {
+  map: string;
+  scope: MatchSource;
+  side: "all" | "ct" | "t";
+  demo: string | null;
+  grid_n: number;
+  matches: number;
+  deaths: number;
+  label: string;
+  cells: DeathCellCount[];
+  radar: { image: string; size: number; map: string };
+}
+
+/**
+ * "อ่านทางออกง่ายแค่ไหน" — โมเดลทายไซต์ (research/site_ml.py) มาอ่านแมตช์ของทีมทีละรอบ
+ * read_at = วินาทีแรกที่โมเดลมั่นใจ ≥ 80% ไปทางไซต์ที่เกิดขึ้นจริง · ยิ่งเร็ว = คู่แข่งยิ่งอ่านออกเร็ว
+ */
+export interface ReadRound {
+  round_num: number;
+  site: "A" | "B";
+  plant_t: number | null;
+  read_at: number | null; // null = โมเดลอ่านไม่ออกเลยจนถึงวินาทีที่วางบอมบ์
+  lead: number | null; // อ่านออกก่อนบอมบ์ลงจริงกี่วินาที
+  winner_side: Side | null;
+}
+
+export interface Readability {
+  available: boolean;
+  reason?: string;
+  map?: string;
+  demo?: string;
+  rounds_detail?: ReadRound[];
+  summary?: { rounds: number; read: number; avg_read_at: number | null; median_read_at: number | null; avg_lead: number | null };
+  benchmark?: { threshold: number; rounds: number; read_share: number; avg_read_at: number | null; median_read_at: number | null };
+  source?: { matches: number; rounds: number; label: string };
+  note?: string;
 }
 
 const enc = encodeURIComponent;
@@ -273,7 +328,12 @@ export const api = {
   reviewRound: (demo: string, n: number) => request<RoundDetail>(`/api/review/${enc(demo)}/rounds/${n}`),
   reviewPositions: (demo: string, n: number) =>
     request<RoundPositions>(`/api/review/${enc(demo)}/rounds/${n}/positions`),
+  readability: (demo: string) => request<Readability>(`/api/analysis/readability?demo=${enc(demo)}`),
   reviewGrid: (map: string) => request<GridOverlay>(`/api/review/grid?map=${enc(map)}`),
+  analysisDeaths: (map: string, scope: MatchSource, side: string, demo?: string | null) =>
+    request<DeathsOverlay>(
+      `/api/analysis/deaths?map=${enc(map)}&scope=${scope}&side=${side}${demo ? `&demo=${enc(demo)}` : ""}`,
+    ),
   matches: () => request<Match[]>("/api/matches"),
   match: (id: number | string) => request<MatchDetail>(`/api/matches/${id}`),
   status: (id: number | string) => request<StatusInfo>(`/api/matches/${id}/status`),
@@ -291,6 +351,8 @@ export const api = {
 export interface AuthUser {
   id: number;
   username: string;
+  guest?: boolean; // บัญชีผู้เยี่ยมชม (ปุ่ม "ลองใช้ทันที") — ดูได้ทุกอย่าง อัปโหลดเดโมไม่ได้
+  avatar?: string | null; // รูปโปรไฟล์ Steam (มีเฉพาะบัญชีที่ล็อกอินด้วย Steam และตั้ง STEAM_API_KEY)
 }
 
 /** สถิติรายคน (/api/players/...) — ตัวเลขทุกตัวมาจากเดโมที่โหลดเข้าระบบ */
@@ -338,6 +400,8 @@ export const auth = {
   register: (username: string, password: string, remember = true) =>
     request<{ user: AuthUser }>("/auth/register", postJson({ username, password, remember })),
   logout: () => request<{ ok: boolean }>("/auth/logout", { method: "POST" }),
+  // เข้าเป็น guest คลิกเดียว — คุกกี้แบบ session (backend ปิดได้ด้วย GUEST_LOGIN=0 -> 403)
+  guest: () => request<{ user: AuthUser }>("/auth/guest", { method: "POST" }),
 };
 
 /** who = "me" (บัญชีที่ล็อกอินด้วย Steam) หรือ SteamID64 */

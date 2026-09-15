@@ -114,10 +114,22 @@ def test_auth_routes_are_password_or_steam_only():
     from backend import app as appmod
     routes = {(m, r.path) for r in appmod.app.routes for m in getattr(r, "methods", ()) or ()}
     for expected in [("POST", "/auth/register"), ("POST", "/auth/login"), ("GET", "/auth/me"), ("POST", "/auth/logout"),
-                     ("GET", "/auth/steam/login"), ("GET", "/auth/steam/callback")]:
+                     ("GET", "/auth/steam/login"), ("GET", "/auth/steam/callback"), ("POST", "/auth/guest")]:
         assert expected in routes
     paths = {p for _, p in routes}
     assert "/auth/dev-login" not in paths
+
+
+def test_guest_is_read_only():
+    """บัญชี guest ผ่าน require_login ได้ตามปกติ แต่ forbid_guest (ที่ /api/demos ใช้) ต้องตอบ 403 — คนอื่นผ่านได้"""
+    from backend import app as appmod
+    guest = {"id": 9, "username": "Guest"}          # ตัวพิมพ์ใหญ่ก็ยังนับเป็น guest (unique บน lower(username))
+    assert appmod.is_guest(guest) and not appmod.is_guest({"id": 1, "username": "dev"})
+    with pytest.raises(HTTPException) as e:
+        appmod.forbid_guest(guest)
+    assert e.value.status_code == 403
+    assert appmod.forbid_guest({"id": 1, "username": "dev"}) == {"id": 1, "username": "dev"}
+    # auth_me เป็น async และแตะฐานข้อมูลเพื่อเอารูปโปรไฟล์ — ตรรกะ guest ทดสอบผ่าน is_guest ข้างบนแล้ว
 
 
 # ---- ล็อกอินด้วย Steam (ตรวจเฉพาะส่วนที่ไม่ต้องต่อเน็ต) ----------------------------------------
@@ -221,10 +233,10 @@ def test_public_base_prefers_the_configured_url(monkeypatch):
 
 @pytest.mark.parametrize("given,expected", [
     ("/matches/X.dem/rounds/3", "/matches/X.dem/rounds/3"),
-    (None, "/matches"), ("", "/matches"),
-    ("//evil.example/steal", "/matches"),          # open redirect
-    ("https://evil.example", "/matches"),
-    ("/login?next=/matches", "/matches"),          # วนกลับหน้า login
+    (None, "/player"), ("", "/player"),            # ไม่ระบุ -> หน้าแรกหลังล็อกอิน = สถิติของฉัน
+    ("//evil.example/steal", "/player"),          # open redirect
+    ("https://evil.example", "/player"),
+    ("/login?next=/matches", "/player"),          # วนกลับหน้า login
 ])
 def test_safe_next_only_allows_paths_inside_this_site(given, expected):
     from backend import app as appmod

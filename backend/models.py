@@ -86,6 +86,9 @@ class Match(Base):
     team_a: Mapped[str | None] = mapped_column(Text)          # แกะจากชื่อไฟล์ "A-vs-B-Map.dem"
     team_b: Mapped[str | None] = mapped_column(Text)
     imported_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
+    # 'reference' = เดโมชุดตั้งต้นที่โมเดล grid_ml1 เทรนจากมัน | 'upload' = ผู้ใช้อัปโหลดเอง (ห้ามเข้าชุดเทรน)
+    # ค่าตั้งต้นเป็น 'upload' โดยตั้งใจ — แมตช์ที่ไม่มีใครยืนยัน ต้องไม่ถูกนับเป็นชุดเทรนเอง (migration 0008)
+    source: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'upload'"))
     # --- สถานะงาน parse (Sprint 2) ---
     status: Mapped[str] = mapped_column(Text, nullable=False, server_default=text("'queued'"))
     error_message: Mapped[str | None] = mapped_column(Text)   # เก็บทุก error จาก worker ตามข้อกำหนด
@@ -95,7 +98,9 @@ class Match(Base):
 
     __table_args__ = (
         CheckConstraint("status IN ('queued', 'parsing', 'done', 'error')", name="matches_status_check"),
+        CheckConstraint("source IN ('reference', 'upload')", name="matches_source_check"),
         Index("matches_status_idx", "status"),
+        Index("matches_source_idx", "source"),
     )
 
 

@@ -43,6 +43,8 @@ import polars as pl
 from awpy import Demo
 from awpy.parsers.rounds import apply_round_num, create_round_df
 
+from backend.review import site_of  # บอมบ์ลงไซต์ไหน — สูตรเดียวกับที่ backfill ใช้
+
 # ==================================================================================================
 # ค่าคงที่: event / prop ที่ขอจาก demoparser2 (ชุดเดียวกับ research/demoparser.py)
 # backend/parser.py — ค่าคงที่ที่ parser ใช้ร่วมกับสคริปต์ใน research/
@@ -159,6 +161,14 @@ def parse_demo(path: Path) -> dict:
         rounds = rounds.join(plant, on="bomb_plant_tick", how="left")
     else:
         rounds = rounds.with_columns(pl.lit(None, pl.Float64).alias("bomb_plant_x"), pl.lit(None, pl.Float64).alias("bomb_plant_y"))
+
+    # bomb_site ที่ awpy ส่งมาใช้ไม่ได้ (ลง 'bombsite_b' ทุกแถว) — ตัดสินจากพิกัดจุดวางแทน
+    # สูตรอยู่ที่ backend/review.py ที่เดียว เพื่อให้ parser กับ backfill ได้คำตอบเดียวกันเสมอ
+    map_name = dem.header.get("map_name", "unknown")
+    rounds = rounds.with_columns(
+        pl.struct(["bomb_plant_x", "bomb_plant_y"])
+          .map_elements(lambda r: site_of(r["bomb_plant_x"], r["bomb_plant_y"], map_name), return_dtype=pl.Utf8)
+          .alias("bomb_site"))
 
     # --- kills: เปลี่ยนชื่อคอลัมน์ให้ตรง schema ตัดคอลัมน์ที่ DB ไม่เก็บ ---
     kills = _clean(

@@ -28,7 +28,9 @@ from awpy import Demo
 from awpy.parsers.rounds import create_round_df
 
 ROOT = Path(__file__).resolve().parent.parent
-DEMO_DIR = ROOT / "demos"
+# อ่านเฉพาะ demos/reference/ — เดโมที่ผู้ใช้อัปโหลดอยู่ที่ demos/uploads/ และต้องไม่หลุดเข้าชุดที่ใช้เทรนโมเดล
+# (เคยเป็น demos/ ซึ่งเป็นโฟลเดอร์เดียวกับที่ระบบเขียนไฟล์อัปโหลดลงไป รันซ้ำเมื่อไรข้อมูลก็ปนกันเงียบ ๆ)
+DEMO_DIR = ROOT / "demos" / "reference"
 CACHE_DIR = ROOT / "output" / "kills_cache"
 OUT_CSV = ROOT / "data" / "all_kills.csv"
 

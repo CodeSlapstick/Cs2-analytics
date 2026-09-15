@@ -1,10 +1,10 @@
-// ตัวช่วยที่ทุกหน้าใช้ร่วมกัน: จัดรูปแบบข้อความ · state บน URL · หน้า 404
+// ตัวช่วยที่ทุกหน้าใช้ร่วมกัน: จัดรูปแบบข้อความ · สีฝั่ง + เลขผู้เล่น · พื้นที่ได้เปรียบ · state บน URL · หน้า 404
 import { useCallback } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import type { ReviewGrenade } from "./api";
+import type { ReviewGrenade, ReviewTeam, Side } from "./api";
 
 // ================================================================================================
-// จัดรูปแบบข้อความ (เวลา / % / ชื่ออาวุธ / สาเหตุจบรอบ / สีประเภทช่อง)
+// จัดรูปแบบข้อความ (เวลา / % / ชื่ออาวุธ / สาเหตุจบรอบ)
 // ================================================================================================
 // ตัวช่วยแสดงผลของหน้า Round Review — ข้อความทุกตัวต้องเป็นข้อเท็จจริง ไม่ตัดสินผู้เล่น
 
@@ -18,6 +18,7 @@ export function fmtT(t: number | null | undefined): string {
 export const pct = (x: number | null | undefined) => (x == null ? "—" : `${Math.round(x * 100)}%`);
 
 export const sideLabel = (s: string | null | undefined) => (s === "ct" ? "CT" : s === "t" ? "T" : "?");
+export const otherSide = (s: Side): Side => (s === "ct" ? "t" : "ct");
 
 const WEAPONS: Record<string, string> = {
   ak47: "AK-47", m4a1: "M4A4", m4a1_silencer: "M4A1-S", awp: "AWP", ssg08: "SSG 08", deagle: "Desert Eagle",
@@ -39,13 +40,137 @@ export const END_REASON: Record<string, string> = {
 };
 export const endReasonLabel = (r: string | null | undefined) => (r ? END_REASON[r] ?? r : "—");
 
-// สีของประเภทช่อง — ตรงกับรูป output/grid_ml1_map.png (matplotlib tab10 เรียงตามเบอร์กลุ่ม 1, 2, 3, …)
-const TAB10 = ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd", "#8c564b", "#e377c2", "#7f7f7f", "#bcbd22", "#17becf"];
-export const clusterColor = (id: number) => TAB10[(id - 1) % TAB10.length];
+// ================================================================================================
+// สีฝั่ง + เลขผู้เล่น — สีสดในหน้ารอบมีแค่สองสี (CT ฟ้า / T ส้ม) แต่ละคนแยกกันด้วยเลข 1–5 ไม่ใช่สีรายคน
+// ================================================================================================
+/** เฉดสำหรับระบายบนแผนที่ (พื้นมืด) — ตัวอักษรบนกระดาษใช้เฉดเข้มกว่าใน styles.css (--ct / --t) */
+export const SIDE_FILL: Record<Side, string> = { ct: "#4F8CFF", t: "#FF9A2E" };
+export const sideFill = (s: string | null | undefined) => (s === "ct" ? SIDE_FILL.ct : s === "t" ? SIDE_FILL.t : "#9AA4B5");
+/** สีระบายช่องที่ฝั่งตรงข้ามชนะดวลบ่อย และเส้นขอบวงที่ถูกเลือก */
+export const AVOID_FILL = "#DC2F4C"; // แดงอมชมพู — ให้ต่างจากส้มระดับอ่อนของฝั่ง T ชัด
+export const SCREEN = "#0B0E14"; // พื้นของแผนที่ — ใช้เป็นสีขอบ/ตัวเลขบนวงที่ระบายด้วยสีฝั่ง
 
+/** เลขประจำตัว 1–5 ในทีม ตามลำดับรายชื่อจาก backend (เรียงตาม steam_id จึงคงที่ทุกรอบของแมตช์) */
+export function playerNumbers(teams: ReviewTeam[]): Map<string, number> {
+  const m = new Map<string, number>();
+  teams.forEach((t) => t.players.forEach((p, i) => m.set(p.steamid, i + 1)));
+  return m;
+}
+
+// ================================================================================================
+// ชั้นที่ระบายลงบนกริดของ grid_ml1 — ระบายได้ทีละอย่าง เพราะหนึ่งช่องมีได้สีเดียว
+// ทั้งสองชั้นตอบคนละคำถาม: "ตรงไหนปะทะกันบ่อย" กับ "ตรงไหนฝั่งเราชนะดวลบ่อย"
+// ตัวเลขทุกตัวเป็นของทั้งดาต้าเซ็ต (grid_ml1) ไม่ใช่ผลของรอบที่กำลังดู
+// ================================================================================================
+export type GridLayer = "off" | "freq" | Side;
+
+// ---- ชั้นที่ 1: ดวลบ่อยแค่ไหน ----------------------------------------------------------------
+/**
+ * ไล่เฉดม่วงเฉดเดียว อ่อน -> เข้ม = ดวลน้อย -> ดวลบ่อย (ยิ่งเข้มยิ่งบ่อย ตามที่คนอ่านแผนที่คุ้นเคย)
+ * เรียงลำดับด้วย "ความสว่าง" ไม่ใช่ด้วยสี คนตาบอดสีจึงอ่านลำดับได้ (ตรวจแล้ว: ΔE ต่ำสุด 15.8 แบบ protan)
+ * ไม่ใช้ฟ้า/ส้ม เพราะสองสีนั้นแปลว่า "ฝั่ง" ทั้งแอป และไม่ใช้รุ้งเพราะรุ้งไม่มีลำดับในตัว
+ */
+export const FREQ_FILL = ["#EDE9FE", "#C4B5FD", "#A855F7", "#7E22CE", "#4C1D95"] as const;
+export const FREQ_ALPHA = 0.72;
+export const FREQ_STEPS = 5; // จำนวนขั้นของทุกไล่เฉดความถี่ในแอป
+export type FreqLevel = number;
+export type FreqBreaks = number[]; // ยาว FREQ_STEPS - 1
+
+/** ขอบของแต่ละขั้น = ควอนไทล์ของค่าในแมพนั้นเอง (ไม่ใช่เลขตายตัว แมพอื่น/ชุดอื่นก็ใช้ได้) */
+export function freqBreaks(values: number[], steps: number = FREQ_STEPS): FreqBreaks {
+  const s = [...values].sort((a, b) => a - b);
+  const q = (p: number) => s[Math.min(s.length - 1, Math.floor(p * s.length))] ?? 0;
+  return Array.from({ length: steps - 1 }, (_, i) => q((i + 1) / steps));
+}
+
+export function freqLevel(value: number, b: FreqBreaks): FreqLevel {
+  for (let i = b.length - 1; i >= 0; i--) if (value >= b[i]) return i + 1;
+  return 0;
+}
+
+/**
+ * ป้ายของแต่ละขั้นไว้ใส่ในคำอธิบายสี
+ * ข้อมูลน้อย ๆ (เช่นแมตช์เดียว) ทำให้ควอนไทล์ชนกันจนบางขั้นไม่มีช่วงอยู่จริง — ขั้นพวกนั้นถูกตัดทิ้ง
+ * ไม่งั้นคำอธิบายจะโชว์ช่วงกลับหัวแบบ "1–0" ที่ไม่มีความหมาย
+ */
+export function freqBands(b: FreqBreaks): { level: FreqLevel; label: string }[] {
+  const out: { level: FreqLevel; label: string }[] = [];
+  if (b[0] > 1) out.push({ level: 0, label: `ไม่ถึง ${b[0]}` });
+  for (let i = 0; i < b.length - 1; i++) {
+    const lo = b[i];
+    const hi = b[i + 1] - 1;
+    if (hi >= lo) out.push({ level: i + 1, label: hi === lo ? `${lo}` : `${lo}–${hi}` });
+  }
+  out.push({ level: b.length, label: `ตั้งแต่ ${b[b.length - 1]}` });
+  return out;
+}
+
+// ---- หน้า Analysis: จุดที่ตาย ------------------------------------------------------------------
+/**
+ * ไล่เฉดของ "จำนวนครั้งที่ตาย" — สีบอกว่าดูฝั่งไหนอยู่ ความเข้มบอกว่าตายบ่อยแค่ไหน
+ *   ct  ฟ้า   ตอนเป็น CT     t  ส้ม  ตอนเป็น T     all  แดง  รวมทั้งสองฝั่ง
+ * แต่ละชุดเป็นเฉดเดียวไล่ อ่อน -> เข้ม: ตายน้อยจาง ตายเยอะเข้ม
+ * ลำดับอยู่ที่ความสว่าง ไม่ใช่ที่สี คนตาบอดสีจึงยังอ่านลำดับได้
+ * (ตรวจด้วย scripts/validate_palette.js: ΔE ของคู่ที่ติดกันน้อยสุด 13.9 แบบ protan)
+ */
+export const DEATH_RAMP: Record<"all" | Side, readonly string[]> = {
+  ct: ["#DBEAFE", "#93C5FD", "#3B82F6", "#1D4ED8", "#1E3A8A"],
+  t: ["#FFEDD5", "#FDBA74", "#F97316", "#C2410C", "#7C2D12"],
+  all: ["#FFE4E6", "#FCA5A5", "#EF4444", "#B91C3C", "#7F1D1D"],
+};
+
+// ---- หน้า Analysis: เทียบสองชุดข้อมูล ----------------------------------------------------------
+/**
+ * ค่าที่มีสองขั้วรอบจุดกลาง (ตายบ่อยกว่า / พอ ๆ กัน / น้อยกว่าชุดอ้างอิง) ใช้สีสองขั้ว + กลางไม่ระบาย
+ * แต่ละขั้วไล่จากเข้ม (ต่างเล็กน้อย) ไปสว่าง (ต่างมาก) — ความสว่างบอก "ต่างแค่ไหน" สีบอก "ต่างทางไหน"
+ */
+export const DIFF_FILL = {
+  "-2": "#2DD4BF", // ตายน้อยกว่าชุดอ้างอิงมาก
+  "-1": "#0D9488",
+  "1": "#B91C3C",
+  "2": "#FB7185", // ตายบ่อยกว่าชุดอ้างอิงมาก
+} as const;
+export type DiffLevel = -2 | -1 | 0 | 1 | 2;
+/** ต่ำกว่านี้ถือว่าพอ ๆ กัน — ไม่ระบาย เพราะความต่างเล็กน้อยจากข้อมูลไม่กี่แมตช์คือความบังเอิญ */
+export const DIFF_STEPS = { near: 1.3, far: 2 } as const;
+/** ช่องที่ฝั่งเราตายน้อยกว่านี้ไม่ระบายเลย — 1-2 ครั้งบอกอะไรไม่ได้ */
+export const DIFF_MIN_DEATHS = 3;
+
+/** เทียบสัดส่วนต่อช่องของสองชุด — คืนระดับความต่าง (0 = พอ ๆ กัน หรือข้อมูลไม่พอ) */
+export function diffLevel(shareMine: number, shareRef: number, deathsMine: number): DiffLevel {
+  if (deathsMine < DIFF_MIN_DEATHS) return 0;
+  const ratio = shareRef > 0 ? shareMine / shareRef : Infinity;
+  if (ratio >= DIFF_STEPS.far) return 2;
+  if (ratio >= DIFF_STEPS.near) return 1;
+  if (ratio <= 1 / DIFF_STEPS.far) return -2;
+  if (ratio <= 1 / DIFF_STEPS.near) return -1;
+  return 0;
+}
+
+// ---- ชั้นที่ 2: ฝั่งไหนได้เปรียบ ---------------------------------------------------------------
+/** ขั้นของระดับ 1 / 2 / 3: ฝั่งที่เลือกดูชนะดวล ≥ 50% / 55% / 65% — ยิ่งชนะบ่อยยิ่งระบายเข้ม */
+export const ADV_STEPS = { 1: 0.5, 2: 0.55, 3: 0.65 } as const;
+/** ระบายแดงเฉพาะช่องที่ฝั่งตรงข้ามชนะดวล ≥ 65% — จำกัดไว้ให้แดงเฉพาะที่ต่างกันชัด ไม่แดงเต็มแมพ */
+export const AVOID_STEP = 0.65;
+export type AdvLevel = -1 | 0 | 1 | 2 | 3;
+
+/** 3 / 2 / 1 = ฝั่งที่ดูได้เปรียบสามระดับ · -1 = ฝั่งตรงข้ามชนะบ่อย (แดง) · 0 = ก้ำกึ่ง ไม่ระบาย */
+export function advantageLevel(ctWin: number, side: Side): AdvLevel {
+  const w = side === "ct" ? ctWin : 1 - ctWin;
+  if (w >= ADV_STEPS[3]) return 3;
+  if (w >= ADV_STEPS[2]) return 2;
+  if (w >= ADV_STEPS[1]) return 1;
+  if (1 - w >= AVOID_STEP) return -1;
+  return 0;
+}
+export const ADV_ALPHA: Record<1 | 2 | 3, number> = { 1: 0.3, 2: 0.5, 3: 0.72 };
+
+// ================================================================================================
+// ระเบิด
+// ================================================================================================
 const NADE_LABEL: Record<string, string> = { smoke: "สโมค", flash: "แฟลช", he: "HE", molotov: "โมโลตอฟ", decoy: "ดีคอย" };
 export const NADE_COLOR: Record<string, string> = {
-  smoke: "#cbd5e1", flash: "#fde047", he: "#f87171", molotov: "#fb923c", decoy: "#a78bfa",
+  smoke: "#D7DEE8", flash: "#F5E663", he: "#F08A8A", molotov: "#FFB35C", decoy: "#B8A9F5",
 };
 export const nadeLabel = (t: string) => NADE_LABEL[t] ?? t;
 /** ชนิดที่วาดบนแผนที่ได้จริง — decoy ไม่มีในนี้เพราะเดโมไม่บันทึกว่ามันไปตกที่ไหน */
@@ -69,8 +194,8 @@ export function nadeActiveAt(n: ReviewGrenade, t: number): boolean {
 export interface ViewState {
   sidebar: boolean; // sb=0      ย่อ sidebar
   board: boolean; // board=1   เปิดแผงสกอร์บอร์ดทั้งแมตช์
-  cells: boolean; // cells=1   ซ้อนประเภทช่องจาก grid_ml1
-  hotspots: boolean; // hs=1      ซ้อนวง hotspot
+  grid: GridLayer; // grid=freq|ct|t  ระบายกริดด้วยความถี่ หรือความได้เปรียบของฝั่งนั้น (ไม่มี = ปิด)
+  hotspots: boolean; // hs=1      ซ้อนวงจุดปะทะที่โมเดลหาเจอ
   nades: NadeType[]; // g=smoke,flash  ชนิดระเบิดที่แสดง (ไม่มี g = แสดงครบ, g=none = ไม่แสดงเลย)
   zoom: number; // z=2.5     ซูมแผนที่ (1 = เต็มแมพ)
   center: [number, number] | null; // c=x,y  จุดกึ่งกลางที่มองอยู่ (หน่วยพิกเซลของภาพเรดาร์)
@@ -100,10 +225,11 @@ function parseCenter(raw: string | null): [number, number] | null {
 export function useViewState() {
   const [params, setParams] = useSearchParams();
   const d = Number(params.get("d"));
+  const g = params.get("grid");
   const state: ViewState = {
     sidebar: params.get("sb") !== "0",
     board: params.get("board") === "1",
-    cells: params.get("cells") === "1",
+    grid: g === "ct" || g === "t" || g === "freq" ? g : "off",
     hotspots: params.get("hs") === "1",
     nades: parseNades(params.get("g")),
     zoom: clampZoom(Number(params.get("z")) || 1),
@@ -123,7 +249,7 @@ export function useViewState() {
           const put = (key: string, value: string | null) => (value === null ? next.delete(key) : next.set(key, value));
           if ("sidebar" in patch) put("sb", patch.sidebar ? null : "0");
           if ("board" in patch) put("board", patch.board ? "1" : null);
-          if ("cells" in patch) put("cells", patch.cells ? "1" : null);
+          if ("grid" in patch) put("grid", !patch.grid || patch.grid === "off" ? null : patch.grid);
           if ("hotspots" in patch) put("hs", patch.hotspots ? "1" : null);
           if ("nades" in patch) {
             const list = patch.nades ?? [];
@@ -164,7 +290,7 @@ export function roundUrl(demo: string, round: number, params?: URLSearchParams, 
 export function NotFound({ title = "ไม่พบหน้านี้", detail }: { title?: string; detail?: string }) {
   return (
     <div className="notfound" data-testid="not-found">
-      <p className="eyebrow">404</p>
+      <p className="eyebrow num">404</p>
       <h1>{title}</h1>
       {detail && <p className="muted">{detail}</p>}
       <Link className="btn-primary" to="/matches">

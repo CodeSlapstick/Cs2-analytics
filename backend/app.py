@@ -50,17 +50,22 @@ from backend.review import (
     build_round_detail,
     build_round_list,
     build_round_positions,
+    deaths_overlay,
     grid_overlay,
     load_grid_model,
     radar_frame,
 )
+from backend.site_model import available_times, load_site_model, predict_a, read_at
 
 # ---------------------------------------------------------------------------
 # ส่วนที่ 1 — ค่าตั้งต้น (CONFIG) อยากแก้อะไรแก้ตรงนี้ที่เดียว
 # ---------------------------------------------------------------------------
 ROOT = Path(__file__).resolve().parent.parent   # โฟลเดอร์โปรเจกต์
 ASSETS_DIR = ROOT / "assets"                    # ภาพเรดาร์ของแต่ละแมพ + ค่าปรับเทียบพิกัด (radars.json)
-DEMOS_DIR = ROOT / "demos"                      # ไฟล์ .dem ที่ผู้ใช้อัปโหลดเข้ามา (ไม่ถูก commit — ดู .gitignore)
+# ไฟล์ .dem ที่ผู้ใช้อัปโหลดเข้ามา (ไม่ถูก commit — ดู .gitignore)
+# แยกจาก demos/reference/ ที่เป็นชุดตั้งต้นของโมเดล — research/demoparser.py อ่านเฉพาะโฟลเดอร์นั้น
+# ของสองอย่างนี้ห้ามอยู่โฟลเดอร์เดียวกัน ไม่งั้นวันหนึ่งเดโมของผู้ใช้จะถูกรวมเข้าชุดเทรนโดยไม่มีใครรู้
+DEMOS_DIR = ROOT / "demos" / "uploads"
 
 MAX_DEMO_MB = int(os.environ.get("MAX_DEMO_MB", "600"))   # เพดานขนาดไฟล์ที่ยอมรับ กันคนอัปของใหญ่จนดิสก์เต็ม
 # ชื่อไฟล์ที่ยอมรับ — อนุญาตเฉพาะตัวอักษร ตัวเลข และ . _ - ( ) เท่านั้น
@@ -86,6 +91,9 @@ def log(msg: str) -> None:
 
 # ค่าจาก .env ที่รากโปรเจกต์ (backend/db.py โหลดเข้า environment ให้แล้วตอน import)
 ALLOW_REGISTER = os.environ.get("ALLOW_REGISTER", "1") == "1"   # 1 = ให้สมัครสมาชิกเองได้ที่หน้า /login
+# 1 = มีปุ่ม "ลองใช้ทันที" ที่หน้า /login เข้าเป็นบัญชี guest คลิกเดียว (ดูได้ทุกอย่าง แต่อัปโหลดเดโมไม่ได้)
+GUEST_LOGIN = os.environ.get("GUEST_LOGIN", "1") == "1"
+GUEST_USERNAME = "guest"
 # ที่อยู่ที่เบราว์เซอร์เห็น (Steam ต้องส่งผู้ใช้กลับมาที่นี่) — ว่าง = เดาจาก Host ของคำขอ ซึ่งถูกต้องเมื่ออยู่หลัง nginx ของ compose
 PUBLIC_URL = os.environ.get("PUBLIC_URL", "").rstrip("/")
 
@@ -140,6 +148,18 @@ def require_login(request: Request) -> dict:
     return user
 
 
+def is_guest(user: dict) -> bool:
+    """บัญชี guest ดูได้อย่างเดียว — route ที่เปลี่ยนข้อมูล (อัปโหลดเดโม) ต้องเช็กด้วย forbid_guest"""
+    return str(user.get("username", "")).lower() == GUEST_USERNAME
+
+
+def forbid_guest(user: dict = Depends(require_login)) -> dict:
+    """Dependency: ต้องล็อกอิน *และ* ไม่ใช่ guest — ไม่งั้นตอบ 403"""
+    if is_guest(user):
+        raise HTTPException(403, "บัญชีผู้เยี่ยมชมดูได้อย่างเดียว — อัปโหลดเดโมต้องเข้าสู่ระบบด้วยบัญชีของทีม")
+    return user
+
+
 # ---------------------------------------------------------------------------
 # ส่วนที่ 4 — ล็อกอิน / ออกจากระบบ
 # ---------------------------------------------------------------------------
@@ -152,7 +172,7 @@ class Credentials(BaseModel):
 def _logged_in(account, remember: bool = True) -> JSONResponse:
     """ตอบกลับพร้อมติดคุกกี้ JWT — ใช้ร่วมกันทั้งตอนสมัครและตอนล็อกอิน"""
     user = {"id": account["id"], "username": account["username"]}
-    response = JSONResponse({"user": user})
+    response = JSONResponse({"user": {**user, "guest": is_guest(user)}})   # รูปเดียวกับ /auth/me — หน้าเว็บใช้แทนกันได้ทันที
     auth.set_auth_cookie(response, auth.create_token(user["id"], user["username"]), persistent=remember)
     return response
 
@@ -194,7 +214,7 @@ async def auth_login(body: Credentials, conn: asyncpg.Connection = Depends(db)):
 def _safe_next(next_path: str | None) -> str:
     """กัน open redirect: รับเฉพาะ path ในเว็บเรา (ขึ้นต้น / แต่ไม่ใช่ //) — เหมือน safeNext ฝั่งหน้าเว็บ"""
     p = (next_path or "").strip()
-    return p if p.startswith("/") and not p.startswith("//") and not p.startswith("/login") else "/matches"
+    return p if p.startswith("/") and not p.startswith("//") and not p.startswith("/login") else "/player"
 
 
 def _public_base(request: Request) -> str:
@@ -207,7 +227,7 @@ def _public_base(request: Request) -> str:
 
 
 @app.get("/auth/steam/login")
-def auth_steam_login(request: Request, next: str = "/matches"):
+def auth_steam_login(request: Request, next: str = "/player"):
     """พาไปล็อกอินที่ Steam แล้วให้ส่งกลับมาที่ /auth/steam/callback (พก next ไปด้วยใน return_to)"""
     base = _public_base(request)
     return_to = f"{base}/auth/steam/callback?next={urllib.parse.quote(_safe_next(next), safe='/')}"
@@ -215,7 +235,7 @@ def auth_steam_login(request: Request, next: str = "/matches"):
 
 
 @app.get("/auth/steam/callback")
-async def auth_steam_callback(request: Request, next: str = "/matches", conn: asyncpg.Connection = Depends(db)):
+async def auth_steam_callback(request: Request, next: str = "/player", conn: asyncpg.Connection = Depends(db)):
     """Steam ส่งกลับมาที่นี่ — ตรวจกับ Steam ก่อนเสมอ ผ่านแล้วค่อยสร้าง/หาบัญชีแล้วติดคุกกี้ JWT"""
     params = dict(request.query_params)
     steamid = await run_in_threadpool(auth.verify_steam_openid, params)
@@ -251,10 +271,38 @@ async def auth_steam_callback(request: Request, next: str = "/matches", conn: as
     return response
 
 
+@app.post("/auth/guest")
+async def auth_guest(conn: asyncpg.Connection = Depends(db)):
+    """เข้าเป็นบัญชี guest คลิกเดียว (ปิดได้ด้วย GUEST_LOGIN=0) — บัญชีไม่มีรหัสผ่าน จึงล็อกอินทางฟอร์มไม่ได้
+    คุกกี้เป็นแบบ session (หายเมื่อปิดเบราว์เซอร์) เพราะเครื่องที่คนมาลองมักเป็นเครื่องส่วนกลาง"""
+    if not GUEST_LOGIN:
+        raise HTTPException(403, "ระบบนี้ปิดการเข้าใช้แบบผู้เยี่ยมชม")
+    row = await conn.fetchrow("SELECT id, username FROM accounts WHERE lower(username) = $1", GUEST_USERNAME)
+    if row is None:
+        row = await conn.fetchrow(
+            "INSERT INTO accounts (username, last_login) VALUES ($1, now()) RETURNING id, username", GUEST_USERNAME)
+        log(f"[AUTH] สร้างบัญชี {GUEST_USERNAME} (id {row['id']})")
+    else:
+        await conn.execute("UPDATE accounts SET last_login = now() WHERE id = $1", row["id"])
+    return _logged_in(row, remember=False)
+
+
 @app.get("/auth/me")
-def auth_me(user: dict = Depends(require_login)):
-    """หน้าเว็บถามว่า 'ตอนนี้ฉันล็อกอินอยู่ไหม เป็นใคร' — ยังไม่ล็อกอินตอบ 401"""
-    return {"user": user}
+async def auth_me(request: Request, user: dict = Depends(require_login)):
+    """หน้าเว็บถามว่า 'ตอนนี้ฉันล็อกอินอยู่ไหม เป็นใคร' — ยังไม่ล็อกอินตอบ 401 · guest = ดูได้อย่างเดียว
+
+    avatar (รูปโปรไฟล์ Steam) ดึงจากฐานข้อมูล แต่ถ้าฐานข้อมูลล่มก็ยังตอบว่าล็อกอินอยู่ได้
+    เพราะตัวตนอยู่ใน JWT อยู่แล้ว — ไม่ควรให้ทั้งเว็บเด้งออกเพราะดึงรูปไม่ได้
+    """
+    avatar = None
+    pool = request.app.state.pool
+    if pool is not None:
+        try:
+            async with pool.acquire() as conn:
+                avatar = await conn.fetchval("SELECT avatar FROM accounts WHERE id = $1", user["id"])
+        except Exception as e:                                    # noqa: BLE001 — รูปหายดีกว่าล็อกอินหลุด
+            log(f"[AUTH] ดึง avatar ของ user {user['id']} ไม่ได้: {e}")
+    return {"user": {**user, "guest": is_guest(user), "avatar": avatar}}
 
 
 @app.post("/auth/logout")
@@ -498,7 +546,7 @@ def save_upload(file: UploadFile, dest: Path) -> int:
 async def api_upload_demo(
     file: UploadFile = File(..., description="ไฟล์ .dem หนึ่งไฟล์"),
     force: str = Form("0"),                     # "1" = แมตช์นี้เคยโหลดแล้วให้ลบของเดิมทิ้งแล้วโหลดใหม่
-    _: dict = Depends(require_login),
+    _: dict = Depends(forbid_guest),            # guest ดูได้อย่างเดียว
     conn: asyncpg.Connection = Depends(db),
 ):
     """รับเดโมหนึ่งไฟล์ เก็บลงดิสก์ แล้วส่งงานแกะเข้าคิว — ตอบ 202 ทันที ไม่รอแกะ
@@ -592,6 +640,144 @@ async def _review_roster(conn: asyncpg.Connection, match_id: int) -> list[dict]:
     team_of = assign_teams([dict(x) for x in pr])
     names = {x["steam_id"]: x["name"] for x in pr}
     return [{"steam_id": sid, "name": names.get(sid), "team": team} for sid, team in team_of.items()]
+
+
+# ---------------------------------------------------------------------------
+# ส่วนที่ 8 — หน้า Analysis: เทียบ "แมตช์ที่อัปโหลด" กับ "ชุดอ้างอิงที่โมเดลเทรนจากมัน"
+#
+# ชุดอ้างอิง (source='reference') คือเดโมชุดเดียวกับที่ research/grid_ml1.py เทรน
+# แมตช์ที่ผู้ใช้อัปโหลด (source='upload') ไม่เคยเข้าไปในโมเดล — หน้านี้เอามาวัดเทียบกับโมเดลอย่างเดียว
+# ---------------------------------------------------------------------------
+ANALYSIS_SCOPES = {
+    "reference": "เดโมทีมอาชีพ",
+    "upload": "แมตช์ของทีม",
+}
+DEATH_SIDES = ("all", "ct", "t")
+
+
+@app.get("/api/analysis/deaths")
+async def api_analysis_deaths(
+    map: str = Query(..., description="เช่น de_mirage"),
+    scope: str = Query("reference", description="reference = ชุดที่โมเดลเทรนจากมัน | upload = แมตช์ที่ผู้ใช้อัปโหลด"),
+    side: str = Query("all", description="ฝั่งของ 'คนที่ตาย': all | ct | t"),
+    demo: str | None = Query(None, description="เจาะจงแมตช์เดียว (ต้องอยู่ในชุดที่เลือก)"),
+    _: dict = Depends(require_login),
+    conn: asyncpg.Connection = Depends(db),
+):
+    """จุดที่ผู้เล่นตาย นับลงกริด 32x32 เดียวกับโมเดล — คืนเป็นสัดส่วนต่อช่อง เทียบข้ามชุดได้"""
+    if scope not in ANALYSIS_SCOPES:
+        raise HTTPException(400, f"scope ต้องเป็น {' หรือ '.join(ANALYSIS_SCOPES)}")
+    if side not in DEATH_SIDES:
+        raise HTTPException(400, f"side ต้องเป็น {' หรือ '.join(DEATH_SIDES)}")
+    frame = radar_frame(map)
+    if frame is None:
+        raise HTTPException(404, f"ยังไม่มีภาพเรดาร์ที่ปรับเทียบพิกัดแล้วของแมพ {map}")
+
+    n_matches = await conn.fetchval("""
+        SELECT COUNT(*) FROM matches
+        WHERE map_name = $1 AND source = $2 AND status = 'done' AND ($3::text IS NULL OR demo_file = $3)
+    """, map, scope, demo)
+    rows = await conn.fetch("""
+        SELECT k.victim_x AS x, k.victim_y AS y, k.victim_place AS place
+        FROM kills k
+        JOIN rounds r  ON r.id = k.round_id
+        JOIN matches m ON m.id = r.match_id
+        WHERE m.map_name = $1 AND m.source = $2 AND m.status = 'done'
+          AND k.victim_x IS NOT NULL AND k.victim_y IS NOT NULL
+          AND ($3 = 'all' OR k.victim_side = $3)
+          AND ($4::text IS NULL OR m.demo_file = $4)
+    """, map, scope, side, demo)
+
+    out = await run_in_threadpool(
+        deaths_overlay, [r["x"] for r in rows], [r["y"] for r in rows], frame, [r["place"] for r in rows])
+    return {
+        **out,
+        "map": map,
+        "scope": scope,
+        "side": side,
+        "demo": demo,
+        "matches": n_matches,
+        "label": f"{demo} (1 แมตช์)" if demo else f"{ANALYSIS_SCOPES[scope]} {n_matches} แมตช์",
+        "radar": {"image": "/assets" + frame.image, "size": frame.size, "map": frame.map_name},
+    }
+
+
+@app.get("/api/analysis/readability")
+async def api_readability(demo: str = Query(..., description="ชื่อไฟล์เดโมของแมตช์ที่ทีมอัปโหลด"),
+                          _: dict = Depends(require_login), conn: asyncpg.Connection = Depends(db)):
+    """แมตช์นี้ "อ่านทางออกง่าย" แค่ไหน — โมเดลที่เทรนจากเดโมทีมอาชีพมาอ่านทีละรอบ
+
+    ต่อหนึ่งรอบ: ไล่ดูทีละวินาทีว่าโมเดลมั่นใจไปทางไซต์ที่เกิดขึ้นจริงถึง 80% เมื่อไร
+    วินาทีนั้นคือ "วินาทีที่ถูกอ่านออก" — ยิ่งเร็วยิ่งแปลว่าคู่แข่งก็อ่านออกเร็วเหมือนกัน
+
+    นับเฉพาะรอบที่ T ได้วางบอมบ์ เพราะรอบที่โดนสกัดก่อนวางไม่มีเฉลยว่าจะไปไซต์ไหน
+    """
+    model = load_site_model()
+    m = await _review_match(conn, demo)
+    if model is None or model.get("map") != m["map_name"]:
+        return {"available": False, "reason": f"ยังไม่มีโมเดลทายไซต์ของแมพ {m['map_name']}"}
+
+    tickrate = m["tickrate"] or 128
+    rounds = await conn.fetch("""
+        SELECT round_num, start_tick, bomb_plant_tick, bomb_site, winner_side FROM rounds
+        WHERE match_id = $1 AND bomb_site IS NOT NULL AND start_tick IS NOT NULL
+        ORDER BY round_num""", m["id"])
+    if not rounds:
+        return {"available": False, "reason": "แมตช์นี้ไม่มีรอบที่ T วางบอมบ์ได้ จึงไม่มีเฉลยให้วัด"}
+
+    pos = await conn.fetch("""
+        SELECT round_num, tick, place FROM player_positions
+        WHERE match_id = $1 AND side = 't' AND health > 0 AND place IS NOT NULL""", m["id"])
+    counts: dict[int, dict[int, dict[str, int]]] = {}
+    starts = {r["round_num"]: r["start_tick"] for r in rounds}
+    for r in pos:
+        start = starts.get(r["round_num"])
+        if start is None:
+            continue
+        sec = round((r["tick"] - start) / tickrate)
+        if sec < 0:
+            continue
+        at = counts.setdefault(r["round_num"], {}).setdefault(sec, {})
+        at[r["place"]] = at.get(r["place"], 0) + 1
+
+    times = available_times(model)
+    out = []
+    for r in rounds:
+        plant_t = (r["bomb_plant_tick"] - r["start_tick"]) / tickrate if r["bomb_plant_tick"] else None
+        series = []
+        for sec in times:
+            if plant_t is not None and sec >= plant_t:
+                break
+            at = counts.get(r["round_num"], {}).get(sec)
+            if not at:
+                continue
+            p = predict_a(model, sec, at)
+            if p is not None:
+                series.append({"t": sec, "p_a": round(p, 4)})
+        first = read_at(series, r["bomb_site"])
+        out.append({
+            "round_num": r["round_num"], "site": r["bomb_site"],
+            "plant_t": round(plant_t, 1) if plant_t is not None else None,
+            "read_at": first,
+            "lead": round(plant_t - first, 1) if first is not None and plant_t is not None else None,
+            "winner_side": r["winner_side"],
+        })
+
+    seen = [r["read_at"] for r in out if r["read_at"] is not None]
+    leads = [r["lead"] for r in out if r["lead"] is not None]
+    summary = {
+        "rounds": len(out),
+        "read": len(seen),
+        "avg_read_at": round(sum(seen) / len(seen), 1) if seen else None,
+        "median_read_at": sorted(seen)[len(seen) // 2] if seen else None,
+        "avg_lead": round(sum(leads) / len(leads), 1) if leads else None,
+    }
+    return {
+        "available": True, "map": m["map_name"], "demo": demo,
+        "rounds_detail": out, "summary": summary,
+        "benchmark": model.get("metrics", {}).get("readability"),
+        "source": model.get("source"), "note": model.get("note"),
+    }
 
 
 @app.get("/api/review/grid")
