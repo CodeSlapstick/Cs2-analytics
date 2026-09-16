@@ -291,6 +291,8 @@ export interface DeathsOverlay {
   scope: MatchSource;
   side: "all" | "ct" | "t";
   demo: string | null;
+  rounds: number[] | null; // เจาะจงบางรอบไหม — null = ทุกรอบ (เจาะจงได้เฉพาะตอนมี demo ด้วย)
+  players: string[] | null; // เจาะจงบางคนไหม (SteamID64) — null = ทุกคน
   grid_n: number;
   matches: number;
   deaths: number;
@@ -334,9 +336,14 @@ export const api = {
   reviewGrid: (map: string) => request<GridOverlay>(`/api/review/grid?map=${enc(map)}`),
   // --- หน้าเครื่องมือวิเคราะห์ ---
   readability: (demo: string) => request<Readability>(`/api/analysis/readability?demo=${enc(demo)}`),
-  analysisDeaths: (map: string, scope: MatchSource, side: string, demo?: string | null) =>
+  analysisDeaths: (
+    map: string, scope: MatchSource, side: string, demo?: string | null,
+    rounds?: number[] | null, players?: string[] | null,
+  ) =>
     request<DeathsOverlay>(
-      `/api/analysis/deaths?map=${enc(map)}&scope=${scope}&side=${side}${demo ? `&demo=${enc(demo)}` : ""}`,
+      `/api/analysis/deaths?map=${enc(map)}&scope=${scope}&side=${side}${demo ? `&demo=${enc(demo)}` : ""}` +
+      (rounds?.length ? `&rounds=${rounds.join(",")}` : "") +
+      (players?.length ? `&players=${players.join(",")}` : ""),
     ),
   matches: () => request<Match[]>("/api/matches"),
   match: (id: number | string) => request<MatchDetail>(`/api/matches/${id}`),

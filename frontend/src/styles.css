@@ -67,19 +67,44 @@ h2 { font-size: var(--fs-lg); line-height: 1.3; margin: 0 0 10px; }
 .topbar nav a:hover { background: var(--line-2); color: var(--text); text-decoration: none; }
 .topbar nav a.active { color: var(--ct-ink); background: rgba(79, 140, 255, .10); border-bottom-color: var(--ct); }
 
-.usermenu { margin-left: auto; display: flex; align-items: center; gap: 10px; font-size: var(--fs-sm); }
-.usermenu button, .btn-ghost {
+/* ---- มุมขวาบน: ปุ่มเดียวที่กางเป็นเมนู ไม่ใช่ป้าย+ลิงก์+ปุ่มเรียงกันตรง ๆ (เคยแน่นและล้นเวลาชื่อยาว) ---- */
+.usermenu { margin-left: auto; position: relative; font-size: var(--fs-sm); }
+.btn-ghost {
   background: var(--card); border: 1px solid var(--line); color: var(--text); border-radius: 8px;
   padding: 6px 12px; cursor: pointer; font: inherit; font-size: var(--fs-sm);
 }
-.usermenu button:hover, .btn-ghost:hover { border-color: var(--ct); background: var(--card-2); }
+.btn-ghost:hover { border-color: var(--ct); background: var(--card-2); }
 .pill { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: var(--fs-xs); font-weight: 700; }
 .pill-guest { background: rgba(255, 138, 30, .16); color: var(--t-ink); border: 1px solid rgba(255, 138, 30, .45); }
-.btn-steam-sm {
-  display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 8px;
-  border: 1px solid var(--ct); color: var(--ct-ink); font-weight: 700; font-size: var(--fs-sm);
+
+.um-trigger {
+  display: inline-flex; align-items: center; gap: 8px; max-width: 220px;
+  background: var(--card); border: 1px solid var(--line); border-radius: 999px;
+  padding: 5px 10px 5px 6px; cursor: pointer; font: inherit; color: var(--text);
 }
-.btn-steam-sm:hover { background: rgba(79, 140, 255, .12); text-decoration: none; }
+.um-trigger:hover { border-color: var(--ct); background: var(--card-2); }
+.um-caret { font-size: 10px; color: var(--muted); }
+.me-avatar { width: 24px; height: 24px; border-radius: 50%; object-fit: cover; display: block; flex: none; }
+.me-avatar.ph {
+  display: grid; place-items: center; background: var(--ct); color: #fff; font: 700 12px/1 inherit;
+}
+.me-name {
+  font-weight: 600; max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+/* กล่องเมนูลอย — z-index สูงกว่า .topbar (20) ให้ลอยเหนือแถบบนได้จริง ไม่ถูกอะไรทับ */
+.um-panel {
+  position: absolute; right: 0; top: calc(100% + 8px); min-width: 210px; z-index: 30;
+  background: var(--card); border: 1px solid var(--line); border-radius: var(--r);
+  box-shadow: var(--shadow-2); padding: 6px; display: grid; gap: 2px;
+}
+.um-note { margin: 4px 8px 8px; font-size: var(--fs-xs); color: var(--muted); max-width: 220px; }
+.um-item {
+  display: block; width: 100%; text-align: left; background: none; border: 0; border-radius: 7px;
+  padding: 8px 10px; font: inherit; font-size: var(--fs-sm); color: var(--text); cursor: pointer;
+}
+.um-item:hover { background: var(--card-2); text-decoration: none; }
+.um-item-steam { color: var(--ct-ink); font-weight: 700; }
 
 /* ---------------- โครงหน้า ---------------- */
 .page { max-width: 1180px; margin: 0 auto; padding: 22px 24px 64px; }
@@ -136,6 +161,9 @@ h2 { font-size: var(--fs-lg); line-height: 1.3; margin: 0 0 10px; }
   position: sticky; top: 0; background: var(--card);
 }
 .tbl tbody tr:hover { background: var(--card-2); }
+/* ไฮไลต์แถวที่จับคู่กับช่องบนแผนที่ (หน้าเครื่องมือวิเคราะห์) — เข้มกว่า :hover เฉย ๆ เพราะเป็นการเชื่อมโยงที่ตั้งใจ */
+.tbl tbody tr.hl td { background: var(--line-2); }
+.tbl tbody tr[tabindex]:focus-visible { outline: 2px solid var(--ct-ink); outline-offset: -2px; }
 .tbl tbody tr:last-child td { border-bottom: 0; }
 .tbl .num { text-align: right; font-variant-numeric: tabular-nums; }
 .tbl.compact td, .tbl.compact th { padding: 6px 9px; }
@@ -152,33 +180,6 @@ a.badge:hover { text-decoration: none; filter: brightness(.96); }
 .b-error { background: rgba(201, 42, 58, .12); color: var(--err); }
 .badge.big { font-size: var(--fs-base); padding: 4px 13px; }
 
-/* ---------------- หน้าภาพรวม ---------------- */
-.stat-row { list-style: none; margin: 0 0 4px; padding: 0; display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); }
-.stat {
-  background: var(--card); border: 1px solid var(--line); border-radius: var(--r);
-  padding: 14px 16px; display: flex; flex-direction: column; gap: 2px; box-shadow: var(--shadow-1);
-}
-.stat b { font-size: 30px; line-height: 1.1; font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
-.stat-label { font-weight: 600; }
-.stat-foot { font-size: var(--fs-sm); color: var(--muted); }
-.stat-busy b { color: var(--ct-ink); }
-
-.ov-grid { display: grid; gap: 16px; grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); align-items: start; }
-.ov-list { list-style: none; margin: 0; padding: 0; }
-.ov-list li + li { border-top: 1px solid var(--line-2); }
-.ov-list a { display: block; padding: 10px 12px; margin: 0 -12px; border-radius: 8px; color: var(--text); }
-.ov-list a:hover { background: var(--card-2); text-decoration: none; }
-.ov-title { display: block; font-weight: 600; }
-.ov-meta { display: block; font-size: var(--fs-sm); color: var(--muted); margin-top: 1px; }
-
-.shortcuts { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
-.shortcut {
-  display: grid; grid-template-columns: 1fr auto; grid-template-rows: auto auto; gap: 0 10px;
-  padding: 11px 13px; border: 1px solid var(--line); border-radius: 9px; color: var(--text); background: var(--card-2);
-}
-.shortcut:hover { border-color: var(--ct); background: rgba(79, 140, 255, .07); text-decoration: none; }
-.shortcut .muted { font-size: var(--fs-sm); }
-.shortcut .arrow { grid-row: 1 / 3; align-self: center; color: var(--ct-ink); font-size: var(--fs-md); }
 
 /* ---------------- หน้าแมตช์: อัปโหลด + ตัวกรอง ---------------- */
 .dropzone {
@@ -271,9 +272,11 @@ a.rbox:hover { outline: 2px solid var(--text); outline-offset: 1px; text-decorat
 
 .review-grid { display: grid; gap: 12px; grid-template-columns: minmax(0, 1fr); grid-template-areas: "map" "roster" "panel"; }
 .roster-col { grid-area: roster; min-width: 0; }
-/* กล่องแผนที่คงพื้นมืด — ภาพเรดาร์ในไฟล์เกมเป็นภาพพื้นมืด และตัวเลข/ป้ายบนแผนที่ปรับเทียบกับพื้นมืดไว้แล้ว */
+/* กล่องแผนที่คงพื้นมืด — ภาพเรดาร์ในไฟล์เกมเป็นภาพพื้นมืด และตัวเลข/ป้ายบนแผนที่ปรับเทียบกับพื้นมืดไว้แล้ว
+   align-self: start กันไม่ให้กล่องนี้ถูกยืด (.review-grid ตั้ง align-items: stretch ไว้ให้ roster/breakdown)
+   ไปเท่าความสูงของคอลัมน์ข้าง ๆ ที่เนื้อหายาวกว่ามาก — ไม่งั้นพื้นมืดจะลากยาวเป็นโพรงว่างข้างล่างแผนที่ */
 .map-col {
-  grid-area: map; min-width: 0; display: flex; flex-direction: column; gap: 7px;
+  grid-area: map; min-width: 0; align-self: start; display: flex; flex-direction: column; gap: 7px;
   background: #101826; border: 1px solid #23304a; border-radius: var(--r); padding: 9px;
   color: #dbe4f2; box-shadow: var(--shadow-2);
 }
@@ -691,6 +694,45 @@ html:has(.login-shell) { color-scheme: dark; scrollbar-color: #2E3647 #0B0E14; }
 @media (min-width: 900px) {
   .an-grid { grid-template-columns: minmax(0, 1fr) minmax(300px, 380px); align-items: start; }
 }
+@media (min-width: 1150px) {
+  /* สามคอลัมน์: แผงตั้งค่าซ้าย · แผนที่กลาง · ตารางขวา */
+  .an-grid { grid-template-columns: 220px minmax(0, 1fr) minmax(300px, 380px); }
+  /* ข้อความ "ยังไม่ได้เลือกรอบ/ผู้เล่น" กินพื้นที่แผนที่+ตารางแทน ไม่ใช่แค่คอลัมน์เดียว — แผงซ้ายยังอยู่เหมือนเดิม */
+  .an-empty-fill { grid-column: 2 / -1; }
+}
+
+/* ---- แผงควบคุมการแสดงผล heatmap (รัศมี/เบลอ/ความทึบ/ฝั่ง/ดาวน์โหลด) ---- */
+.hm-panel {
+  background: var(--card); border: 1px solid var(--line); border-radius: var(--r);
+  padding: 14px; display: flex; flex-direction: column; gap: 14px; box-shadow: var(--shadow-1);
+}
+.hm-field { display: flex; flex-direction: column; gap: 6px; }
+.hm-field-h { display: flex; align-items: baseline; justify-content: space-between; font-size: var(--fs-sm); }
+.hm-panel input[type="range"] { width: 100%; accent-color: var(--ct-ink); }
+.hm-seg { flex-wrap: wrap; }
+.hm-export { width: 100%; text-align: center; }
+.hm-note { margin: 0; }
+.hm-quick .link-btn { margin-top: 0; font-size: var(--fs-xs); }
+
+/* ---- ปุ่มเลือกรอบ — ตาราง 5 คอลัมน์ ใช้พื้นที่แคบในแผงข้าง ---- */
+.hm-round-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 4px; }
+.hm-round-btn {
+  background: var(--card); border: 1px solid var(--line); border-radius: 6px; padding: 4px 0;
+  font-size: var(--fs-xs); font-variant-numeric: tabular-nums; color: var(--muted); cursor: pointer;
+}
+.hm-round-btn:hover:not(.on) { border-color: var(--text); color: var(--text); }
+.hm-round-btn.on { background: var(--text); border-color: var(--text); color: var(--card); }
+
+/* ---- ป้ายเลือกผู้เล่น — สีขอบตามฝั่งที่เริ่มเกม (แค่บอกฝั่ง ไม่ได้แปลว่าปุ่มนี้กรองตามฝั่ง) ---- */
+.hm-pills { display: flex; flex-wrap: wrap; gap: 5px; }
+.hm-pill {
+  background: var(--card); border: 1px solid var(--line); border-radius: 999px; padding: 3px 10px;
+  font-size: var(--fs-xs); color: var(--muted); cursor: pointer;
+}
+.hm-pill:hover:not(.on) { border-color: var(--text); color: var(--text); }
+.hm-pill.on { background: var(--text); border-color: var(--text); color: var(--card); }
+.hm-pill.ct:not(.on) { border-color: var(--ct); color: var(--ct-ink); }
+.hm-pill.t:not(.on) { border-color: var(--t); color: var(--t-ink); }
 
 /* ---- ปุ่มเลือกโหมด/ฝั่ง — ใช้ร่วมกับแถบชั้นแผนที่ในหน้ารอบ ---- */
 .seg { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 4px; }
@@ -746,3 +788,15 @@ html:has(.login-shell) { color-scheme: dark; scrollbar-color: #2E3647 #0B0E14; }
 .ks.adv { border-radius: 2px; width: 16px; height: 16px; border: 1px solid rgba(21, 26, 35, .35); }
 .ks.adv + .ks.adv { margin-left: -2px; }
 .ks.adv.avoid { margin-left: 8px; }
+
+/* ---- แถบไล่สีต่อเนื่อง (หน้าเครื่องมือวิเคราะห์ โหมด "ทีมเราตายตรงไหน") ---- */
+.grad-key { align-items: center; }
+.grad-bar-wrap { display: inline-flex; align-items: center; gap: 6px; }
+.grad-bar { width: 130px; height: 10px; border-radius: 5px; overflow: hidden; border: 1px solid var(--line); display: block; }
+.grad-num { font: 700 var(--fs-xs)/1 inherit; font-variant-numeric: tabular-nums; color: var(--muted); }
+
+/* ---- ชื่อ callout ปักบนภาพเรดาร์โดยตรง (หน้าเครื่องมือวิเคราะห์) ---- */
+.zone-label {
+  font: 700 15px/1 inherit; fill: #fff; paint-order: stroke; stroke: #0b1220; stroke-width: 4px;
+  pointer-events: none; transition: opacity .15s;
+}

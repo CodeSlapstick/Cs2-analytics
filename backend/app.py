@@ -774,12 +774,24 @@ ANALYSIS_SCOPES = {
 DEATH_SIDES = ("all", "ct", "t")
 
 
+def _parse_int_list(raw: str | None, *, what: str) -> list[int] | None:
+    """แปลง '1,2,5' -> [1,2,5] — ใช้กับ rounds และ players (SteamID64 ก็เป็นตัวเลขล้วน)"""
+    if not raw:
+        return None
+    try:
+        return [int(x) for x in raw.split(",") if x.strip()]
+    except ValueError:
+        raise HTTPException(400, f"{what} ต้องเป็นตัวเลขคั่นด้วยจุลภาค เช่น 1,2,5") from None
+
+
 @app.get("/api/analysis/deaths")
 async def api_analysis_deaths(
     map: str = Query(..., description="เช่น de_mirage"),
     scope: str = Query("reference", description="reference = ชุดที่โมเดลเทรนจากมัน | upload = แมตช์ที่ผู้ใช้อัปโหลด"),
     side: str = Query("all", description="ฝั่งของ 'คนที่ตาย': all | ct | t"),
     demo: str | None = Query(None, description="เจาะจงแมตช์เดียว (ต้องอยู่ในชุดที่เลือก)"),
+    rounds: str | None = Query(None, description="เจาะจงบางรอบ คั่นด้วยจุลภาค เช่น 1,2,5 — ต้องระบุ demo ด้วยเสมอ"),
+    players: str | None = Query(None, description="เจาะจงบางคน (SteamID64) คั่นด้วยจุลภาค — กรองที่ 'คนตาย'"),
     _: dict = Depends(require_viewer),
     conn: asyncpg.Connection = Depends(db),
 ):
@@ -791,6 +803,13 @@ async def api_analysis_deaths(
     frame = radar_frame(map)
     if frame is None:
         raise HTTPException(404, f"ยังไม่มีภาพเรดาร์ที่ปรับเทียบพิกัดแล้วของแมพ {map}")
+
+    # เลขรอบมีความหมายเฉพาะในแมตช์เดียว (รอบ 1 ของแมตช์ A ไม่ใช่รอบเดียวกับรอบ 1 ของแมตช์ B)
+    # เจาะจงรอบข้ามหลายแมตช์พร้อมกันจึงไม่มีความหมาย — บังคับให้เลือกแมตช์เดียวก่อนเสมอ
+    round_nums = _parse_int_list(rounds, what="rounds")
+    if round_nums and not demo:
+        raise HTTPException(400, "เจาะจงรอบได้เฉพาะตอนเลือกแมตช์เดียว (demo) แล้วเท่านั้น")
+    player_ids = _parse_int_list(players, what="players")
 
     n_matches = await conn.fetchval("""
         SELECT COUNT(*) FROM matches
@@ -805,18 +824,27 @@ async def api_analysis_deaths(
           AND k.victim_x IS NOT NULL AND k.victim_y IS NOT NULL
           AND ($3 = 'all' OR k.victim_side = $3)
           AND ($4::text IS NULL OR m.demo_file = $4)
-    """, map, scope, side, demo)
+          AND ($5::int[] IS NULL OR r.round_num = ANY($5))
+          AND ($6::bigint[] IS NULL OR k.victim_id = ANY($6))
+    """, map, scope, side, demo, round_nums, player_ids)
 
     out = await run_in_threadpool(
         deaths_overlay, [r["x"] for r in rows], [r["y"] for r in rows], frame, [r["place"] for r in rows])
+    label = f"{demo} (1 แมตช์)" if demo else f"{ANALYSIS_SCOPES[scope]} {n_matches} แมตช์"
+    if round_nums:
+        label += f" · {len(round_nums)} รอบที่เลือก"
+    if player_ids:
+        label += f" · {len(player_ids)} คนที่เลือก"
     return {
         **out,
         "map": map,
         "scope": scope,
         "side": side,
         "demo": demo,
+        "rounds": round_nums,
+        "players": [str(p) for p in player_ids] if player_ids else None,
         "matches": n_matches,
-        "label": f"{demo} (1 แมตช์)" if demo else f"{ANALYSIS_SCOPES[scope]} {n_matches} แมตช์",
+        "label": label,
         "radar": {"image": "/assets" + frame.image, "size": frame.size, "map": frame.map_name},
     }
 

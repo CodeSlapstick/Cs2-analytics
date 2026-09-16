@@ -1,10 +1,9 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import ReactDOM from "react-dom/client";
 import { QueryClient, QueryClientProvider, useQuery, useQueryClient } from "@tanstack/react-query";
 import { BrowserRouter, Link, NavLink, Navigate, Outlet, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { ApiError, auth, isGuest, UNAUTHORIZED_EVENT } from "./api";
 import { LoginPage } from "./LoginPage";
-import { OverviewPage } from "./OverviewPage";
 import { MatchesPage } from "./MatchesPage";
 import { MatchPage } from "./MatchPage";
 import { RoundPage } from "./RoundPage";
@@ -50,52 +49,108 @@ export function ProtectedRoute() {
 // ================================================================================================
 // มุมขวาบน: ใครกำลังดู + ทางออก
 // ================================================================================================
-/** มุมขวาของแถบบน — ผู้ใช้ Steam เห็นชื่อ+ออกจากระบบ · โหมดเยี่ยมชมเห็นป้ายบอกสถานะ+ปุ่มล็อกอิน */
+/**
+ * SteamID64 (หรือชื่อสำรอง steam_<id> ที่ backend ตั้งให้ตอนเรียก Steam Web API ไม่ติด — ดู
+ * backend/auth.py steam_persona/username_for_steam) เป็นเลข 17 หลักที่ไม่มีใครอ่านออกว่าเป็นใคร
+ * ห้ามโผล่ในหน้าเว็บตรง ๆ ไม่ว่าที่ไหน — ถ้าเจอรูปแบบนี้ให้แสดงป้ายกลาง ๆ แทน
+ */
+const STEAM_ID_FALLBACK = /^(steam_)?\d{15,}$/;
+const displayName = (username: string | null | undefined) =>
+  username && !STEAM_ID_FALLBACK.test(username) ? username : "บัญชี Steam";
+
+/** ปิดเมนูเมื่อคลิกนอกกล่องหรือกด Escape — ใช้ร่วมกันทั้งเมนูผู้ใช้ Steam และผู้เยี่ยมชม */
+function useCloseOnOutside<E extends HTMLElement>(open: boolean, onClose: () => void) {
+  const ref = useRef<E>(null);
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) onClose();
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open, onClose]);
+  return ref;
+}
+
+/**
+ * มุมขวาของแถบบน — ปุ่มเดียวที่กดแล้วกางเมนูลงมา (ไม่ใช่ป้าย+ลิงก์+ปุ่มเรียงกันแบบเดิม)
+ * เพื่อไม่ให้แถบบนแน่นขึ้นเรื่อย ๆ เวลามีตัวเลือกเพิ่ม และไม่ให้ SteamID โผล่ตรง ๆ ที่ไหนเลย
+ */
 export function UserMenu() {
   const qc = useQueryClient();
   const navigate = useNavigate();
   const { pathname, search } = useLocation();
   const me = useQuery({ queryKey: ["me"], queryFn: auth.me, retry: false, staleTime: 5 * 60_000 });
+  const [open, setOpen] = useState(false);
+  const ref = useCloseOnOutside<HTMLDivElement>(open, () => setOpen(false));
   if (!me.data) return null;
   const user = me.data.user;
+  const guest = isGuest(user);
+  const name = displayName(user.username);
 
   async function leave() {
+    setOpen(false);
     await auth.logout().catch(() => undefined); // ลบคุกกี้ไม่สำเร็จก็ยังล้างฝั่งหน้าเว็บ
     qc.clear();
     navigate("/login", { replace: true });
   }
 
-  // โหมดเยี่ยมชม: บอกสถานะให้เห็นชัด และให้ยกระดับเป็นบัญชี Steam ได้จากทุกหน้าโดยไม่เสียที่ที่กำลังดู
-  if (isGuest(user)) {
-    return (
-      <div className="usermenu" data-testid="user-menu" data-viewer="guest">
-        <span className="pill pill-guest" title="เข้าชมโดยไม่ได้ล็อกอิน — ข้อมูลที่อัปโหลดจะไม่ผูกกับบัญชีใด">
-          โหมดเยี่ยมชม
-        </span>
-        <a className="btn-steam-sm" href={`/auth/steam/login?next=${encodeURIComponent(pathname + search)}`}>
-          ล็อกอินด้วย Steam
-        </a>
-        <button type="button" className="btn-ghost" onClick={leave}>
-          ออก
-        </button>
-      </div>
-    );
-  }
-
   return (
-    <div className="usermenu" data-testid="user-menu" data-viewer="steam">
-      {/* รูปโปรไฟล์มาจาก Steam — บัญชีที่ยังไม่มีรูปใช้ตัวอักษรแรกของชื่อแทน ไม่ยืมรูปคนอื่นมาใส่ */}
-      <Link to="/player" className="me-link" title="ดูสถิติของฉัน">
-        {user.avatar ? (
+    <div className="usermenu" data-testid="user-menu" data-viewer={guest ? "guest" : "steam"} ref={ref}>
+      <button
+        type="button"
+        className="um-trigger"
+        onClick={() => setOpen((o) => !o)}
+        aria-haspopup="menu"
+        aria-expanded={open}
+      >
+        {guest ? (
+          <span className="pill pill-guest">โหมดเยี่ยมชม</span>
+        ) : user.avatar ? (
+          // รูปโปรไฟล์มาจาก Steam — บัญชีที่ยังไม่มีรูปใช้ตัวอักษรแรกของชื่อที่แสดงแทน ไม่ยืมรูปคนอื่นมาใส่
           <img className="me-avatar" src={user.avatar} alt="" referrerPolicy="no-referrer" />
         ) : (
-          <span className="me-avatar ph" aria-hidden="true">{(user.username ?? "?").slice(0, 1).toUpperCase()}</span>
+          <span className="me-avatar ph" aria-hidden="true">{name.slice(0, 1).toUpperCase()}</span>
         )}
-        <span className="me-name">{user.username}</span>
-      </Link>
-      <button type="button" className="btn-ghost" onClick={leave}>
-        ออกจากระบบ
+        {!guest && <span className="me-name">{name}</span>}
+        <span className="um-caret" aria-hidden="true">▾</span>
       </button>
+
+      {open && (
+        <div className="um-panel" role="menu">
+          {guest ? (
+            <>
+              <p className="um-note">เข้าชมโดยไม่ได้ล็อกอิน — ข้อมูลที่อัปโหลดจะไม่ผูกกับบัญชีใด</p>
+              <a
+                className="um-item um-item-steam"
+                role="menuitem"
+                href={`/auth/steam/login?next=${encodeURIComponent(pathname + search)}`}
+              >
+                ล็อกอินด้วย Steam
+              </a>
+              <button type="button" className="um-item" role="menuitem" onClick={leave}>
+                ออก
+              </button>
+            </>
+          ) : (
+            <>
+              <Link className="um-item" role="menuitem" to="/player" onClick={() => setOpen(false)}>
+                ดูสถิติของฉัน
+              </Link>
+              <button type="button" className="um-item" role="menuitem" onClick={leave}>
+                ออกจากระบบ
+              </button>
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -111,12 +166,12 @@ const queryClient = new QueryClient({
 /**
  * หน้าหลักของเว็บ เรียงตามสิ่งที่ผู้ใช้เปิดบ่อยที่สุดก่อน — สถิติของตัวเองคือหน้าแรกหลังล็อกอิน
  * หน้าสรุปแมตช์กับหน้ารีวิวรอบเข้าถึงจาก "แมตช์" จึงไม่มีลิงก์ของตัวเอง
+ * (เคยมีหน้า "ภาพรวม" ที่ / — ตัดออกแล้ว เพราะซ้ำกับตัวเลขที่หน้าแมตช์มีอยู่แล้ว)
  */
 const NAV = [
   { to: "/player", label: "สถิติของฉัน", end: false },
   { to: "/matches", label: "แมตช์", end: false },
   { to: "/analysis", label: "เครื่องมือวิเคราะห์", end: false },
-  { to: "/", label: "ภาพรวม", end: true },
 ];
 
 /** แถบบนของแอป — หน้า /login เต็มจอของตัวเอง ไม่มีแถบนี้ */
@@ -149,7 +204,8 @@ function App() {
           <Route path="/login" element={<LoginPage />} />
           {/* ทุกหน้าที่ดึงข้อมูลต้องมี session ก่อน — ยังไม่มีเด้งไป /login?next=<ที่เดิม> */}
           <Route element={<ProtectedRoute />}>
-            <Route path="/" element={<OverviewPage />} />
+            {/* หน้าแรกหลังล็อกอินคือสถิติของฉัน — ไม่มีหน้าภาพรวมแยกแล้ว แต่ลิงก์ / เก่า (เช่นโลโก้) ยังต้องพาไปที่ไหนสักที่ */}
+            <Route path="/" element={<Navigate to="/player" replace />} />
             <Route path="/matches" element={<MatchesPage />} />
             <Route path="/matches/:demo" element={<MatchPage />} />
             {/* URL เดิมของหน้ารีวิวรอบ — ลิงก์ที่เคยแชร์ไว้พร้อม query string ต้องเปิดได้เหมือนเดิม */}

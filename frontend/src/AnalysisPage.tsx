@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import {
@@ -10,6 +10,7 @@ import {
   type MatchSource,
   type ReadRound,
   type Readability,
+  type ScoreRow,
 } from "./api";
 import {
   DIFF_FILL,
@@ -18,12 +19,7 @@ import {
   DIFF_STEPS,
   diffLevel,
   type DiffLevel,
-  FREQ_ALPHA,
-  freqBands,
-  freqBreaks,
-  freqLevel,
   pct,
-  SCREEN,
   sideLabel,
 } from "./utils";
 
@@ -47,10 +43,50 @@ const SIDES: { key: Side; label: string }[] = [
   { key: "t", label: "ตอนเป็น T" },
 ];
 
+/**
+ * บันทึกแผนที่ heatmap เป็นไฟล์ภาพ — ทำฝั่งเบราว์เซอร์ล้วน ไม่ยิงไป backend
+ * ภาพเรดาร์ในตัว SVG เสิร์ฟจาก origin เดียวกัน (ผ่าน nginx proxy ที่ /assets/) จึงไม่ติด CORS จน canvas ถูก taint
+ */
+function exportSvgAsPng(svg: SVGSVGElement, filename: string) {
+  const size = svg.viewBox.baseVal.width || svg.clientWidth || 1024;
+  const xml = new XMLSerializer().serializeToString(svg);
+  const svgUrl = URL.createObjectURL(new Blob([xml], { type: "image/svg+xml;charset=utf-8" }));
+  const img = new Image();
+  img.onload = () => {
+    const canvas = document.createElement("canvas");
+    canvas.width = size;
+    canvas.height = size;
+    const ctx = canvas.getContext("2d");
+    if (ctx) {
+      ctx.drawImage(img, 0, 0, size, size);
+      canvas.toBlob((blob) => {
+        if (!blob) return;
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = filename;
+        a.click();
+        URL.revokeObjectURL(a.href);
+      }, "image/png");
+    }
+    URL.revokeObjectURL(svgUrl);
+  };
+  img.onerror = () => URL.revokeObjectURL(svgUrl);
+  img.src = svgUrl;
+}
+
 export function AnalysisPage() {
   const [mode, setMode] = useState<Mode>("upload");
   const [side, setSide] = useState<Side>("all");
   const [demo, setDemo] = useState<string>(""); // "" = ทุกแมตช์ที่อัปโหลด
+  // ชี้เมาส์ที่แถวในตาราง (หรือช่องบนแผนที่) = ไฮไลต์อีกฝั่งให้เห็นทันที — คีย์เดียวกับที่ groupByPlace() ใช้จัดกลุ่ม
+  const [hovered, setHovered] = useState<string | null>(null);
+  // แผงควบคุมการแสดงผล heatmap — ค่าพวกนี้เป็นแค่การตั้งค่ามุมมอง ไม่ผูกกับ URL หรือรีเซ็ตตอนเปลี่ยนตัวกรองข้อมูล
+  const [radius, setRadius] = useState(1);
+  const [blur, setBlur] = useState(3.2);
+  const [opacity, setOpacity] = useState(1);
+  // null = ไม่กรอง (ทุกรอบ/ทุกคน) — ต่างจาก [] ที่แปลว่า "ไม่เลือกเลย" (ปุ่ม "ไม่เอาเลย")
+  const [selRounds, setSelRounds] = useState<number[] | null>(null);
+  const [selPlayers, setSelPlayers] = useState<string[] | null>(null);
   const matches = useQuery(matchesQuery);
 
   // แมพที่ดูได้ = แมพที่มีทั้งแมตช์ของเราและชุดอ้างอิง (ไม่งั้นไม่มีอะไรให้เทียบ)
@@ -62,11 +98,32 @@ export function AnalysisPage() {
   const [map, setMap] = useState<string>("");
   const activeMap = map || maps[0] || "";
   const mine = done.filter((m) => m.source === "upload" && m.map_name === activeMap);
+  const activeMatch = mine.find((m) => m.demo_file === demo);
 
-  const enabled = !!activeMap;
+  // รอสเตอร์ (ชื่อ + SteamID64) ของแมตช์ที่เลือก — ไว้ทำปุ่มเลือกผู้เล่น เอาจาก endpoint แมตช์เดี่ยวที่มีอยู่แล้ว
+  // (ไม่ต้องเพิ่ม endpoint ใหม่) จำนวนรอบทั้งหมดก็มีอยู่แล้วใน match_summary (activeMatch.rounds)
+  const roster = useQuery({
+    queryKey: ["match-roster", activeMatch?.id],
+    queryFn: () => api.match(activeMatch!.id),
+    enabled: !!activeMatch,
+    staleTime: 5 * 60_000,
+  });
+
+  // เจาะจงรอบ/คนได้เฉพาะตอนเลือกแมตช์เดียวแล้ว (เลขรอบไม่มีความหมายข้ามแมตช์) — สลับแมตช์ = ล้างตัวกรองนี้ทิ้ง
+  useEffect(() => {
+    setSelRounds(null);
+    setSelPlayers(null);
+  }, [demo]);
+
+  // [] (เลือก "ไม่เอาเลย") ต่างจาก null (ไม่กรอง) — [] แปลว่าต้องไม่แสดงอะไรเลย ไม่ใช่แสดงทุกอย่าง
+  // ต้องกันไว้เอง เพราะ API มองพารามิเตอร์ว่างเป็น "ไม่กรอง" (ดู backend/app.py _parse_int_list)
+  const noRoundsPicked = selRounds !== null && selRounds.length === 0;
+  const noPlayersPicked = selPlayers !== null && selPlayers.length === 0;
+
+  const enabled = !!activeMap && !noRoundsPicked && !noPlayersPicked;
   const upload = useQuery({
-    queryKey: ["analysis", activeMap, "upload", side, demo],
-    queryFn: () => api.analysisDeaths(activeMap, "upload", side, demo || null),
+    queryKey: ["analysis", activeMap, "upload", side, demo, selRounds, selPlayers],
+    queryFn: () => api.analysisDeaths(activeMap, "upload", side, demo || null, selRounds, selPlayers),
     enabled,
     staleTime: 5 * 60_000,
   });
@@ -85,6 +142,9 @@ export function AnalysisPage() {
     staleTime: 5 * 60_000,
   });
 
+  // สลับโหมด/แมพ/ฝั่ง/แมตช์ = ชุดข้อมูลเปลี่ยน คีย์ที่ค้างไฮไลต์ไว้จากชุดก่อนหน้าจึงไม่มีความหมายแล้ว
+  useEffect(() => setHovered(null), [mode, activeMap, side, demo]);
+
   if (matches.isLoading) return <p className="muted">กำลังโหลด…</p>;
   if (matches.error) return <p className="err">โหลดรายการแมตช์ไม่ได้: {(matches.error as Error).message}</p>;
   if (maps.length === 0) return <NothingToCompare done={done} />;
@@ -93,6 +153,11 @@ export function AnalysisPage() {
   const loading = mode === "read" ? readQ.isLoading : upload.isLoading || (mode === "diff" && reference.isLoading);
   const error = (mode === "read" ? readQ.error : (upload.error ?? reference.error)) as Error | null;
   const rows = mode === "diff" && upload.data && reference.data ? compare(upload.data, reference.data) : [];
+
+  function handleExport() {
+    const svg = document.querySelector<SVGSVGElement>('[data-testid="analysis-radar"]');
+    if (svg) exportSvgAsPng(svg, `heatmap-${activeMap || "map"}-${mode}.png`);
+  }
 
   return (
     <div className="analysis" data-testid="analysis-page">
@@ -113,16 +178,6 @@ export function AnalysisPage() {
             <button key={m.key} type="button" className={`seg-btn${mode === m.key ? " on" : ""}`}
               aria-pressed={mode === m.key} title={m.hint} onClick={() => setMode(m.key)} data-testid={`mode-${m.key}`}>
               {m.label}
-            </button>
-          ))}
-        </div>
-
-        <div className="seg" role="group" aria-label="ฝั่งของคนที่ตาย">
-          <span className="seg-h">ฝั่งของคนที่ตาย</span>
-          {SIDES.map((s) => (
-            <button key={s.key} type="button" className={`seg-btn${side === s.key ? ` ${s.key} on` : ""}`}
-              aria-pressed={side === s.key} onClick={() => setSide(s.key)}>
-              {s.label}
             </button>
           ))}
         </div>
@@ -156,27 +211,188 @@ export function AnalysisPage() {
 
       {!loading && !error && mode !== "read" && (
         <div className="an-grid">
-          <section className="an-map-col">
-            <div className="an-map">
-              {mode === "diff" ? (
-                <DeathMap radar={upload.data!.radar} cells={rows} paint={(r) => diffPaint(r.level)} />
-              ) : (
-                single && <DeathMap radar={single.radar} cells={single.cells} paint={freqPaint(single.cells, side)} />
-              )}
-            </div>
-            {mode === "diff" ? <DiffKey /> : <FreqKey cells={single?.cells ?? []} side={side} />}
-          </section>
+          {/* แผงนี้อยู่เสมอไม่ว่าจะเลือกรอบ/ผู้เล่นไว้กี่คน — กด "ไม่เอาเลย" แล้วต้องยังเห็นปุ่ม "ทั้งหมด"
+              เพื่อย้อนกลับได้ ไม่ใช่ทั้งแผงหายไปพร้อมกับแผนที่จนหาทางกลับไม่เจอ */}
+          <HeatmapControls
+            side={side} onSide={setSide}
+            radius={radius} onRadius={setRadius}
+            blur={blur} onBlur={setBlur}
+            opacity={opacity} onOpacity={setOpacity}
+            onExport={handleExport}
+            demoSelected={!!activeMatch}
+            roundsTotal={activeMatch?.rounds ?? 0}
+            selRounds={selRounds} onRounds={setSelRounds}
+            roster={roster.data?.scoreboard ?? []}
+            rosterLoading={roster.isLoading}
+            selPlayers={selPlayers} onPlayers={setSelPlayers}
+          />
 
-          <aside className="an-side">
-            {mode === "diff" ? (
-              <DiffTable rows={rows} upload={upload.data!} reference={reference.data!} />
-            ) : (
-              <SingleSummary data={single!} />
-            )}
-          </aside>
+          {noRoundsPicked || noPlayersPicked ? (
+            <p className="muted an-empty an-empty-fill" data-testid="analysis-nothing-picked">
+              ยังไม่ได้เลือก{noRoundsPicked ? "รอบ" : "ผู้เล่น"}เลยสักคน/รอบ — เลือกอย่างน้อยหนึ่งอย่างในแผงซ้าย
+              หรือกด "ทั้งหมด" เพื่อดูภาพรวมอีกครั้ง
+            </p>
+          ) : (
+            <>
+              <section className="an-map-col">
+                <div className="an-map">
+                  {mode === "diff" ? (
+                    <DeathMap radar={upload.data!.radar} cells={rows} paint={(r) => diffPaint(r.level)}
+                      highlightKey={hovered} onHoverKey={setHovered} radius={radius} blur={blur} layerOpacity={opacity} />
+                  ) : (
+                    single && (
+                      <DeathMap radar={single.radar} cells={single.cells} paint={continuousFreqPaint(single.cells, side)}
+                        highlightKey={hovered} onHoverKey={setHovered} radius={radius} blur={blur} layerOpacity={opacity} />
+                    )
+                  )}
+                </div>
+                {mode === "diff" ? <DiffKey /> : <GradientKey cells={single?.cells ?? []} side={side} />}
+              </section>
+
+              <aside className="an-side">
+                {mode === "diff" ? (
+                  <DiffTable rows={rows} upload={upload.data!} reference={reference.data!} hovered={hovered} onHover={setHovered} />
+                ) : (
+                  <SingleSummary data={single!} hovered={hovered} onHover={setHovered} />
+                )}
+              </aside>
+            </>
+          )}
         </div>
       )}
     </div>
+  );
+}
+
+// ================================================================================================
+// แผงควบคุมการแสดงผล heatmap
+//
+// สองกลุ่ม: "แสดงยังไง" (รัศมี/เบลอ/ความทึบ/ฝั่ง) เป็นการตั้งค่าฝั่งเบราว์เซอร์ล้วน ไม่แตะ backend เลย
+// กับ "ข้อมูลไหน" (รอบ/ผู้เล่น) ซึ่งเจาะจงได้เฉพาะหลังเลือกแมตช์เดียวแล้ว (เลขรอบไม่มีความหมายข้ามแมตช์)
+// — ประเภทเหตุการณ์ (คิลผู้โจมตี vs ระเบิด) กับตัวกรองทีมยังทำไม่ได้ในรุ่นนี้ เพราะยังไม่มีข้อมูลตำแหน่ง
+// ระเบิดผูกกับ endpoint นี้ และการอัปโหลดตอนนี้มีแค่ 1 แมตช์ต่อครั้ง (ทีม = เท่ากับเลือกแมตช์อยู่แล้ว)
+// ================================================================================================
+interface HeatmapControlsProps {
+  side: Side;
+  onSide: (s: Side) => void;
+  radius: number;
+  onRadius: (v: number) => void;
+  blur: number;
+  onBlur: (v: number) => void;
+  opacity: number;
+  onOpacity: (v: number) => void;
+  onExport: () => void;
+  demoSelected: boolean;
+  roundsTotal: number;
+  selRounds: number[] | null;
+  onRounds: (r: number[] | null) => void;
+  roster: ScoreRow[];
+  rosterLoading: boolean;
+  selPlayers: string[] | null;
+  onPlayers: (p: string[] | null) => void;
+}
+
+function HeatmapControls({
+  side, onSide, radius, onRadius, blur, onBlur, opacity, onOpacity, onExport,
+  demoSelected, roundsTotal, selRounds, onRounds, roster, rosterLoading, selPlayers, onPlayers,
+}: HeatmapControlsProps) {
+  const roundOn = (n: number) => selRounds === null || selRounds.includes(n);
+  const toggleRound = (n: number) => {
+    const base = selRounds ?? Array.from({ length: roundsTotal }, (_, i) => i + 1);
+    onRounds(base.includes(n) ? base.filter((x) => x !== n) : [...base, n].sort((a, b) => a - b));
+  };
+  const playerOn = (id: string) => selPlayers === null || selPlayers.includes(id);
+  const togglePlayer = (id: string) => {
+    const base = selPlayers ?? roster.map((p) => p.steam_id);
+    onPlayers(base.includes(id) ? base.filter((x) => x !== id) : [...base, id]);
+  };
+
+  return (
+    <aside className="hm-panel" aria-label="ตั้งค่าการแสดงผล heatmap">
+      <div className="hm-field">
+        <div className="hm-field-h"><span>รัศมี</span><span className="num muted">{radius.toFixed(1)}×</span></div>
+        <input type="range" min={0.5} max={2.5} step={0.1} value={radius}
+          onChange={(e) => onRadius(Number(e.target.value))} aria-label="รัศมีของจุดความร้อน" />
+      </div>
+      <div className="hm-field">
+        <div className="hm-field-h"><span>เบลอ</span><span className="num muted">{blur.toFixed(1)}</span></div>
+        <input type="range" min={0} max={10} step={0.5} value={blur}
+          onChange={(e) => onBlur(Number(e.target.value))} aria-label="ความเบลอเพิ่มเติม" />
+      </div>
+      <div className="hm-field">
+        <div className="hm-field-h"><span>ความทึบ</span><span className="num muted">{Math.round(opacity * 100)}%</span></div>
+        <input type="range" min={0.2} max={1} step={0.05} value={opacity}
+          onChange={(e) => onOpacity(Number(e.target.value))} aria-label="ความทึบของชั้นสี" />
+      </div>
+
+      <div className="hm-field">
+        <div className="hm-field-h"><span>ฝั่งของคนที่ตาย</span></div>
+        <div className="seg hm-seg" role="group" aria-label="ฝั่งของคนที่ตาย">
+          {SIDES.map((s) => (
+            <button key={s.key} type="button" className={`seg-btn${side === s.key ? ` ${s.key} on` : ""}`}
+              aria-pressed={side === s.key} onClick={() => onSide(s.key)}>
+              {s.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {!demoSelected ? (
+        <p className="muted small hm-note">เลือก "แมตช์ของทีม" แมตช์เดียวด้านบนก่อน ถึงจะเจาะจงรอบหรือผู้เล่นได้</p>
+      ) : (
+        <>
+          <div className="hm-field">
+            <div className="hm-field-h">
+              <span>รอบ</span>
+              <span className="hm-quick">
+                <button type="button" className="link-btn" onClick={() => onRounds(null)}>ทั้งหมด</button>
+                {" · "}
+                <button type="button" className="link-btn" onClick={() => onRounds([])}>ไม่เอาเลย</button>
+              </span>
+            </div>
+            <div className="hm-round-grid" role="group" aria-label="เลือกรอบ">
+              {Array.from({ length: roundsTotal }, (_, i) => i + 1).map((n) => (
+                <button key={n} type="button" className={`hm-round-btn${roundOn(n) ? " on" : ""}`}
+                  aria-pressed={roundOn(n)} onClick={() => toggleRound(n)}>
+                  {n}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="hm-field">
+            <div className="hm-field-h">
+              <span>ผู้เล่น</span>
+              <span className="hm-quick">
+                <button type="button" className="link-btn" onClick={() => onPlayers(null)}>ทั้งหมด</button>
+                {" · "}
+                <button type="button" className="link-btn" onClick={() => onPlayers([])}>ไม่เอาเลย</button>
+              </span>
+            </div>
+            {rosterLoading ? (
+              <p className="muted small">กำลังโหลดรายชื่อ…</p>
+            ) : (
+              <div className="hm-pills" role="group" aria-label="เลือกผู้เล่น">
+                {roster.map((p) => (
+                  <button key={p.steam_id} type="button"
+                    className={`hm-pill${playerOn(p.steam_id) ? ` ${p.start_side ?? ""} on` : ""}`}
+                    aria-pressed={playerOn(p.steam_id)} onClick={() => togglePlayer(p.steam_id)}>
+                    {p.name}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </>
+      )}
+
+      <button type="button" className="btn-primary hm-export" onClick={onExport}>
+        ดาวน์โหลดภาพ
+      </button>
+      <p className="muted small hm-note">
+        ประเภทเหตุการณ์ (ระเบิด) และตัวกรองทีมยังทำไม่ได้ในรุ่นนี้
+      </p>
+    </aside>
   );
 }
 
@@ -272,6 +488,64 @@ const roundLink = (demo: string, r: ReadRound) =>
   `/matches/${encodeURIComponent(demo)}/rounds/${r.round_num}?pb=1${r.read_at != null ? `&t=${r.read_at}` : ""}`;
 
 // ================================================================================================
+// รวมช่องที่มีชื่อ callout เดียวกันเป็นแถวเดียว — ใช้ทั้งในตารางและตอนปักป้ายชื่อบนแผนที่
+//
+// หนึ่งจุดบนแมพ (เช่น "BombsiteA") กินกริด 32x32 หลายช่องเสมอ ถ้าตารางแสดงทีละช่องจะเห็นชื่อ
+// เดียวกันซ้ำหลายแถวพร้อมพิกัดที่ต่างกันนิดเดียว อ่านแล้วเหมือนข้อมูลผิดทั้งที่ไม่ผิด — จึงรวมเป็น
+// แถวเดียวแล้วบวกจำนวนตาย/สัดส่วนเข้าด้วยกัน ช่องที่ "ไม่มีชื่อเรียก" ไม่ถูกรวม เพราะกระจายอยู่
+// คนละที่บนแมพ การเอามารวมกันจะสื่อความหมายผิด (เหมือนบอกว่าหลายจุดคนละที่คือที่เดียวกัน)
+//
+// คีย์เดียวกันนี้ยังใช้จับคู่ "ชี้เมาส์ที่แถว <-> ไฮไลต์ช่องบนแผนที่" (ข้อ 3) เพราะทั้งตารางกับ
+// แผนที่กลุ่มเซลล์แบบเดียวกัน
+// ================================================================================================
+const cellKey = (c: DeathCellCount) => c.place ?? `@${c.cx},${c.cy}`;
+
+interface PlaceGroup<T extends DeathCellCount> {
+  key: string;
+  place: string | null;
+  cells: T[];
+  deaths: number;
+  share: number;
+}
+
+function groupByPlace<T extends DeathCellCount>(cells: T[]): PlaceGroup<T>[] {
+  const out = new Map<string, PlaceGroup<T>>();
+  for (const c of cells) {
+    const key = cellKey(c);
+    let g = out.get(key);
+    if (!g) {
+      g = { key, place: c.place, cells: [], deaths: 0, share: 0 };
+      out.set(key, g);
+    }
+    g.cells.push(c);
+    g.deaths += c.deaths;
+    g.share += c.share;
+  }
+  return [...out.values()];
+}
+
+/**
+ * ตรงไหนของแมพ — ชื่อ callout ที่เดโมบันทึกไว้ (BombsiteA, Catwalk, …) พร้อมบอกว่ารวมมาจากกี่ช่อง
+ * ช่องที่ไม่มีชื่อเรียก ยังบอกพิกัดกำกับไว้เหมือนเดิม เพราะเป็นช่องเดี่ยว ไม่ได้ถูกรวม
+ */
+function PlaceCell({ place, cells }: { place: string | null; cells: { cx: number; cy: number }[] }) {
+  if (place) {
+    return (
+      <span className="an-place">
+        {place}
+        {cells.length > 1 && <span className="muted num"> · {cells.length} ช่อง</span>}
+      </span>
+    );
+  }
+  return (
+    <span className="an-place">
+      ไม่มีชื่อเรียก
+      <span className="muted num"> {cells[0].cx},{cells[0].cy}</span>
+    </span>
+  );
+}
+
+// ================================================================================================
 // เทียบสองชุด
 // ================================================================================================
 interface DiffRow extends DeathCellCount {
@@ -299,6 +573,16 @@ function compare(mine: DeathsOverlay, ref: DeathsOverlay): DiffRow[] {
     .sort((a, b) => b.level - a.level || b.deaths - a.deaths);
 }
 
+/** รวมแถวเทียบสองชุดตามชื่อ callout แล้วคิด ratio/level ใหม่จากยอดรวม — สูตรเดิมทุกตัว แค่ป้อนเลขที่บวกกันแล้ว */
+function groupDiffRows(rows: DiffRow[]) {
+  return groupByPlace(rows).map((g) => {
+    const shareRef = g.cells.reduce((s, c) => s + c.shareRef, 0);
+    const deathsRef = g.cells.reduce((s, c) => s + c.deathsRef, 0);
+    const ratio = shareRef > 0 ? g.share / shareRef : Infinity;
+    return { ...g, shareRef, deathsRef, ratio, level: diffLevel(g.share, shareRef, g.deaths) };
+  });
+}
+
 const diffPaint = (lv: DiffLevel) =>
   lv === 0 ? null : { fill: DIFF_FILL[String(lv) as "-2" | "-1" | "1" | "2"], opacity: 0.78 };
 
@@ -323,8 +607,17 @@ function DiffKey() {
   );
 }
 
-function DiffTable({ rows, upload, reference }: { rows: DiffRow[]; upload: DeathsOverlay; reference: DeathsOverlay }) {
-  const worst = rows.filter((r) => r.level > 0).slice(0, 8);
+interface TableHoverProps {
+  hovered: string | null;
+  onHover: (key: string | null) => void;
+}
+
+function DiffTable({ rows, upload, reference, hovered, onHover }:
+  { rows: DiffRow[]; upload: DeathsOverlay; reference: DeathsOverlay } & TableHoverProps) {
+  const worst = groupDiffRows(rows)
+    .filter((g) => g.level > 0)
+    .sort((a, b) => b.level - a.level || b.deaths - a.deaths)
+    .slice(0, 8);
   return (
     <>
       <h2>จุดที่ทีมเราตายบ่อยกว่าทีมอาชีพ</h2>
@@ -348,13 +641,15 @@ function DiffTable({ rows, upload, reference }: { rows: DiffRow[]; upload: Death
             </tr>
           </thead>
           <tbody>
-            {worst.map((r) => (
-              <tr key={`${r.cx},${r.cy}`}>
-                <td><Place cell={r} /></td>
-                <td className="num">{r.deaths}</td>
-                <td className="num">{pct(r.share)}</td>
-                <td className="num">{pct(r.shareRef)}</td>
-                <td className="num"><b>{r.ratio === Infinity ? "—" : `${r.ratio.toFixed(1)}×`}</b></td>
+            {worst.map((g) => (
+              <tr key={g.key} className={hovered === g.key ? "hl" : ""} tabIndex={0}
+                onMouseEnter={() => onHover(g.key)} onMouseLeave={() => onHover(null)}
+                onFocus={() => onHover(g.key)} onBlur={() => onHover(null)}>
+                <td><PlaceCell place={g.place} cells={g.cells} /></td>
+                <td className="num">{g.deaths}</td>
+                <td className="num">{pct(g.share)}</td>
+                <td className="num">{pct(g.shareRef)}</td>
+                <td className="num"><b>{g.ratio === Infinity ? "—" : `${g.ratio.toFixed(1)}×`}</b></td>
               </tr>
             ))}
           </tbody>
@@ -369,16 +664,47 @@ function DiffTable({ rows, upload, reference }: { rows: DiffRow[]; upload: Death
 }
 
 // ================================================================================================
-// ดูชุดเดียว — ใช้ไล่เฉดความถี่ชุดเดียวกับหน้ารอบ
+// ดูชุดเดียว — ไล่สีต่อเนื่องตามจำนวนครั้งที่ตาย (ไม่ตัดเป็นขั้นแบบควอนไทล์)
+//
+// เดิมแบ่งเป็น 5 ขั้นตามควอนไทล์ของข้อมูลชุดนั้น แต่แมตช์ที่อัปโหลดมีน้อย (บ่อยครั้งแค่ 1 แมตช์)
+// ทำให้ควอนไทล์ชนกันจนยุบเหลือแค่ 2 ขั้นจริง ๆ (เช่น "1" กับ "ตั้งแต่ 2") — ตาย 2 ครั้งกับ 20 ครั้ง
+// เลยได้สีเดียวกัน ทั้งที่ต่างกันมาก จึงเปลี่ยนมาไล่สีต่อเนื่องตามสัดส่วนจริงแทน
 // ================================================================================================
-const freqPaint = (cells: DeathCellCount[], side: Side) => {
-  const breaks = freqBreaks(cells.map((c) => c.deaths));
+function hexToRgb(hex: string): [number, number, number] {
+  const n = parseInt(hex.replace("#", ""), 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
+
+/** ผสมสีเชิงเส้นระหว่างสองเฉด ตาม t = 0 (อ่อนสุด) ถึง 1 (เข้มสุด) */
+function mixHex(a: string, b: string, t: number): string {
+  const pa = hexToRgb(a);
+  const pb = hexToRgb(b);
+  const m = (i: number) => Math.round(pa[i] + (pb[i] - pa[i]) * t);
+  return `rgb(${m(0)}, ${m(1)}, ${m(2)})`;
+}
+
+/**
+ * ไล่ตาม log1p ไม่ใช่เชิงเส้นตรง ๆ เพราะช่องส่วนใหญ่ตายแค่ 1-3 ครั้ง ถ้าไล่เชิงเส้นตามค่าดิบ
+ * ช่องเหล่านั้นจะดูจางเกือบเท่ากันหมด ขณะที่ไม่กี่ช่องที่ตายเยอะกินสเกลไปเกือบทั้งหมด — log1p ให้
+ * ความละเอียดกับช่วงตายน้อยมากขึ้น โดยยังแยกช่วงตายเยอะออกจากกันได้อยู่ และไม่มีจุดตัดแบบ percentile
+ * clip ที่ทำให้สีกระโดดที่ขอบ (ชุดข้อมูลนี้เล็ก per แมตช์ 1-2 หลักสิบช่อง คำนวณ percentile ได้ไม่นิ่ง)
+ */
+function deathT(value: number, max: number): number {
+  return max > 0 ? Math.log1p(value) / Math.log1p(max) : 0;
+}
+
+/** ช่องที่ตายน้อยกว่านี้ไม่ระบายเลย (โปร่งใส) — ข้อมูลน้อยเกินจะสรุปว่าเป็นจุดอ่อนจริง ไม่ใช่ตายเซอร์ไพรส์ครั้งเดียว */
+const MIN_PAINTED_DEATHS = 3;
+
+function continuousFreqPaint(cells: DeathCellCount[], side: Side) {
+  const max = Math.max(1, ...cells.map((c) => c.deaths));
   const ramp = DEATH_RAMP[side];
   return (c: DeathCellCount) => {
-    const lv = freqLevel(c.deaths, breaks);
-    return { fill: ramp[lv], opacity: FREQ_ALPHA + lv * 0.06 };
+    if (c.deaths < MIN_PAINTED_DEATHS) return null;
+    const t = deathT(c.deaths, max);
+    return { fill: mixHex(ramp[0], ramp[ramp.length - 1], t), opacity: 0.5 + t * 0.42 };
   };
-};
+}
 
 const SIDE_NOTE: Record<Side, string> = {
   all: "รวมทั้งสองฝั่ง",
@@ -386,27 +712,52 @@ const SIDE_NOTE: Record<Side, string> = {
   t: "เฉพาะตอนเป็น T",
 };
 
-function FreqKey({ cells, side }: { cells: DeathCellCount[]; side: Side }) {
-  const bands = freqBands(freqBreaks(cells.map((c) => c.deaths)));
+/**
+ * คำอธิบายสี — แถบไล่สีต่อเนื่องจริง ๆ (ไม่ใช่สวอตช์แยกขั้น) พร้อมค่าต่ำสุด/สูงสุดกำกับปลายแถบ
+ * ขอบแถบคือ MIN_PAINTED_DEATHS ไม่ใช่ 1 เพราะช่องที่ตายน้อยกว่านั้นไม่ถูกระบายเลย แถบจึงต้องตรง
+ * กับช่วงค่าที่ระบายจริงบนแผนที่ ไม่ใช่ช่วงค่าทั้งหมดที่มีในข้อมูล
+ */
+function GradientKey({ cells, side }: { cells: DeathCellCount[]; side: Side }) {
+  const max = Math.max(0, ...cells.map((c) => c.deaths));
   const ramp = DEATH_RAMP[side];
+  if (max < MIN_PAINTED_DEATHS) {
+    return (
+      <p className="muted small key-adv" data-testid="grad-key-empty">
+        ยังไม่มีช่องไหนตายถึง {MIN_PAINTED_DEATHS} ครั้ง (ตายมากสุด {max} ครั้ง) — ข้อมูลน้อยเกินกว่าจะระบายแผนที่
+      </p>
+    );
+  }
+  const gid = `death-grad-${side}`;
+  const steps = 10;
+  const stops = Array.from({ length: steps + 1 }, (_, i) => {
+    const value = MIN_PAINTED_DEATHS + ((max - MIN_PAINTED_DEATHS) * i) / steps;
+    return { pos: (i / steps) * 100, color: mixHex(ramp[0], ramp[ramp.length - 1], deathT(value, max)) };
+  });
   return (
-    <ul className="map-key" aria-label="คำอธิบายสี">
-      <li className="key-adv">
-        จำนวนครั้งที่ตายในช่องนั้น ({SIDE_NOTE[side]}) ยิ่งเข้มยิ่งตายบ่อย —
-        {bands.map((b) => (
-          <span key={b.level} className="key-band">
-            <span className="ks adv" style={{ background: ramp[b.level], opacity: FREQ_ALPHA + b.level * 0.06 }} />
-            {b.label}
-          </span>
-        ))}
-        ครั้ง
-      </li>
-    </ul>
+    <div className="map-key grad-key" aria-label="คำอธิบายสี">
+      <span className="muted">จำนวนครั้งที่ตายในช่องนั้น ({SIDE_NOTE[side]}) ยิ่งเข้มยิ่งตายบ่อย</span>
+      <span className="grad-bar-wrap">
+        <span className="grad-num">{MIN_PAINTED_DEATHS}</span>
+        <svg className="grad-bar" viewBox="0 0 100 10" preserveAspectRatio="none" aria-hidden="true">
+          <defs>
+            <linearGradient id={gid} x1="0" y1="0" x2="1" y2="0">
+              {/* ไล่ตามเส้นโค้งเดียวกับที่ใช้ระบายแผนที่จริง (deathT) แถบสีจึงตรงกับสิ่งที่เห็นบนแผนที่เป๊ะ ๆ */}
+              {stops.map((s) => (
+                <stop key={s.pos} offset={`${s.pos}%`} stopColor={s.color} />
+              ))}
+            </linearGradient>
+          </defs>
+          <rect x="0" y="0" width="100" height="10" fill={`url(#${gid})`} />
+        </svg>
+        <span className="grad-num">{max}</span>
+      </span>
+      <span className="muted">ครั้ง · ต่ำกว่า {MIN_PAINTED_DEATHS} ครั้งไม่ระบาย</span>
+    </div>
   );
 }
 
-function SingleSummary({ data }: { data: DeathsOverlay }) {
-  const top = [...data.cells].sort((a, b) => b.deaths - a.deaths).slice(0, 8);
+function SingleSummary({ data, hovered, onHover }: { data: DeathsOverlay } & TableHoverProps) {
+  const top = groupByPlace(data.cells).sort((a, b) => b.deaths - a.deaths).slice(0, 8);
   return (
     <>
       <h2>ช่องที่ตายบ่อยที่สุด</h2>
@@ -420,29 +771,18 @@ function SingleSummary({ data }: { data: DeathsOverlay }) {
           </tr>
         </thead>
         <tbody>
-          {top.map((c) => (
-            <tr key={`${c.cx},${c.cy}`}>
-              <td><Place cell={c} /></td>
-              <td className="num">{c.deaths}</td>
-              <td className="num">{pct(c.share)}</td>
+          {top.map((g) => (
+            <tr key={g.key} className={hovered === g.key ? "hl" : ""} tabIndex={0}
+              onMouseEnter={() => onHover(g.key)} onMouseLeave={() => onHover(null)}
+              onFocus={() => onHover(g.key)} onBlur={() => onHover(null)}>
+              <td><PlaceCell place={g.place} cells={g.cells} /></td>
+              <td className="num">{g.deaths}</td>
+              <td className="num">{pct(g.share)}</td>
             </tr>
           ))}
         </tbody>
       </table>
     </>
-  );
-}
-
-/**
- * ตำแหน่งบนแมพของช่องหนึ่งช่อง — ใช้ชื่อ callout ที่เดโมบันทึกไว้ (BombsiteA, Catwalk, …)
- * เลขช่องยังตามมาด้วยตัวเล็ก เพราะชื่อเดียวกันกินหลายช่อง ต้องแยกออกว่าหมายถึงช่องไหน
- */
-function Place({ cell }: { cell: DeathCellCount }) {
-  return (
-    <span className="an-place">
-      {cell.place ?? "ไม่มีชื่อเรียก"}
-      <span className="muted num"> {cell.cx},{cell.cy}</span>
-    </span>
   );
 }
 
@@ -453,24 +793,106 @@ interface MapProps<T extends DeathCellCount> {
   radar: DeathsOverlay["radar"];
   cells: T[];
   paint: (c: T) => { fill: string; opacity: number } | null;
+  /** คีย์ของแถวที่ถูกชี้เมาส์อยู่ในตาราง (จาก groupByPlace) — ช่องที่ตรงกันจะถูกเน้น */
+  highlightKey?: string | null;
+  /** ชี้เมาส์ที่ช่องบนแผนที่ ก็ให้ไฮไลต์แถวในตารางกลับ (คีย์เดียวกันทั้งสองทาง) */
+  onHoverKey?: (key: string | null) => void;
+  /** ตัวคูณรัศมีจุดความร้อน (1 = ค่าเริ่มต้น) — ควบคุมจากแผงด้านซ้าย ("รัศมี") */
+  radius?: number;
+  /** stdDeviation ของเบลอที่ทับอีกชั้นหลังระบายสี — ควบคุมจากแผงด้านซ้าย ("เบลอ") */
+  blur?: number;
+  /** ความทึบรวมของทั้งชั้นสี คูณกับความทึบต่อจุดที่คำนวณไว้แล้ว — ควบคุมจากแผงด้านซ้าย ("ความทึบ") */
+  layerOpacity?: number;
 }
 
-function DeathMap<T extends DeathCellCount>({ radar, cells, paint }: MapProps<T>) {
+/**
+ * ป้ายชื่อที่ติดบนแผนที่ตลอดเวลา จำกัดไว้แค่จุดหลักที่คนใช้แผนที่นี้ต้องอ้างอิงตลอด (บอมบ์ไซต์ · กลางแมพ ·
+ * จุดเริ่มของสองฝั่ง) ชื่ออื่น ๆ (Catwalk, Apartments, Shop, …) ยังหาได้จากตาราง "ช่องที่ตายบ่อยที่สุด"
+ * และจากการชี้เมาส์ที่ช่องนั้นบนแผนที่ (title tooltip) — ติดป้ายทุกชื่อพร้อมกันแล้วแมพรกจนอ่านไม่ออก
+ */
+const MAJOR_ZONE_RE = /^(bombsite ?[ab]|mid(dle)?|t ?spawn|ct ?spawn)$/i;
+
+/**
+ * จุดกึ่งกลางของแต่ละชื่อ callout ไว้ปักป้ายชื่อบนภาพ — คำนวณครั้งเดียวต่อชื่อ ไม่ใช่ต่อช่อง
+ * ข้อจำกัดที่รู้ไว้: ถ้าชื่อเดียวกันกินพื้นที่ที่ไม่ติดกันบนแมพ (พบได้ในบางแมพ) จุดกึ่งกลางที่คำนวณ
+ * ได้อาจตกอยู่กึ่งกลางระหว่างสองบริเวณนั้นแทนที่จะอยู่ในบริเวณใดบริเวณหนึ่งพอดี
+ */
+function placeLabels<T extends DeathCellCount>(cells: T[]) {
+  const out: { key: string; place: string; x: number; y: number }[] = [];
+  for (const g of groupByPlace(cells)) {
+    if (!g.place || !MAJOR_ZONE_RE.test(g.place)) continue;
+    const x = g.cells.reduce((s, c) => s + c.x + c.w / 2, 0) / g.cells.length;
+    const y = g.cells.reduce((s, c) => s + c.y + c.w / 2, 0) / g.cells.length;
+    out.push({ key: g.key, place: g.place, x, y });
+  }
+  return out;
+}
+
+/**
+ * ระบายเป็นสองชั้นแยกกัน:
+ *   ชั้นสี   — วงกลมถ่วงน้ำหนักที่กึ่งกลางแต่ละช่อง ซ้อนทับกัน แล้วเบลอทั้งกลุ่ม (feGaussianBlur)
+ *             ให้ดูเป็น heatmap ต่อเนื่องกลมกลืน ไม่ใช่ตารางสี่เหลี่ยมคมกริบต่อกัน
+ *             ปิด pointer-events ไว้ เพราะเบลอแล้วขอบจริงของช่องเพี้ยนไปจากที่ตาเห็น จะชี้/hover ไม่แม่น
+ *
+ *             ข้อจำกัดที่รู้ไว้: backend ส่งตำแหน่งตายมาเป็นช่องกริด 32×32 ที่รวมแล้ว ไม่ใช่พิกัดจุดตาย
+ *             ดิบทีละจุด การระบายนี้จึงเป็นการประมาณด้วยวงกลมถ่วงน้ำหนักที่ศูนย์กลางช่อง ไม่ใช่ KDE จาก
+ *             จุดจริงทั้งหมด — ได้ภาพต่อเนื่องเหมือนกัน แต่ความละเอียดจริงยังจำกัดที่ 32×32 ช่องเท่าเดิม
+ *   ชั้นรับชี้เมาส์ — โปร่งใส ขอบคมเสมอ ตรงกับพิกัดช่องจริงเป๊ะ ๆ ใช้ทำ hover ↔ ตาราง และ title tooltip
+ */
+function DeathMap<T extends DeathCellCount>({
+  radar, cells, paint, highlightKey, onHoverKey, radius = 1, blur = 3.2, layerOpacity = 1,
+}: MapProps<T>) {
   const s = radar.size;
+  const labels = placeLabels(cells);
+  const painted = cells
+    .map((c) => ({ c, p: paint(c) }))
+    .filter((x): x is { c: T; p: { fill: string; opacity: number } } => x.p != null)
+    // วาดจุดที่เข้มสุดทับบนสุด ไม่งั้นจุดร้อนอาจถูกจุดข้าง ๆ ที่วาดทีหลังบังหรือกลืนสีจนดูจางลง
+    .sort((a, b) => a.p.opacity - b.p.opacity);
   return (
     <svg viewBox={`0 0 ${s} ${s}`} className="radar" data-testid="analysis-radar">
+      <defs>
+        <filter id="cell-blur" x="-40%" y="-40%" width="180%" height="180%">
+          <feGaussianBlur stdDeviation={blur} />
+        </filter>
+      </defs>
       <image href={radar.image} x={0} y={0} width={s} height={s} />
-      {cells.map((c) => {
-        const p = paint(c);
+
+      <g filter="url(#cell-blur)" opacity={layerOpacity} style={{ pointerEvents: "none" }}>
+        {painted.map(({ c, p }) => {
+          const active = highlightKey != null && cellKey(c) === highlightKey;
+          return (
+            <circle
+              key={`fill-${c.cx}-${c.cy}`} cx={c.x + c.w / 2} cy={c.y + c.w / 2} r={c.w * 1.4 * radius}
+              fill={p.fill} opacity={active ? 1 : p.opacity} style={{ transition: "opacity .12s" }}
+            />
+          );
+        })}
+      </g>
+
+      {painted.map(({ c }) => {
+        const key = cellKey(c);
+        const active = highlightKey != null && key === highlightKey;
         return (
-          p && (
-            <rect key={`${c.cx}-${c.cy}`} x={c.x} y={c.y} width={c.w} height={c.w} fill={p.fill} opacity={p.opacity}
-              stroke={SCREEN} strokeWidth={0.5} data-testid="analysis-cell">
-              <title>{`${c.place ?? "ไม่มีชื่อเรียก"} (ช่อง ${c.cx}, ${c.cy}) · ตาย ${c.deaths} ครั้ง`}</title>
-            </rect>
-          )
+          <rect
+            key={`hit-${c.cx}-${c.cy}`} x={c.x} y={c.y} width={c.w} height={c.w}
+            fill="transparent" stroke={active ? "#ffffff" : "transparent"} strokeWidth={active ? 2.5 : 0}
+            onMouseEnter={() => onHoverKey?.(key)} onMouseLeave={() => onHoverKey?.(null)}
+            data-testid="analysis-cell" data-active={active || undefined}
+          >
+            <title>{`${c.place ?? "ไม่มีชื่อเรียก"} (ช่อง ${c.cx}, ${c.cy}) · ตาย ${c.deaths} ครั้ง`}</title>
+          </rect>
         );
       })}
+
+      {labels.map((l) => (
+        <text
+          key={l.key} x={l.x} y={l.y} textAnchor="middle" className="zone-label"
+          opacity={highlightKey == null || highlightKey === l.key ? 1 : 0.4}
+        >
+          {l.place}
+        </text>
+      ))}
     </svg>
   );
 }
