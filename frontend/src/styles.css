@@ -710,7 +710,6 @@ html:has(.login-shell) { color-scheme: dark; scrollbar-color: #2E3647 #0B0E14; }
 .hm-field-h { display: flex; align-items: baseline; justify-content: space-between; font-size: var(--fs-sm); }
 .hm-panel input[type="range"] { width: 100%; accent-color: var(--ct-ink); }
 .hm-seg { flex-wrap: wrap; }
-.hm-export { width: 100%; text-align: center; }
 .hm-note { margin: 0; }
 .hm-quick .link-btn { margin-top: 0; font-size: var(--fs-xs); }
 

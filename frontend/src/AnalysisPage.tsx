@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import {
   api,
@@ -20,6 +20,7 @@ import {
   diffLevel,
   type DiffLevel,
   pct,
+  RATIO_RAMP,
   sideLabel,
 } from "./utils";
 
@@ -42,37 +43,6 @@ const SIDES: { key: Side; label: string }[] = [
   { key: "ct", label: "ตอนเป็น CT" },
   { key: "t", label: "ตอนเป็น T" },
 ];
-
-/**
- * บันทึกแผนที่ heatmap เป็นไฟล์ภาพ — ทำฝั่งเบราว์เซอร์ล้วน ไม่ยิงไป backend
- * ภาพเรดาร์ในตัว SVG เสิร์ฟจาก origin เดียวกัน (ผ่าน nginx proxy ที่ /assets/) จึงไม่ติด CORS จน canvas ถูก taint
- */
-function exportSvgAsPng(svg: SVGSVGElement, filename: string) {
-  const size = svg.viewBox.baseVal.width || svg.clientWidth || 1024;
-  const xml = new XMLSerializer().serializeToString(svg);
-  const svgUrl = URL.createObjectURL(new Blob([xml], { type: "image/svg+xml;charset=utf-8" }));
-  const img = new Image();
-  img.onload = () => {
-    const canvas = document.createElement("canvas");
-    canvas.width = size;
-    canvas.height = size;
-    const ctx = canvas.getContext("2d");
-    if (ctx) {
-      ctx.drawImage(img, 0, 0, size, size);
-      canvas.toBlob((blob) => {
-        if (!blob) return;
-        const a = document.createElement("a");
-        a.href = URL.createObjectURL(blob);
-        a.download = filename;
-        a.click();
-        URL.revokeObjectURL(a.href);
-      }, "image/png");
-    }
-    URL.revokeObjectURL(svgUrl);
-  };
-  img.onerror = () => URL.revokeObjectURL(svgUrl);
-  img.src = svgUrl;
-}
 
 export function AnalysisPage() {
   const [mode, setMode] = useState<Mode>("upload");
@@ -126,12 +96,16 @@ export function AnalysisPage() {
     queryFn: () => api.analysisDeaths(activeMap, "upload", side, demo || null, selRounds, selPlayers),
     enabled,
     staleTime: 5 * 60_000,
+    // เปลี่ยนตัวกรอง (รอบ/คน/ฝั่ง/แมตช์) = queryKey ใหม่ที่ยังไม่เคยแคช — ถ้าไม่กัน isLoading จะ true ชั่วขณะ
+    // จนทั้งแผนที่+แผงควบคุมหายวับไปเหลือแค่ข้อความโหลด หน้าเว็บยุบสั้นลงมากจน scroll เด้งขึ้นบนเอง
+    placeholderData: keepPreviousData,
   });
   const reference = useQuery({
     queryKey: ["analysis", activeMap, "reference", side],
     queryFn: () => api.analysisDeaths(activeMap, "reference", side),
     enabled: enabled && mode === "diff",
     staleTime: 5 * 60_000,
+    placeholderData: keepPreviousData,
   });
   // โหมด "อ่านทางเราออกไหม" ดูได้ทีละแมตช์ — ไม่ได้เลือกไว้ก็ใช้แมตช์แรกของแมพนั้น
   const target = demo || mine[0]?.demo_file || "";
@@ -140,6 +114,7 @@ export function AnalysisPage() {
     queryFn: () => api.readability(target),
     enabled: mode === "read" && !!target,
     staleTime: 5 * 60_000,
+    placeholderData: keepPreviousData,
   });
 
   // สลับโหมด/แมพ/ฝั่ง/แมตช์ = ชุดข้อมูลเปลี่ยน คีย์ที่ค้างไฮไลต์ไว้จากชุดก่อนหน้าจึงไม่มีความหมายแล้ว
@@ -153,11 +128,9 @@ export function AnalysisPage() {
   const loading = mode === "read" ? readQ.isLoading : upload.isLoading || (mode === "diff" && reference.isLoading);
   const error = (mode === "read" ? readQ.error : (upload.error ?? reference.error)) as Error | null;
   const rows = mode === "diff" && upload.data && reference.data ? compare(upload.data, reference.data) : [];
-
-  function handleExport() {
-    const svg = document.querySelector<SVGSVGElement>('[data-testid="analysis-radar"]');
-    if (svg) exportSvgAsPng(svg, `heatmap-${activeMap || "map"}-${mode}.png`);
-  }
+  // รวมตามชื่อ callout ครั้งเดียว ใช้ทั้งตาราง (top 8 ที่แย่สุด) และ heatmap ทีละโซน (ทุกโซน) จะได้ไม่มี
+  // ทางแยกกันจนตัวเลข/เกณฑ์ไม่ตรงกันระหว่างสองที่
+  const diffGroups = mode === "diff" ? groupDiffRows(rows) : [];
 
   return (
     <div className="analysis" data-testid="analysis-page">
@@ -218,7 +191,6 @@ export function AnalysisPage() {
             radius={radius} onRadius={setRadius}
             blur={blur} onBlur={setBlur}
             opacity={opacity} onOpacity={setOpacity}
-            onExport={handleExport}
             demoSelected={!!activeMatch}
             roundsTotal={activeMatch?.rounds ?? 0}
             selRounds={selRounds} onRounds={setSelRounds}
@@ -238,6 +210,7 @@ export function AnalysisPage() {
                 <div className="an-map">
                   {mode === "diff" ? (
                     <DeathMap radar={upload.data!.radar} cells={rows} paint={(r) => diffPaint(r.level)}
+                      zoneFill={zoneRatioFill(diffGroups)}
                       highlightKey={hovered} onHoverKey={setHovered} radius={radius} blur={blur} layerOpacity={opacity} />
                   ) : (
                     single && (
@@ -251,7 +224,7 @@ export function AnalysisPage() {
 
               <aside className="an-side">
                 {mode === "diff" ? (
-                  <DiffTable rows={rows} upload={upload.data!} reference={reference.data!} hovered={hovered} onHover={setHovered} />
+                  <DiffTable groups={diffGroups} upload={upload.data!} reference={reference.data!} hovered={hovered} onHover={setHovered} />
                 ) : (
                   <SingleSummary data={single!} hovered={hovered} onHover={setHovered} />
                 )}
@@ -281,7 +254,6 @@ interface HeatmapControlsProps {
   onBlur: (v: number) => void;
   opacity: number;
   onOpacity: (v: number) => void;
-  onExport: () => void;
   demoSelected: boolean;
   roundsTotal: number;
   selRounds: number[] | null;
@@ -293,7 +265,7 @@ interface HeatmapControlsProps {
 }
 
 function HeatmapControls({
-  side, onSide, radius, onRadius, blur, onBlur, opacity, onOpacity, onExport,
+  side, onSide, radius, onRadius, blur, onBlur, opacity, onOpacity,
   demoSelected, roundsTotal, selRounds, onRounds, roster, rosterLoading, selPlayers, onPlayers,
 }: HeatmapControlsProps) {
   const roundOn = (n: number) => selRounds === null || selRounds.includes(n);
@@ -386,9 +358,6 @@ function HeatmapControls({
         </>
       )}
 
-      <button type="button" className="btn-primary hm-export" onClick={onExport}>
-        ดาวน์โหลดภาพ
-      </button>
       <p className="muted small hm-note">
         ประเภทเหตุการณ์ (ระเบิด) และตัวกรองทีมยังทำไม่ได้ในรุ่นนี้
       </p>
@@ -583,27 +552,84 @@ function groupDiffRows(rows: DiffRow[]) {
   });
 }
 
+/**
+ * ใช้ diffLevel เดิม (เกณฑ์ near/far เดียวกับตาราง) แค่กำหนดว่า "ช่องนี้ชี้เมาส์ได้ไหม" — ไม่ได้ใช้ค่าสี
+ * ของ DIFF_FILL แสดงจริงบนแผนที่แล้ว (สลับไปใช้ heatmap ทีละโซนแทน ดู zoneRatioFill) แต่ยังต้องใช้
+ * เกณฑ์เดียวกันเพื่อให้ "ช่องที่ hover ได้" ตรงกับ "ช่องที่ต่างกันมากพอจะสรุป" เหมือนเดิม
+ */
 const diffPaint = (lv: DiffLevel) =>
-  lv === 0 ? null : { fill: DIFF_FILL[String(lv) as "-2" | "-1" | "1" | "2"], opacity: 0.78 };
+  lv === 0 ? null : { fill: DIFF_FILL[String(lv) as "-2" | "-1" | "1" | "2"], opacity: 0 };
+
+/**
+ * จุดกึ่งกลาง + รัศมีของโซนหนึ่ง จากกลุ่มช่องกริดที่กินชื่อ callout เดียวกัน
+ * รัศมีมาจาก "โซนนี้กว้างแค่ไหนจริง ๆ บนแมพ" (ระยะไกลสุดจากจุดกึ่งกลางถึงช่องสมาชิก) ล้วน ๆ
+ * ไม่เกี่ยวกับความเข้ม/ตัวเลขกี่เท่าเลย — ความเข้มสื่อผ่านสีอย่างเดียวตามที่ต้องการ
+ */
+function zoneGeometry(cells: { x: number; y: number; w: number }[]) {
+  const cx = cells.reduce((s, c) => s + c.x + c.w / 2, 0) / cells.length;
+  const cy = cells.reduce((s, c) => s + c.y + c.w / 2, 0) / cells.length;
+  const spread = Math.max(...cells.map((c) => Math.hypot(c.x + c.w / 2 - cx, c.y + c.w / 2 - cy)));
+  const w = cells[0]?.w ?? 32;
+  return { cx, cy, r: Math.max(w * 1.4, spread + w * 0.9) };
+}
+
+/**
+ * t=0 ที่ ratio ต่ำกว่าเกณฑ์ near (เท่ากับตารางที่ถือว่า "พอ ๆ กัน") ไล่แบบ log ขึ้นถึง t=1 ที่ maxRatio
+ * ของโซนที่แย่สุดในชุดข้อมูลนี้ (ปรับตามข้อมูลจริงแต่ละแมตช์ เหมือนวิธีที่ GradientKey/deathT ใช้อยู่แล้ว)
+ * ratio = Infinity (ทีมอาชีพไม่เคยตายช่องนี้เลยสักครั้ง) นับเป็นเข้มสุดตรง ๆ ไม่ต้องเข้าสูตร log
+ */
+function ratioT(ratio: number, maxRatio: number): number {
+  if (ratio < DIFF_STEPS.near) return 0;
+  if (ratio === Infinity) return 1;
+  const lo = Math.log(DIFF_STEPS.near);
+  const hi = Math.log(Math.max(maxRatio, DIFF_STEPS.far));
+  return Math.min(1, Math.max(0, (Math.log(ratio) - lo) / (hi - lo)));
+}
+
+/**
+ * ชั้นสี heatmap ทีละโซน — หนึ่งจุดต่อชื่อ callout หนึ่งชื่อ ใช้ ratio (กี่เท่า) เป็นน้ำหนักอย่างเดียว
+ * ข้ามโซนที่ไม่มีชื่อเรียก (คีย์ "@x,y") เพราะไม่ใช่ "โซน" ที่มีความหมายจริง — ยังเห็นได้จากตาราง/
+ * hit-rect เดิมอยู่ แค่ไม่ได้จุดสีของตัวเอง — และข้ามโซนที่ตายไม่ถึง DIFF_MIN_DEATHS หรือ t=0 (ต่างกัน
+ * ไม่ถึงเกณฑ์) เพื่อให้ "ใกล้ 1×" โปร่งใสจริง ๆ ไม่ใช่แค่จางมาก
+ */
+function zoneRatioFill(groups: ReturnType<typeof groupDiffRows>) {
+  const finite = groups.map((g) => g.ratio).filter((r) => Number.isFinite(r));
+  const maxRatio = finite.length ? Math.max(DIFF_STEPS.far, ...finite) : DIFF_STEPS.far;
+  return groups
+    .filter((g) => g.place != null && g.deaths >= DIFF_MIN_DEATHS)
+    .map((g) => {
+      const t = ratioT(g.ratio, maxRatio);
+      if (t <= 0) return null;
+      const geo = zoneGeometry(g.cells);
+      return { key: g.key, cx: geo.cx, cy: geo.cy, r: geo.r, fill: mixStops(RATIO_RAMP, t), opacity: 0.4 + t * 0.5 };
+    })
+    .filter((z): z is { key: string; cx: number; cy: number; r: number; fill: string; opacity: number } => z != null);
+}
 
 function DiffKey() {
+  const gid = "diff-ratio-grad";
   return (
-    <ul className="map-key" aria-label="คำอธิบายสี">
-      <li>
-        <span className="ks adv" style={{ background: DIFF_FILL["2"] }} />
-        <span className="ks adv" style={{ background: DIFF_FILL["1"] }} />
-        ทีมเราตายบ่อยกว่าทีมอาชีพ (ตั้งแต่ {DIFF_STEPS.near}× · ตั้งแต่ {DIFF_STEPS.far}×)
-      </li>
-      <li>
-        <span className="ks adv" style={{ background: DIFF_FILL["-1"] }} />
-        <span className="ks adv" style={{ background: DIFF_FILL["-2"] }} />
-        ทีมเราตายน้อยกว่า
-      </li>
-      <li className="key-adv muted">
-        ช่องที่ไม่ระบาย = ต่างกันไม่ถึง {DIFF_STEPS.near}× หรือเราตายในช่องนั้นไม่ถึง {DIFF_MIN_DEATHS} ครั้ง
-        (น้อยเกินกว่าจะสรุปอะไรได้)
-      </li>
-    </ul>
+    <div className="map-key grad-key" aria-label="คำอธิบายสี">
+      <span className="muted">สีของแต่ละโซน = ทีมเราตายบ่อยกว่าทีมอาชีพกี่เท่า ยิ่งเข้มยิ่งต่างมาก</span>
+      <span className="grad-bar-wrap">
+        <span className="grad-num">{DIFF_STEPS.near}×</span>
+        <svg className="grad-bar" viewBox="0 0 100 10" preserveAspectRatio="none" aria-hidden="true">
+          <defs>
+            <linearGradient id={gid} x1="0" y1="0" x2="1" y2="0">
+              {RATIO_RAMP.map((c, i) => (
+                <stop key={c} offset={`${(i / (RATIO_RAMP.length - 1)) * 100}%`} stopColor={c} />
+              ))}
+            </linearGradient>
+          </defs>
+          <rect x="0" y="0" width="100" height="10" fill={`url(#${gid})`} />
+        </svg>
+        <span className="grad-num">{DIFF_STEPS.far}×+</span>
+      </span>
+      <span className="muted small key-adv">
+        ต่ำกว่า {DIFF_STEPS.near}× หรือทีมเราตายในโซนนั้นไม่ถึง {DIFF_MIN_DEATHS} ครั้ง = ไม่ระบาย
+        (ต่างกันไม่ชัดพอจะสรุปอะไรได้)
+      </span>
+    </div>
   );
 }
 
@@ -612,9 +638,9 @@ interface TableHoverProps {
   onHover: (key: string | null) => void;
 }
 
-function DiffTable({ rows, upload, reference, hovered, onHover }:
-  { rows: DiffRow[]; upload: DeathsOverlay; reference: DeathsOverlay } & TableHoverProps) {
-  const worst = groupDiffRows(rows)
+function DiffTable({ groups, upload, reference, hovered, onHover }:
+  { groups: ReturnType<typeof groupDiffRows>; upload: DeathsOverlay; reference: DeathsOverlay } & TableHoverProps) {
+  const worst = groups
     .filter((g) => g.level > 0)
     .sort((a, b) => b.level - a.level || b.deaths - a.deaths)
     .slice(0, 8);
@@ -681,6 +707,14 @@ function mixHex(a: string, b: string, t: number): string {
   const pb = hexToRgb(b);
   const m = (i: number) => Math.round(pa[i] + (pb[i] - pa[i]) * t);
   return `rgb(${m(0)}, ${m(1)}, ${m(2)})`;
+}
+
+/** ผสมสีไล่ผ่านหลายจุด (ไม่ใช่แค่ปลายสองข้างแบบ mixHex) — t=0 คือสีแรกในลิสต์ t=1 คือสีสุดท้าย */
+function mixStops(stops: readonly string[], t: number): string {
+  const clamped = Math.min(1, Math.max(0, t));
+  const seg = clamped * (stops.length - 1);
+  const i = Math.min(stops.length - 2, Math.floor(seg));
+  return mixHex(stops[i], stops[i + 1], seg - i);
 }
 
 /**
@@ -803,6 +837,13 @@ interface MapProps<T extends DeathCellCount> {
   blur?: number;
   /** ความทึบรวมของทั้งชั้นสี คูณกับความทึบต่อจุดที่คำนวณไว้แล้ว — ควบคุมจากแผงด้านซ้าย ("ความทึบ") */
   layerOpacity?: number;
+  /**
+   * ชั้นสีแบบ "ทีละโซน" (จุดเดียวต่อชื่อ callout หนึ่งชื่อ) แทนชั้นสีทีละช่องกริดที่คำนวณจาก paint() —
+   * ใช้ตอนตัวชี้วัดมีความหมายระดับโซน (เช่น "กี่เท่า") ไม่ใช่ระดับช่อง 32×32 เดี่ยว ๆ
+   * cells/hit-rect/ป้ายชื่อทุกอย่างยังเหมือนเดิม (ยังใช้ paint() กำหนดว่าช่องไหน hover ได้) —
+   * มีพร็อพนี้ให้แค่สลับ "สิ่งที่มองเห็น" ของชั้นสีอย่างเดียว รัศมีของแต่ละจุดยังคูณด้วย radius เหมือนเดิม
+   */
+  zoneFill?: { key: string; cx: number; cy: number; r: number; fill: string; opacity: number }[];
 }
 
 /**
@@ -840,7 +881,7 @@ function placeLabels<T extends DeathCellCount>(cells: T[]) {
  *   ชั้นรับชี้เมาส์ — โปร่งใส ขอบคมเสมอ ตรงกับพิกัดช่องจริงเป๊ะ ๆ ใช้ทำ hover ↔ ตาราง และ title tooltip
  */
 function DeathMap<T extends DeathCellCount>({
-  radar, cells, paint, highlightKey, onHoverKey, radius = 1, blur = 3.2, layerOpacity = 1,
+  radar, cells, paint, highlightKey, onHoverKey, radius = 1, blur = 3.2, layerOpacity = 1, zoneFill,
 }: MapProps<T>) {
   const s = radar.size;
   const labels = placeLabels(cells);
@@ -849,6 +890,8 @@ function DeathMap<T extends DeathCellCount>({
     .filter((x): x is { c: T; p: { fill: string; opacity: number } } => x.p != null)
     // วาดจุดที่เข้มสุดทับบนสุด ไม่งั้นจุดร้อนอาจถูกจุดข้าง ๆ ที่วาดทีหลังบังหรือกลืนสีจนดูจางลง
     .sort((a, b) => a.p.opacity - b.p.opacity);
+  // เรียงลำดับเดียวกัน: จุดที่เข้มสุดวาดทับบนสุด
+  const zonePainted = zoneFill && [...zoneFill].sort((a, b) => a.opacity - b.opacity);
   return (
     <svg viewBox={`0 0 ${s} ${s}`} className="radar" data-testid="analysis-radar">
       <defs>
@@ -859,15 +902,25 @@ function DeathMap<T extends DeathCellCount>({
       <image href={radar.image} x={0} y={0} width={s} height={s} />
 
       <g filter="url(#cell-blur)" opacity={layerOpacity} style={{ pointerEvents: "none" }}>
-        {painted.map(({ c, p }) => {
-          const active = highlightKey != null && cellKey(c) === highlightKey;
-          return (
-            <circle
-              key={`fill-${c.cx}-${c.cy}`} cx={c.x + c.w / 2} cy={c.y + c.w / 2} r={c.w * 1.4 * radius}
-              fill={p.fill} opacity={active ? 1 : p.opacity} style={{ transition: "opacity .12s" }}
-            />
-          );
-        })}
+        {zonePainted
+          ? zonePainted.map((z) => {
+              const active = highlightKey != null && z.key === highlightKey;
+              return (
+                <circle
+                  key={`zone-${z.key}`} cx={z.cx} cy={z.cy} r={z.r * radius}
+                  fill={z.fill} opacity={active ? 1 : z.opacity} style={{ transition: "opacity .12s" }}
+                />
+              );
+            })
+          : painted.map(({ c, p }) => {
+              const active = highlightKey != null && cellKey(c) === highlightKey;
+              return (
+                <circle
+                  key={`fill-${c.cx}-${c.cy}`} cx={c.x + c.w / 2} cy={c.y + c.w / 2} r={c.w * 1.4 * radius}
+                  fill={p.fill} opacity={active ? 1 : p.opacity} style={{ transition: "opacity .12s" }}
+                />
+              );
+            })}
       </g>
 
       {painted.map(({ c }) => {
