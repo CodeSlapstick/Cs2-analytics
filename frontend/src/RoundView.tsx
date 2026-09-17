@@ -3,7 +3,6 @@ import { useQuery } from "@tanstack/react-query";
 import {
   api,
   ApiError,
-  type GridOverlay,
   type ReviewDeath,
   type ReviewGrenade,
   type ReviewTeam,
@@ -11,21 +10,9 @@ import {
   type RoundPositions,
 } from "./api";
 import {
-  ADV_ALPHA,
-  ADV_STEPS,
-  advantageLevel,
-  AVOID_FILL,
-  AVOID_STEP,
   clampZoom,
   endReasonLabel,
   fmtT,
-  FREQ_ALPHA,
-  FREQ_FILL,
-  freqBands,
-  type FreqBreaks,
-  freqBreaks,
-  freqLevel,
-  type GridLayer,
   MAX_ZOOM,
   NADE_COLOR,
   nadeActiveAt,
@@ -33,7 +20,8 @@ import {
   NADE_TYPES,
   type NadeType,
   NotFound,
-  pct,
+  playerFill,
+  playerInk,
   sideLabel,
   type ViewState,
   weaponLabel,
@@ -62,7 +50,7 @@ interface RoundViewProps {
   setView: (patch: Partial<ViewState>) => void;
 }
 
-/** เนื้อหาของหนึ่งรอบ: รายชื่อทีม / แผนที่ / ไทม์ไลน์ + บริบทจาก grid_ml1 — state ทั้งหมดมาจาก URL */
+/** เนื้อหาของหนึ่งรอบ: รายชื่อทีม / แผนที่ / ไทม์ไลน์ — state ทั้งหมดมาจาก URL · ไม่มีผลโมเดลในหน้านี้ (อยู่ที่ /analysis) */
 export function RoundView({ demo, roundNum, view, setView }: RoundViewProps) {
   // โหมดเล่นย้อน: เวลาที่กำลังเล่นอยู่เก็บใน state (เปลี่ยนทุกเฟรม) แล้วเขียนลง URL ตอนหยุดเท่านั้น
   const [playing, setPlaying] = useState(false);
@@ -77,13 +65,6 @@ export function RoundView({ demo, roundNum, view, setView }: RoundViewProps) {
     // ระหว่างโหลดรอบใหม่ของแมตช์เดิม ให้เห็นรอบก่อนไว้ก่อน (ไม่กระพริบ) แต่ห้ามโชว์รอบของแมตช์อื่น
     placeholderData: (prev: RoundDetail | undefined) => (prev && prev.match.demo_file === demo ? prev : undefined),
     retry: (count, err) => !(err instanceof ApiError && err.status === 404) && count < 1,
-  });
-  const mapName = q.data?.radar?.map;
-  const grid = useQuery({
-    queryKey: ["review-grid", mapName],
-    queryFn: () => api.reviewGrid(mapName!),
-    enabled: !!mapName,
-    staleTime: Infinity, // ผล grid_ml1 ไม่เปลี่ยนระหว่างใช้งาน
   });
   // ตำแหน่งผู้เล่นโหลดเฉพาะตอนเปิดโหมดเล่นย้อน (ราว 9 KB ต่อรอบ) — หน้าปกติไม่ต้องจ่ายค่านี้
   const positions = useQuery({
@@ -157,9 +138,6 @@ export function RoundView({ demo, roundNum, view, setView }: RoundViewProps) {
   if (!q.data) return null;
 
   const d = q.data;
-  const overlay = grid.data?.available ? grid.data : undefined;
-  // ขั้นของ "ดวลบ่อย" คิดจากควอนไทล์ของแมพนี้เอง ไม่ใช่เลขตายตัว — แมพอื่นก็ใช้สเกลเดียวกันได้
-  const breaks: FreqBreaks | null = overlay?.cells ? freqBreaks(overlay.cells.map((c) => c.duels)) : null;
   const shownNades = d.grenades.filter((g) => view.nades.includes(g.type as NadeType));
   const anyNadeOn = shownNades.length > 0;
   // เล่นย้อน: แผนที่ต้องเห็นเฉพาะสิ่งที่เกิดขึ้นแล้ว ณ วินาทีนั้น (คนที่ตายแล้ว / ระเบิดที่ยังมีผล / บอมบ์ที่วางแล้ว)
@@ -218,28 +196,6 @@ export function RoundView({ demo, roundNum, view, setView }: RoundViewProps) {
             </button>
             {anyNadeOn && view.death != null && <span className="muted">· เฉพาะที่มีผลตอนการตาย #{view.death}</span>}
           </span>
-          {/* ระบายได้ทีละชั้น เพราะหนึ่งช่องมีได้สีเดียว — ตัวเลขทุกชั้นเป็นของทั้งดาต้าเซ็ต ไม่ใช่ของรอบนี้ */}
-          <span className="grid-layers" role="group" aria-label="ระบายกริดด้วย" data-testid="layer-bar">
-            ระบายกริด:
-            {GRID_LAYERS.map(({ key, label, hint }) => (
-              <button
-                key={key}
-                type="button"
-                className={`chip${view.grid === key ? " on" : ""}`}
-                aria-pressed={view.grid === key}
-                disabled={!overlay && key !== "off"}
-                title={!overlay ? "ยังไม่มีข้อมูลการดวลของแมพนี้" : hint}
-                onClick={() => setView({ grid: key })}
-                data-testid={`grid-${key}`}
-              >
-                {label}
-              </button>
-            ))}
-          </span>
-          <label>
-            <input type="checkbox" checked={view.hotspots} disabled={!overlay} onChange={(e) => setView({ hotspots: e.target.checked })} />
-            วง hotspot {overlay?.hotspots?.length ?? ""} จุด
-          </label>
         </div>
       </div>
 
@@ -267,10 +223,6 @@ export function RoundView({ demo, roundNum, view, setView }: RoundViewProps) {
                 radar={d.radar}
                 deaths={shownDeaths}
                 bomb={shownBomb}
-                overlay={overlay}
-                layer={view.grid}
-                breaks={breaks}
-                showHotspots={view.hotspots}
                 grenades={liveNades}
                 live={live}
                 zoom={view.zoom}
@@ -360,10 +312,9 @@ export function RoundView({ demo, roundNum, view, setView }: RoundViewProps) {
               <span className="muted">ชื่อข้างวง = คนขว้าง · เส้นประ = ทางที่ขว้างมา</span>
             </div>
           )}
-          <GridKey layer={view.grid} breaks={breaks} overlay={overlay} />
         </section>
 
-        <aside className="breakdown" aria-label="ไทม์ไลน์และบริบทของรอบ">
+        <aside className="breakdown" aria-label="ไทม์ไลน์ของรอบ">
           <h3 className="panel-h">ไทม์ไลน์</h3>
           <DeathTimeline
             deaths={d.deaths}
@@ -373,14 +324,7 @@ export function RoundView({ demo, roundNum, view, setView }: RoundViewProps) {
             bombPlantedT={d.round.bomb_planted_t}
             grenades={shownNades}
           />
-          <RoundSummary summary={d.summary} winner={d.round.winner_side} grid={d.grid} />
-          <DeathContext
-            deaths={d.deaths}
-            grid={d.grid}
-            highlight={view.player}
-            selected={view.death}
-            onSelect={(o) => setView({ death: o })}
-          />
+          <RoundSummary summary={d.summary} winner={d.round.winner_side} />
         </aside>
       </div>
     </div>
@@ -403,14 +347,8 @@ export interface LivePlayer {
 }
 
 // ------------------------------------------------------------------ สีของทีมบนแผนที่ (โหมดเล่นย้อน)
-// ทั้งทีมใช้สีเดียวกันตามฝั่ง แยกตัวบุคคลด้วยหมายเลข ไม่ใช่ด้วยสี
+// ทั้งทีมใช้สีเดียวกันตามฝั่ง แยกตัวบุคคลด้วยหมายเลข ไม่ใช่ด้วยสี (playerFill / playerInk อยู่ใน utils.tsx)
 // (สีประจำตัว p.color ยังใช้อยู่ในโหมดปกติและในไทม์ไลน์ เพราะที่นั่นไม่มีหมายเลขกำกับ)
-// ฟ้าเข้มกว่าสี CT ตัวจริง เพราะเลขสีขาวต้องอ่านออกบนวง (#4f8cff ได้ contrast 3:1 · ตัวนี้ 6:1)
-const SIDE_FILL: Record<string, string> = { ct: "#2563c9", t: "#f0891c" };
-/** สีตัวเลขบนวง — ส้มเป็นสีอ่อน เลขสีขาวบนส้มอ่านไม่ออก ต้องใช้ตัวเข้ม ส่วนบนฟ้าเข้มใช้ตัวขาว */
-const SIDE_INK: Record<string, string> = { ct: "#ffffff", t: "#20160a" };
-const sideFill = (side: string | null | undefined) => SIDE_FILL[side ?? ""] ?? "#94a3b8";
-const sideInk = (side: string | null | undefined) => SIDE_INK[side ?? ""] ?? "#20160a";
 
 /** เส้นทาง ✕ สองขีดไขว้กัน รัศมี r รอบจุด (0,0) — ใช้วาดคนที่ตายแล้วในโหมดเล่นย้อน */
 const crossPath = (r: number) => `M${-r},${-r} L${r},${r} M${r},${-r} L${-r},${r}`;
@@ -480,60 +418,10 @@ function labelPlacer() {
   return { place, block };
 }
 
-// ================================================================================================
-// ชั้นที่ระบายลงบนกริดของ grid_ml1 — ระบายได้ทีละอย่าง เพราะหนึ่งช่องมีได้สีเดียว
-// สองชั้นตอบคนละคำถาม: "ตรงไหนปะทะกันบ่อย" กับ "ตรงไหนฝั่งเราชนะดวลบ่อย"
-// ================================================================================================
-const GRID_LAYERS: { key: GridLayer; label: string; hint: string }[] = [
-  { key: "off", label: "ปิด", hint: "เห็นแผนที่เปล่า ๆ" },
-  { key: "freq", label: "ดวลบ่อย", hint: "ยิ่งเข้ม = ตรงนั้นดวลกันบ่อย (ทั้งดาต้าเซ็ต)" },
-  { key: "ct", label: "CT ได้เปรียบ", hint: "ระบายช่องที่ฝั่ง CT ชนะดวลบ่อย ส่วนช่องที่ T ชนะบ่อยเป็นสีแดง" },
-  { key: "t", label: "T ได้เปรียบ", hint: "ระบายช่องที่ฝั่ง T ชนะดวลบ่อย ส่วนช่องที่ CT ชนะบ่อยเป็นสีแดง" },
-];
-
-/** คำอธิบายสีของชั้นที่เปิดอยู่ — ระบายอะไรลงแผนที่ ต้องบอกที่นี่เสมอว่ามันแปลว่าอะไรและมาจากไหน */
-function GridKey({ layer, breaks, overlay }: { layer: GridLayer; breaks: FreqBreaks | null; overlay: GridOverlay | undefined }) {
-  if (layer === "off" || !overlay) return null;
-  const adv = layer === "ct" || layer === "t" ? layer : null;
-  return (
-    <div className="legend" data-testid="grid-key">
-      {layer === "freq" && breaks && (
-        <>
-          <span className="muted">จำนวนการดวลในช่องนั้น ยิ่งเข้มยิ่งบ่อย:</span>
-          {freqBands(breaks).map((b) => (
-            <span key={b.level}>
-              <i style={{ background: FREQ_FILL[b.level], opacity: FREQ_ALPHA + b.level * 0.06 }} /> {b.label}
-            </span>
-          ))}
-          <span className="muted">ครั้ง</span>
-        </>
-      )}
-      {adv && (
-        <>
-          <span className="muted">ฝั่ง {sideLabel(adv)} ชนะดวล:</span>
-          {([1, 2, 3] as const).map((lv) => (
-            <span key={lv}>
-              <i style={{ background: sideFill(adv), opacity: ADV_ALPHA[lv] }} /> ≥ {pct(ADV_STEPS[lv])}
-            </span>
-          ))}
-          <span>
-            <i style={{ background: AVOID_FILL }} /> ฝั่งตรงข้ามชนะ ≥ {pct(AVOID_STEP)}
-          </span>
-        </>
-      )}
-      <span className="muted">— {overlay.source?.label} ไม่ใช่ผลของรอบนี้</span>
-    </div>
-  );
-}
-
 interface MapProps {
   radar: NonNullable<RoundDetail["radar"]>;
   deaths: ReviewDeath[];
   bomb: RoundDetail["round"]["bomb"];
-  overlay: GridOverlay | undefined;
-  layer: GridLayer;            // ชั้นที่ระบายลงกริด (off = ไม่ระบาย)
-  breaks: FreqBreaks | null;   // ขอบของแต่ละขั้นในชั้น "ดวลบ่อย" — คิดจากแมพนี้เอง
-  showHotspots: boolean;
   grenades: ReviewGrenade[];
   live?: LivePlayer[] | null; // โหมดเล่นย้อน: คนที่ยังไม่ตาย ณ วินาทีที่ดู (null = ปิดโหมด)
   onHover?: (steamid: string | null) => void; // ชี้เมาส์ที่ตัวผู้เล่น -> ไฮไลต์แถวในตารางข้างแผนที่
@@ -547,12 +435,12 @@ interface MapProps {
 
 /**
  * แผนที่ของรอบ — วาดเป็น SVG ในพิกัด "พิกเซลของภาพเรดาร์" ที่ backend แปลงมาให้แล้ว (backend/review.py)
- * frontend ไม่มีสูตรแปลงพิกัดของตัวเอง จุดบนจอจึงตรงกับช่องที่ grid_ml1 ใช้เสมอ
+ * frontend ไม่มีสูตรแปลงพิกัดของตัวเอง
  * มีจุดตอนตาย (ชื่อคนตายใต้วง) + ระเบิด (วงที่จุดตก ชื่อคนขว้าง เส้นประจากจุดขว้าง)
  * โหมดเล่นย้อน (prop live) เพิ่มตัวผู้เล่น ณ วินาทีที่ดู — ไม่มีเส้นทางเดินย้อนหลัง
  * เลือกการตายแล้ว ระเบิดที่แสดงเหลือเฉพาะลูกที่มีผลอยู่ ณ วินาทีนั้น (ควัน/ไฟที่ยังไม่หมด แฟลช/HE ที่เพิ่งแตก)
  */
-export function MapView({ radar, deaths, bomb, overlay, layer, breaks, showHotspots, grenades, live, zoom, center, onView, highlight, onHover, selected, onSelect }: MapProps) {
+export function MapView({ radar, deaths, bomb, grenades, live, zoom, center, onView, highlight, onHover, selected, onSelect }: MapProps) {
   const s = radar.size;
   // ---- ซูม/เลื่อนดู: viewBox คือกรอบที่มองอยู่ · เก็บบน URL เพื่อให้รีเฟรช/แชร์ลิงก์แล้วเห็นกรอบเดิม
   const span = s / zoom;
@@ -592,7 +480,7 @@ export function MapView({ radar, deaths, bomb, overlay, layer, breaks, showHotsp
   const U = shown > 0 ? (span / shown) * Math.min(1.35, Math.max(1, shown / 620)) : 1; // หน่วยภาพต่อ 1 px บนจอ (ตามกรอบที่ซูมอยู่)
   const z = {
     dot: 12 * U, dotSel: 15 * U, num: 12 * U, name: 13 * U, atk: 5 * U, atkName: 12 * U,
-    nade: 6 * U, nadeName: 12 * U, line: 2 * U, hs: 14 * U, bomb: 10 * U,
+    nade: 6 * U, nadeName: 12 * U, line: 2 * U, bomb: 10 * U,
   };
   const halo = (size: number) => ({ fontSize: size, strokeWidth: size * 0.3 });
 
@@ -651,66 +539,6 @@ export function MapView({ radar, deaths, bomb, overlay, layer, breaks, showHotsp
       }}
     >
       <image href={radar.image} x={0} y={0} width={s} height={s} />
-
-      {/* ชั้น "ดวลบ่อย": ม่วงเฉดเดียวไล่ อ่อน -> เข้ม ตามจำนวนการดวล (ลำดับอยู่ที่ความสว่าง ไม่ใช่ที่สี) */}
-      {layer === "freq" &&
-        breaks &&
-        overlay?.cells?.map((c) => {
-          const lv = freqLevel(c.duels, breaks);
-          return (
-            <rect
-              key={`${c.cx}-${c.cy}`}
-              x={c.x}
-              y={c.y}
-              width={c.w}
-              height={c.w}
-              fill={FREQ_FILL[lv]}
-              opacity={FREQ_ALPHA + lv * 0.06}
-              data-testid="overlay-cell"
-              data-level={lv}
-            >
-              <title>{`ช่อง (${c.cx}, ${c.cy}) · ดวลกัน ${c.duels} ครั้งในทั้งดาต้าเซ็ต`}</title>
-            </rect>
-          );
-        })}
-
-      {/* ชั้น "ได้เปรียบ": ระบายเฉพาะช่องที่ฝั่งที่เลือกดูชนะดวลบ่อย ช่องที่ฝั่งตรงข้ามชนะบ่อยเป็นสีแดง
-          ก้ำกึ่ง = ไม่ระบาย เพราะช่องที่ผลพอ ๆ กันไม่ได้บอกอะไรกับคนวางแผน */}
-      {(layer === "ct" || layer === "t") &&
-        overlay?.cells?.map((c) => {
-          const lv = advantageLevel(c.ct_win, layer);
-          if (lv === 0) return null;
-          const mine = lv > 0;
-          const win = layer === "ct" ? c.ct_win : 1 - c.ct_win;
-          return (
-            <rect
-              key={`${c.cx}-${c.cy}`}
-              x={c.x}
-              y={c.y}
-              width={c.w}
-              height={c.w}
-              fill={mine ? sideFill(layer) : AVOID_FILL}
-              opacity={mine ? ADV_ALPHA[lv as 1 | 2 | 3] : 0.55}
-              data-testid="overlay-cell"
-              data-level={lv}
-            >
-              <title>
-                {`ช่อง (${c.cx}, ${c.cy}) · ฝั่ง ${sideLabel(layer)} ชนะดวล ${pct(win)} จาก ${c.duels} ครั้งในทั้งดาต้าเซ็ต`}
-              </title>
-            </rect>
-          );
-        })}
-
-      {showHotspots &&
-        overlay?.hotspots?.map((h) => (
-          <g key={h.id} data-testid="overlay-hotspot">
-            <circle cx={h.px} cy={h.py} r={h.r} fill="none" stroke="#ffffff" strokeWidth={z.line * 1.4}
-              strokeDasharray={`${8 * U} ${6 * U}`} opacity={0.85} />
-            <text x={h.px} y={h.py - h.r - 4 * U} textAnchor="middle" className="hs-label" style={halo(z.hs)}>
-              #{h.id}
-            </text>
-          </g>
-        ))}
 
       {bomb?.px && (
         <g transform={`translate(${bomb.px[0]}, ${bomb.px[1]})`} data-testid="bomb-icon">
@@ -793,7 +621,7 @@ export function MapView({ radar, deaths, bomb, overlay, layer, breaks, showHotsp
             cx={p.px[0]}
             cy={p.px[1]}
             r={highlight === p.steamid ? z.dot : z.dot * 0.9}
-            fill={sideFill(p.side)}
+            fill={playerFill(p.side)}
             stroke={highlight === p.steamid ? "#fff" : "#0b1220"}
             strokeWidth={z.line * (highlight === p.steamid ? 2 : 1.2)}
           />
@@ -803,7 +631,7 @@ export function MapView({ radar, deaths, bomb, overlay, layer, breaks, showHotsp
             dy={z.num * 0.36}
             textAnchor="middle"
             className="slot-num"
-            style={{ fontSize: z.num * 1.05, fill: sideInk(p.side) }}
+            style={{ fontSize: z.num * 1.05, fill: playerInk(p.side) }}
           >
             {p.slot ?? "?"}
           </text>
@@ -834,10 +662,10 @@ export function MapView({ radar, deaths, bomb, overlay, layer, breaks, showHotsp
                 <>
                   {/* ✕ กลวง: เส้นล่างสีเข้มไว้ให้ยังเห็นบนพื้นเรดาร์ส่วนที่สว่าง */}
                   <path d={crossPath(dotR(d))} stroke="#0b1220" strokeWidth={z.line * 3.2} strokeLinecap="round" fill="none" />
-                  <path d={crossPath(dotR(d))} stroke={sideFill(d.victim.side)} strokeWidth={z.line * 1.8}
+                  <path d={crossPath(dotR(d))} stroke={playerFill(d.victim.side)} strokeWidth={z.line * 1.8}
                     strokeLinecap="round" fill="none" />
                   <text x={dotR(d) * 1.05} y={-dotR(d) * 0.75} textAnchor="start" className="slot-num dead"
-                    style={{ ...halo(z.num), fill: sideFill(d.victim.side) }}>
+                    style={{ ...halo(z.num), fill: playerFill(d.victim.side) }}>
                     {d.victim.slot ?? "?"}
                   </text>
                 </>
@@ -914,7 +742,7 @@ export function TeamRoster({ teams, highlight, onHighlight, onHover, playback }:
                 >
                   <span
                     className="pslot"
-                    style={{ background: sideFill(t.side_this_round), color: sideInk(t.side_this_round) }}
+                    style={{ background: playerFill(t.side_this_round), color: playerInk(t.side_this_round) }}
                     aria-hidden="true"
                   >
                     {p.slot ?? "?"}
@@ -1042,98 +870,10 @@ export function DeathTimeline({ deaths, highlight, selected, onSelect, bombPlant
 }
 
 // ================================================================================================
-// บริบทของการตาย (grid_ml1) + สรุปรอบ
+// สรุปรอบ — ข้อเท็จจริงจากเดโมล้วน ๆ ไม่มีตัวเลขจากโมเดล (ส่วนนั้นอยู่ที่ /analysis)
 // ================================================================================================
-interface ContextProps {
-  deaths: ReviewDeath[];
-  grid: RoundDetail["grid"];
-  highlight: string | null;
-  selected: number | null;
-  onSelect: (order: number | null) => void;
-}
-
-/**
- * บริบทของการตายแต่ละครั้ง จากผล research/models/grid_ml1.py
- * ตัวเลขทุกตัวมาจากทั้งดาต้าเซ็ต (ทุกแมตช์รวมกัน) ไม่ใช่จากรอบหรือแมตช์นี้
- * ct_win = สัดส่วนที่ฝั่ง CT เป็นฝ่ายชนะการดวลในพื้นที่นั้น
- */
-export function DeathContext({ deaths, grid, highlight, selected, onSelect }: ContextProps) {
-  return (
-    <section className="ctx" data-testid="death-context">
-      <h3 className="panel-h">บริบทของแต่ละการตาย</h3>
-      {grid ? (
-        <p className="ctx-source">
-          ตัวเลขในส่วนนี้มาจาก <b>{grid.source.label}</b> ไม่ใช่สถิติของแมตช์นี้ · "CT ชนะดวล" คือสัดส่วนที่ CT
-          เป็นฝ่ายชนะการดวลในพื้นที่นั้น
-        </p>
-      ) : (
-        <p className="muted">ยังไม่มีผล grid_ml1 ของแมพนี้ — แสดงบริบทไม่ได้</p>
-      )}
-      <ul className="ctx-list">
-        {deaths.map((d) => {
-          const dim = highlight && d.victim.steamid !== highlight && d.attacker?.steamid !== highlight;
-          return (
-            <li
-              key={d.order}
-              className={`${selected === d.order ? "sel" : ""} ${dim ? "dim" : ""}`}
-              {...pressable(() => onSelect(selected === d.order ? null : d.order))}
-              data-testid="context-item"
-            >
-              <div className="ctx-head">
-                <span className="tl-num" style={{ background: d.victim.color }}>
-                  {d.order}
-                </span>
-                <b>{d.victim.name}</b> <span className="muted">({sideLabel(d.victim.side)}) · {fmtT(d.t_round)}</span>
-                {d.disadvantaged && (
-                  <span className="tag-warn">ช่องที่ฝั่งตรงข้ามชนะดวล {pct(d.enemy_win)}</span>
-                )}
-              </div>
-              <ContextText d={d} grid={grid} />
-            </li>
-          );
-        })}
-      </ul>
-    </section>
-  );
-}
-
-function ContextText({ d, grid }: { d: ReviewDeath; grid: RoundDetail["grid"] }) {
-  if (d.reason === "no_model" || !grid) return <p className="muted small">ยังไม่มีผล grid_ml1 ของแมพนี้</p>;
-  if (d.reason === "no_position") return <p className="muted small">ไม่มีพิกัดของการตายครั้งนี้</p>;
-  if (d.reason === "insufficient" || !d.cell)
-    return (
-      <p className="muted small">
-        พื้นที่นี้มีข้อมูลไม่พอสรุป — ในดาต้าเซ็ตมีการดวลในช่องนี้น้อยกว่า {grid.min_kills} ครั้ง จึงไม่แสดงตัวเลข
-      </p>
-    );
-  const c = d.cell;
-  return (
-    <div className="small">
-      {!d.is_duel && (
-        <p className="muted">ครั้งนี้ไม่ใช่การดวล (ตายจาก C4 / ตกที่สูง / เพื่อนร่วมทีม) ตัวเลขด้านล่างเป็นของการดวลในพื้นที่นี้</p>
-      )}
-      <p>
-        {d.victim.name} ตายในช่องประเภท{" "}
-        <span className="ctype">
-          <i style={{ background: c.ct_win >= 0.5 ? sideFill("ct") : sideFill("t") }} />
-          {c.cluster_name}
-        </span>{" "}
-        ซึ่งทั้งดาต้าเซ็ต {grid.source.matches} แมตช์ CT ชนะดวลในกลุ่มนี้ <b>{pct(c.ct_win)}</b> (เฉลี่ยทั้งแมพ{" "}
-        {pct(grid.ct_win_overall)})
-      </p>
-      {d.hotspot ? (
-        <p>
-          อยู่ใน hotspot #{d.hotspot.id} ({d.hotspot.place}) คิดเป็น {pct(d.hotspot.share)} ของการดวลทั้งหมด
-        </p>
-      ) : (
-        <p className="muted">ไม่อยู่ใน hotspot ใดใน {grid.source.matches} แมตช์</p>
-      )}
-    </div>
-  );
-}
-
-/** สรุปรอบ: ใครตายคนแรก / ฝั่งที่เสียคนแรกแพ้ไหม / ตายในช่องที่ฝั่งตรงข้ามชนะดวลกี่คน */
-export function RoundSummary({ summary, winner, grid }: { summary: RoundDetail["summary"]; winner: RoundDetail["round"]["winner_side"]; grid: RoundDetail["grid"] }) {
+/** สรุปรอบ: ใครตายคนแรก / ฝั่งที่เสียคนแรกแพ้ไหม */
+export function RoundSummary({ summary, winner }: { summary: RoundDetail["summary"]; winner: RoundDetail["round"]["winner_side"] }) {
   const f = summary.first_death;
   return (
     <section className="summary" data-testid="round-summary">
@@ -1151,13 +891,6 @@ export function RoundSummary({ summary, winner, grid }: { summary: RoundDetail["
           ฝั่ง {sideLabel(f.side)} เสียคนแรก และ{summary.first_death_side_lost ? "แพ้" : "ชนะ"}รอบนี้ (ผู้ชนะ {sideLabel(winner)})
         </p>
       )}
-      {grid ? (
-        <p>
-          ตายในช่องที่ฝั่งตรงข้ามชนะดวลเกินครึ่ง (ตามดาต้าเซ็ต {grid.source.matches} แมตช์): CT{" "}
-          <b>{summary.disadvantaged_deaths.ct}</b> คน · T <b>{summary.disadvantaged_deaths.t}</b> คน
-          <span className="muted"> · มีบริบท {summary.deaths_with_context} จาก {summary.duel_deaths} การดวล</span>
-        </p>
-      ) : null}
     </section>
   );
 }

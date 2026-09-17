@@ -57,52 +57,13 @@ export function playerNumbers(teams: ReviewTeam[]): Map<string, number> {
 }
 
 // ================================================================================================
-// ชั้นที่ระบายลงบนกริดของ grid_ml1 — ระบายได้ทีละอย่าง เพราะหนึ่งช่องมีได้สีเดียว
-// ทั้งสองชั้นตอบคนละคำถาม: "ตรงไหนปะทะกันบ่อย" กับ "ตรงไหนฝั่งเราชนะดวลบ่อย"
-// ตัวเลขทุกตัวเป็นของทั้งดาต้าเซ็ต (grid_ml1) ไม่ใช่ผลของรอบที่กำลังดู
+// ชั้นที่ระบายลงบนกริดของ grid_ml1 (หน้า /analysis โหมด "แผนที่ทีมอาชีพ") — ระบายได้ทีละอย่าง
+// เพราะหนึ่งช่องมีได้สีเดียว · ตัวเลขทุกตัวเป็นของทั้งดาต้าเซ็ต ไม่ใช่ของแมตช์ใดแมตช์หนึ่ง
+// ทุกชั้นวาดเป็น heatmap แบบเดียวกับโหมดอื่นของหน้านั้น (ไล่สีต่อเนื่องด้วย DEATH_RAMP ข้างล่าง) —
+// "ดวลบ่อย" ใช้ชุดแดง (รวมสองฝั่ง) · "CT/T ได้เปรียบ" ใช้ชุดสีของฝั่งนั้น · "ประเภทพื้นที่" ใช้ TYPE_FILL
+// หน้ารอบ (RoundView) ไม่ระบายอะไรจากโมเดลเลย — ตั้งใจแยกให้หน้ารอบเป็นข้อเท็จจริงจากเดโมล้วน ๆ
 // ================================================================================================
-export type GridLayer = "off" | "freq" | Side;
-
-// ---- ชั้นที่ 1: ดวลบ่อยแค่ไหน ----------------------------------------------------------------
-/**
- * ไล่เฉดม่วงเฉดเดียว อ่อน -> เข้ม = ดวลน้อย -> ดวลบ่อย (ยิ่งเข้มยิ่งบ่อย ตามที่คนอ่านแผนที่คุ้นเคย)
- * เรียงลำดับด้วย "ความสว่าง" ไม่ใช่ด้วยสี คนตาบอดสีจึงอ่านลำดับได้ (ตรวจแล้ว: ΔE ต่ำสุด 15.8 แบบ protan)
- * ไม่ใช้ฟ้า/ส้ม เพราะสองสีนั้นแปลว่า "ฝั่ง" ทั้งแอป และไม่ใช้รุ้งเพราะรุ้งไม่มีลำดับในตัว
- */
-export const FREQ_FILL = ["#EDE9FE", "#C4B5FD", "#A855F7", "#7E22CE", "#4C1D95"] as const;
-export const FREQ_ALPHA = 0.72;
-export const FREQ_STEPS = 5; // จำนวนขั้นของทุกไล่เฉดความถี่ในแอป
-export type FreqLevel = number;
-export type FreqBreaks = number[]; // ยาว FREQ_STEPS - 1
-
-/** ขอบของแต่ละขั้น = ควอนไทล์ของค่าในแมพนั้นเอง (ไม่ใช่เลขตายตัว แมพอื่น/ชุดอื่นก็ใช้ได้) */
-export function freqBreaks(values: number[], steps: number = FREQ_STEPS): FreqBreaks {
-  const s = [...values].sort((a, b) => a - b);
-  const q = (p: number) => s[Math.min(s.length - 1, Math.floor(p * s.length))] ?? 0;
-  return Array.from({ length: steps - 1 }, (_, i) => q((i + 1) / steps));
-}
-
-export function freqLevel(value: number, b: FreqBreaks): FreqLevel {
-  for (let i = b.length - 1; i >= 0; i--) if (value >= b[i]) return i + 1;
-  return 0;
-}
-
-/**
- * ป้ายของแต่ละขั้นไว้ใส่ในคำอธิบายสี
- * ข้อมูลน้อย ๆ (เช่นแมตช์เดียว) ทำให้ควอนไทล์ชนกันจนบางขั้นไม่มีช่วงอยู่จริง — ขั้นพวกนั้นถูกตัดทิ้ง
- * ไม่งั้นคำอธิบายจะโชว์ช่วงกลับหัวแบบ "1–0" ที่ไม่มีความหมาย
- */
-export function freqBands(b: FreqBreaks): { level: FreqLevel; label: string }[] {
-  const out: { level: FreqLevel; label: string }[] = [];
-  if (b[0] > 1) out.push({ level: 0, label: `ไม่ถึง ${b[0]}` });
-  for (let i = 0; i < b.length - 1; i++) {
-    const lo = b[i];
-    const hi = b[i + 1] - 1;
-    if (hi >= lo) out.push({ level: i + 1, label: hi === lo ? `${lo}` : `${lo}–${hi}` });
-  }
-  out.push({ level: b.length, label: `ตั้งแต่ ${b[b.length - 1]}` });
-  return out;
-}
+export type GridLayer = "freq" | Side | "type";
 
 // ---- หน้า Analysis: จุดที่ตาย ------------------------------------------------------------------
 /**
@@ -152,23 +113,33 @@ export function diffLevel(shareMine: number, shareRef: number, deathsMine: numbe
   return 0;
 }
 
-// ---- ชั้นที่ 2: ฝั่งไหนได้เปรียบ ---------------------------------------------------------------
-/** ขั้นของระดับ 1 / 2 / 3: ฝั่งที่เลือกดูชนะดวล ≥ 50% / 55% / 65% — ยิ่งชนะบ่อยยิ่งระบายเข้ม */
-export const ADV_STEPS = { 1: 0.5, 2: 0.55, 3: 0.65 } as const;
-/** ระบายแดงเฉพาะช่องที่ฝั่งตรงข้ามชนะดวล ≥ 65% — จำกัดไว้ให้แดงเฉพาะที่ต่างกันชัด ไม่แดงเต็มแมพ */
-export const AVOID_STEP = 0.65;
-export type AdvLevel = -1 | 0 | 1 | 2 | 3;
+// ---- ชั้น "ฝั่งไหนได้เปรียบ" ---------------------------------------------------------------------
+/**
+ * ระบายเฉพาะช่องที่ฝั่งที่เลือกดูชนะดวลตั้งแต่ครึ่งหนึ่งขึ้นไป แล้วไล่เข้มตามสัดส่วนที่ชนะ
+ * 50% -> 0 (จางสุด) · 100% -> 1 (เข้มสุด) — ยกกำลัง 0.7 ให้ช่วง 55-70% ที่พบบ่อยที่สุดไม่จางจนมองไม่เห็น
+ * ช่องที่ฝั่งนี้ชนะไม่ถึงครึ่งไม่ระบาย: อีกฝั่งชนะที่นั่น ซึ่งดูได้จากอีกชั้น ไม่ต้องมีสีที่สามมาแย่งกัน
+ */
+export const advT = (win: number) => Math.pow(Math.min(1, Math.max(0, (win - 0.5) / 0.5)), 0.7);
 
-/** 3 / 2 / 1 = ฝั่งที่ดูได้เปรียบสามระดับ · -1 = ฝั่งตรงข้ามชนะบ่อย (แดง) · 0 = ก้ำกึ่ง ไม่ระบาย */
-export function advantageLevel(ctWin: number, side: Side): AdvLevel {
-  const w = side === "ct" ? ctWin : 1 - ctWin;
-  if (w >= ADV_STEPS[3]) return 3;
-  if (w >= ADV_STEPS[2]) return 2;
-  if (w >= ADV_STEPS[1]) return 1;
-  if (1 - w >= AVOID_STEP) return -1;
-  return 0;
-}
-export const ADV_ALPHA: Record<1 | 2 | 3, number> = { 1: 0.3, 2: 0.5, 3: 0.72 };
+// ---- ชั้นที่ 3: ประเภทพื้นที่ (KMeans ใน grid_ml1 — กลุ่มไม่มีลำดับ จึงใช้สามสีที่แยกกันชัด ไม่ใช่ไล่เฉด) ----
+/** ชุดสีเดียวกับรูป output/grid_ml1_map.png ที่อยู่ในสไลด์ คนที่เคยเห็นรูปจะจำภาพเดียวกันได้ (ไม่ใช่ฟ้า/ส้มของฝั่ง) */
+export const TYPE_FILL = ["#8B5CF6", "#0D9488", "#D97706"] as const;
+export const typeFill = (id: number) => TYPE_FILL[(id - 1) % TYPE_FILL.length];
+/** ชื่อประเภทที่ grid_ml1 ตั้งจากตัวเลข (อังกฤษ) -> คำไทยที่คนไม่เล่นเกมอ่านออก */
+const TYPE_WORDS: Record<string, string> = {
+  "early round": "ต้นรอบ", "late round": "ท้ายรอบ", "pre-plant": "ก่อนวางบอมบ์", "post-plant": "หลังวางบอมบ์",
+  "close range": "ดวลประชิด", "long range": "ดวลระยะไกล", rifle: "ปืนไรเฟิล", AWP: "ปืนซุ่ม (AWP)", average: "ทั่วไป",
+};
+export const typeLabelTh = (name: string) => name.split(" + ").map((w) => TYPE_WORDS[w] ?? w).join(" + ");
+
+// ---- สีของ "ตัวผู้เล่น" บนแผนที่หน้ารอบ (วง + เลข 1–5) — คนละเฉดกับ SIDE_FILL ที่ใช้ระบายพื้นที่ -----------
+// ทั้งทีมใช้สีเดียวกันตามฝั่ง แยกตัวบุคคลด้วยหมายเลข ไม่ใช่ด้วยสี
+// ฟ้าเข้มกว่า SIDE_FILL เพราะเลขสีขาวต้องอ่านออกบนวง (#4f8cff ได้ contrast 3:1 · ตัวนี้ 6:1)
+const PLAYER_FILL: Record<string, string> = { ct: "#2563c9", t: "#f0891c" };
+/** สีตัวเลขบนวง — ส้มเป็นสีอ่อน เลขสีขาวบนส้มอ่านไม่ออก ต้องใช้ตัวเข้ม ส่วนบนฟ้าเข้มใช้ตัวขาว */
+const PLAYER_INK: Record<string, string> = { ct: "#ffffff", t: "#20160a" };
+export const playerFill = (side: string | null | undefined) => PLAYER_FILL[side ?? ""] ?? "#94a3b8";
+export const playerInk = (side: string | null | undefined) => PLAYER_INK[side ?? ""] ?? "#20160a";
 
 const NADE_LABEL: Record<string, string> = { smoke: "สโมค", flash: "แฟลช", he: "HE", molotov: "โมโลตอฟ", decoy: "ดีคอย" };
 export const NADE_COLOR: Record<string, string> = {
@@ -203,8 +174,6 @@ export const mb = (n: number) => `${(n / 1024 / 1024).toFixed(1)} MB`;
  * แมตช์กับรอบอยู่ใน path (/matches/{demo_file}/rounds/{n}) ส่วนที่เหลืออยู่ที่นี่
  */
 export interface ViewState {
-  grid: GridLayer; // grid=freq|ct|t  ชั้นที่ระบายบนกริดของ grid_ml1 (ไม่มี = ปิด)
-  hotspots: boolean; // hs=1      ซ้อนวง hotspot
   nades: NadeType[]; // g=smoke,flash  ชนิดระเบิดที่แสดง (ไม่มี g = แสดงครบ, g=none = ไม่แสดงเลย)
   zoom: number; // z=2.5     ซูมแผนที่ (1 = เต็มแมพ)
   center: [number, number] | null; // c=x,y  จุดกึ่งกลางที่มองอยู่ (หน่วยพิกเซลของภาพเรดาร์)
@@ -212,12 +181,6 @@ export interface ViewState {
   time: number | null; // t=12.5   วินาทีในรอบที่ดูค้างไว้
   player: string | null; // p=<steamid> ไฮไลต์ผู้เล่น
   death: number | null; // d=<ลำดับ>  การตายที่เลือก
-}
-
-/** grid=freq|ct|t · ลิงก์รุ่นก่อนใช้ cells=1 ซึ่งหมายถึงชั้น "ดวลบ่อย" — เปิดได้เหมือนเดิม */
-function parseGrid(raw: string | null, legacyCells: string | null): GridLayer {
-  if (raw === "freq" || raw === "ct" || raw === "t") return raw;
-  return legacyCells === "1" ? "freq" : "off";
 }
 
 export const MAX_ZOOM = 6;
@@ -241,8 +204,6 @@ export function useViewState() {
   const [params, setParams] = useSearchParams();
   const d = Number(params.get("d"));
   const state: ViewState = {
-    grid: parseGrid(params.get("grid"), params.get("cells")),
-    hotspots: params.get("hs") === "1",
     nades: parseNades(params.get("g")),
     zoom: clampZoom(Number(params.get("z")) || 1),
     center: parseCenter(params.get("c")),
@@ -259,11 +220,6 @@ export function useViewState() {
         (prev) => {
           const next = new URLSearchParams(prev);
           const put = (key: string, value: string | null) => (value === null ? next.delete(key) : next.set(key, value));
-          if ("grid" in patch) {
-            put("grid", !patch.grid || patch.grid === "off" ? null : patch.grid);
-            next.delete("cells");   // ลิงก์รุ่นก่อนใช้ cells=1 — เขียนทับด้วยค่าใหม่ ไม่เก็บทั้งสองตัว
-          }
-          if ("hotspots" in patch) put("hs", patch.hotspots ? "1" : null);
           if ("nades" in patch) {
             const list = patch.nades ?? [];
             put("g", list.length === NADE_TYPES.length ? null : list.length === 0 ? "none" : list.join(","));

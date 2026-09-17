@@ -251,8 +251,9 @@ def grid_overlay(model: GridModel, frame: RadarFrame) -> dict:
     cells = []
     for (cx, cy), c in sorted(model.cells.items()):
         x, y, w = cell_rect_pixel(cx, cy, frame, model.grid_n)
+        # place = ชื่อ callout ที่พบบ่อยสุดในช่อง (grid_ml1 คำนวณไว้) — หน้าเว็บใช้ปักป้ายโซนและรวมช่องเป็นโซนในตาราง
         cells.append({"cx": cx, "cy": cy, "cluster_id": int(c["cluster"]), "x": x, "y": y, "w": w,
-                      "ct_win": float(c["ct_win"]), "duels": int(c["kills"])})
+                      "ct_win": float(c["ct_win"]), "duels": int(c["kills"]), "place": c.get("place") or None})
     hotspots = []
     for h in model.hotspots:
         px, py = world_to_pixel(h["x"], h["y"], frame)
@@ -260,7 +261,9 @@ def grid_overlay(model: GridModel, frame: RadarFrame) -> dict:
                          "ct_win": h["ct_win"], "px": px, "py": py, "r": h["radius"] / frame.scale})
     clusters = [{"id": cid, "name": c["name"], "ct_win": c["ct_win"], "n_cells": c["n_cells"], "duels": c["duels"]}
                 for cid, c in sorted(model.clusters.items())]
-    return {"available": True, "source": model.source, "ct_win_overall": model.ct_win_overall,
+    # ภาพเรดาร์ที่พิกเซลข้างบนอ้างอิง — หน้า /analysis วาดจาก payload นี้ก้อนเดียว ไม่ต้องไปขอจาก endpoint อื่น
+    radar = {"image": "/assets" + frame.image, "size": frame.size, "map": frame.map_name}
+    return {"available": True, "radar": radar, "source": model.source, "ct_win_overall": model.ct_win_overall,
             "min_kills": model.min_kills, "clusters": clusters, "cells": cells, "hotspots": hotspots}
 
 

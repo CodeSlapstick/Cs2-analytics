@@ -265,13 +265,15 @@ export interface RoundListItem {
 export interface GridOverlay {
   available: boolean;
   reason?: string;
+  radar?: { image: string; size: number; map: string }; // ภาพเรดาร์ที่พิกเซลด้านล่างอ้างอิง (backend ใส่มาให้ หน้าเว็บไม่ต้องหาเอง)
   source?: GridSource;
   ct_win_overall?: number;
   min_kills?: number;
   clusters?: { id: number; name: string; ct_win: number; n_cells: number; duels: number }[];
   // ct_win = สัดส่วนที่ CT ชนะดวลในช่องนั้น (ทั้งดาต้าเซ็ต) · duels = จำนวนดวลที่นับ
-  // หน้าเว็บระบาย "ดวลบ่อย" และ "พื้นที่ได้เปรียบ" จากสองค่านี้
-  cells?: { cx: number; cy: number; cluster_id: number; x: number; y: number; w: number; ct_win: number; duels: number }[];
+  // หน้า /analysis ระบาย "ดวลบ่อย" / "พื้นที่ได้เปรียบ" จากสองค่านี้ และ "ประเภทพื้นที่" จาก cluster_id
+  // place = ชื่อ callout ที่พบบ่อยสุดในช่อง (ช่องเดียวกับ DeathCellCount.place จึงรวมเป็นโซนด้วยกฎเดียวกันได้)
+  cells?: { cx: number; cy: number; cluster_id: number; x: number; y: number; w: number; ct_win: number; duels: number; place: string | null }[];
   hotspots?: { id: number; place: string; share: number; duels: number; ct_win: number; px: number; py: number; r: number }[];
 }
 
@@ -333,8 +335,8 @@ export const api = {
   reviewRound: (demo: string, n: number) => request<RoundDetail>(`/api/review/${enc(demo)}/rounds/${n}`),
   reviewPositions: (demo: string, n: number) =>
     request<RoundPositions>(`/api/review/${enc(demo)}/rounds/${n}/positions`),
-  reviewGrid: (map: string) => request<GridOverlay>(`/api/review/grid?map=${enc(map)}`),
-  // --- หน้าเครื่องมือวิเคราะห์ ---
+  // --- หน้าเครื่องมือวิเคราะห์ (ทุกอย่างที่มาจากโมเดลอยู่ที่นี่ หน้ารอบไม่เรียก) ---
+  analysisGrid: (map: string) => request<GridOverlay>(`/api/analysis/grid?map=${enc(map)}`),
   readability: (demo: string) => request<Readability>(`/api/analysis/readability?demo=${enc(demo)}`),
   analysisDeaths: (
     map: string, scope: MatchSource, side: string, demo?: string | null,

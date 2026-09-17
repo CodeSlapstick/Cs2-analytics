@@ -227,9 +227,10 @@ def _get(headers: list[tuple[bytes, bytes]]) -> Request:
                     "headers": headers, "scheme": "http", "server": ("api", 8000), "client": ("test", 1)})
 
 
-def test_public_base_keeps_the_port_the_browser_used():
+def test_public_base_keeps_the_port_the_browser_used(monkeypatch):
     """Steam ส่งผู้ใช้กลับมาตาม return_to — พลาดพอร์ตเมื่อไรคือล็อกอินไม่สำเร็จ"""
     from backend import app as appmod
+    monkeypatch.setattr(appmod, "PUBLIC_URL", "")   # เครื่อง dev อาจตั้ง PUBLIC_URL ใน .env ไว้ — เทสต์นี้วัดเฉพาะทาง Host header
     assert appmod._public_base(_get([(b"host", b"localhost:3000")])) == "http://localhost:3000"
     assert appmod._public_base(_get([(b"host", b"cs2.example.com"), (b"x-forwarded-proto", b"https")])) == "https://cs2.example.com"
 

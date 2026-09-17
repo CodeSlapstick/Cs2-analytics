@@ -927,9 +927,10 @@ async def api_readability(demo: str = Query(..., description="ชื่อไฟ
     }
 
 
-@app.get("/api/review/grid")
-def api_review_grid(map: str = Query(..., description="เช่น de_mirage"), _: dict = Depends(require_viewer)):
-    """ช่องกริด (จัดกลุ่มแล้ว) + วง hotspot เป็นพิกเซลบนภาพเรดาร์ — ไว้ให้ toggle ซ้อนบนแผนที่"""
+@app.get("/api/analysis/grid")
+def api_analysis_grid(map: str = Query(..., description="เช่น de_mirage"), _: dict = Depends(require_viewer)):
+    """ช่องกริด (จัดกลุ่มแล้ว) + วง hotspot เป็นพิกเซลบนภาพเรดาร์ — หน้า /analysis โหมด "แผนที่ทีมอาชีพ" ซ้อนบนแผนที่
+    (หน้ารอบไม่เรียก endpoint นี้แล้ว — หน้ารอบตั้งใจให้เป็นข้อเท็จจริงจากเดโมล้วน ๆ)"""
     frame = radar_frame(map)
     model = load_grid_model()
     if frame is None or model is None or model.map_name != map:

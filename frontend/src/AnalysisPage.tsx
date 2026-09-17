@@ -5,6 +5,7 @@ import {
   api,
   type DeathCellCount,
   type DeathsOverlay,
+  type GridOverlay,
   matchesQuery,
   type Match,
   type MatchSource,
@@ -13,31 +14,62 @@ import {
   type ScoreRow,
 } from "./api";
 import {
+  advT,
   DIFF_FILL,
   DIFF_MIN_DEATHS,
   DEATH_RAMP,
   DIFF_STEPS,
   diffLevel,
   type DiffLevel,
+  type GridLayer,
   pct,
   RATIO_RAMP,
   sideLabel,
+  typeFill,
+  typeLabelTh,
 } from "./utils";
 
 /**
- * หน้าเครื่องมือวิเคราะห์ — เทียบ "แมตช์ที่อัปโหลด" กับ "ชุดอ้างอิงที่โมเดลเทรนจากมัน"
+ * หน้าเครื่องมือวิเคราะห์ — ทุกอย่างที่มาจากโมเดลอยู่หน้านี้หน้าเดียว (หน้ารอบเป็นข้อเท็จจริงจากเดโมล้วน ๆ)
  *
- * ประเด็นสำคัญของหน้านี้: เดโมที่ผู้ใช้อัปโหลดไม่เคยถูกใช้เทรนโมเดล (คนละโฟลเดอร์ คนละ source ในฐานข้อมูล)
+ *   แผนที่ทีมอาชีพ     ผลของ research/grid_ml1.py ทั้งดาต้าเซ็ต ซ้อนบนเรดาร์ — ดูได้โดยไม่ต้องมีแมตช์ของเรา
+ *   ทีมเราตายตรงไหน    จุดตายในแมตช์ที่อัปโหลด นับลงกริดเดียวกัน
+ *   เทียบกับทีมอาชีพ    ช่องไหนเราตายบ่อยกว่าชุดอ้างอิง (คิดเป็นสัดส่วน)
+ *   อ่านทางเราออกไหม   โมเดลทายไซต์ (research/site_ml.py) อ่านแมตช์ของเราทีละรอบ
+ *
+ * ประเด็นสำคัญ: เดโมที่ผู้ใช้อัปโหลดไม่เคยถูกใช้เทรนโมเดล (คนละโฟลเดอร์ คนละ source ในฐานข้อมูล)
  * หน้านี้จึงเป็นการ "วัดของเราเทียบกับของที่โมเดลรู้จัก" ไม่ใช่การเอาข้อมูลตัวเองไปสอนโมเดลแล้ววัดกับตัวเอง
  */
-type Mode = "diff" | "upload" | "read";
+type Mode = "pro" | "upload" | "diff" | "read";
 type Side = "all" | "ct" | "t";
 
+// ปุ่มโหมดเป็นการ์ดที่มีคำอธิบายสั้น ๆ ในตัว — คนเปิดหน้านี้ครั้งแรกต้องรู้จากปุ่มเลยว่าแต่ละอันตอบคำถามอะไร ไม่ต้องลองกดดู
 const MODES: { key: Mode; label: string; hint: string }[] = [
-  { key: "upload", label: "ทีมเราตายตรงไหน", hint: "จุดที่ผู้เล่นตายในแมตช์ของทีมเรา" },
-  { key: "diff", label: "เทียบกับทีมอาชีพ", hint: "ช่องไหนทีมเราตายบ่อยกว่าหรือน้อยกว่าทีมอาชีพ" },
-  { key: "read", label: "อ่านทางเราออกไหม", hint: "โมเดลเดาไซต์ที่เราจะเข้าได้เร็วแค่ไหน — ยิ่งเร็ว คู่แข่งยิ่งอ่านออกง่าย" },
+  { key: "pro", label: "แผนที่ทีมอาชีพ", hint: "ทีมอาชีพดวลกันตรงไหน ใครได้เปรียบตรงไหน" },
+  { key: "upload", label: "ทีมเราตายตรงไหน", hint: "จุดตายจากแมตช์ที่ทีมอัปโหลด" },
+  { key: "diff", label: "เทียบกับทีมอาชีพ", hint: "ตรงไหนเราตายบ่อยกว่าทีมอาชีพ" },
+  { key: "read", label: "อ่านทางเราออกไหม", hint: "คู่แข่งเดาไซต์ที่เราจะเข้าได้เร็วแค่ไหน" },
 ];
+
+/** หัวเรื่องเปลี่ยนตามโหมด — คนอ่านต้องรู้ทันทีว่ากำลังดูอะไร ไม่ใช่หัวเดียวกันทุกโหมด */
+const MODE_COPY: Record<Mode, { title: string; blurb: string }> = {
+  pro: {
+    title: "แผนที่ทีมอาชีพ",
+    blurb: "สิ่งที่โมเดลเรียนจากเดโมทีมอาชีพ วาดเป็น heatmap: ดวลกันตรงไหนบ่อย ฝั่งไหนชนะดวลตรงไหน — ตัวเลขทั้งหมดเป็นของทั้งดาต้าเซ็ต ไม่ใช่ของแมตช์ใดแมตช์หนึ่ง · อยากเทียบกับทีมของคุณ อัปโหลดแมตช์ที่หน้าแมตช์ แล้วเลือกปุ่มถัดไป",
+  },
+  upload: {
+    title: "ทีมเราตายตรงไหน",
+    blurb: "จุดที่ผู้เล่นในแมตช์ของทีมตาย นับลงช่องเดียวกับแผนที่ทีมอาชีพ — เลือกฝั่ง แมตช์ รอบ หรือผู้เล่นได้จากแผงซ้าย",
+  },
+  diff: {
+    title: "เทียบกับทีมอาชีพ",
+    blurb: "ตรงไหนที่ทีมเราเสียคนบ่อยกว่าทีมอาชีพ คิดเป็นสัดส่วนของจุดตายทั้งหมด ไม่ใช่จำนวนครั้งดิบ เพราะสองชุดมีจำนวนแมตช์ไม่เท่ากัน",
+  },
+  read: {
+    title: "อ่านทางเราออกไหม",
+    blurb: "โมเดลที่เรียนจากทีมอาชีพ เดาไซต์ที่ทีมเราจะเข้าได้ตั้งแต่วินาทีไหนของรอบ — ยิ่งเดาออกเร็ว คู่แข่งที่ดูเทปก็อ่านออกเร็วเท่านั้น",
+  },
+};
 const SIDES: { key: Side; label: string }[] = [
   { key: "all", label: "ทั้งสองฝั่ง" },
   { key: "ct", label: "ตอนเป็น CT" },
@@ -45,9 +77,12 @@ const SIDES: { key: Side; label: string }[] = [
 ];
 
 export function AnalysisPage() {
-  const [mode, setMode] = useState<Mode>("upload");
+  const [mode, setMode] = useState<Mode>("pro");
   const [side, setSide] = useState<Side>("all");
   const [demo, setDemo] = useState<string>(""); // "" = ทุกแมตช์ที่อัปโหลด
+  // แผนที่ทีมอาชีพ: ระบายได้ทีละชั้น (ดู GridLayer ใน utils.tsx) · proHover = สิ่งที่ชี้อยู่ ("h:3" จุดปะทะ · "p:BombsiteA" โซน · "c:2" ประเภท)
+  const [layer, setLayer] = useState<GridLayer>("freq");
+  const [proHover, setProHover] = useState<string | null>(null);
   // ชี้เมาส์ที่แถวในตาราง (หรือช่องบนแผนที่) = ไฮไลต์อีกฝั่งให้เห็นทันที — คีย์เดียวกับที่ groupByPlace() ใช้จัดกลุ่ม
   const [hovered, setHovered] = useState<string | null>(null);
   // แผงควบคุมการแสดงผล heatmap — ค่าพวกนี้เป็นแค่การตั้งค่ามุมมอง ไม่ผูกกับ URL หรือรีเซ็ตตอนเปลี่ยนตัวกรองข้อมูล
@@ -59,14 +94,16 @@ export function AnalysisPage() {
   const [selPlayers, setSelPlayers] = useState<string[] | null>(null);
   const matches = useQuery(matchesQuery);
 
-  // แมพที่ดูได้ = แมพที่มีทั้งแมตช์ของเราและชุดอ้างอิง (ไม่งั้นไม่มีอะไรให้เทียบ)
+  // แมพที่มีเดโมทีมอาชีพ = ดู "แผนที่ทีมอาชีพ" ได้เลย · โหมดที่เทียบกับทีมเราต้องมีแมตช์ที่อัปโหลดบนแมพนั้นด้วย
   const done = (matches.data ?? []).filter((m) => m.status === "done" && m.map_name);
   const mapsWith = (s: MatchSource) => new Set(done.filter((m) => m.source === s).map((m) => m.map_name!));
   const refMaps = mapsWith("reference");
   const upMaps = mapsWith("upload");
-  const maps = [...refMaps].filter((m) => upMaps.has(m)).sort();
+  const refMapList = [...refMaps].sort();
+  const bothMaps = refMapList.filter((m) => upMaps.has(m));
+  const mapOptions = mode === "pro" ? refMapList : bothMaps;
   const [map, setMap] = useState<string>("");
-  const activeMap = map || maps[0] || "";
+  const activeMap = mapOptions.includes(map) ? map : (mapOptions[0] ?? "");
   const mine = done.filter((m) => m.source === "upload" && m.map_name === activeMap);
   const activeMatch = mine.find((m) => m.demo_file === demo);
 
@@ -117,72 +154,104 @@ export function AnalysisPage() {
     placeholderData: keepPreviousData,
   });
 
-  // สลับโหมด/แมพ/ฝั่ง/แมตช์ = ชุดข้อมูลเปลี่ยน คีย์ที่ค้างไฮไลต์ไว้จากชุดก่อนหน้าจึงไม่มีความหมายแล้ว
-  useEffect(() => setHovered(null), [mode, activeMap, side, demo]);
+  // แผนที่ทีมอาชีพ (ผล grid_ml1 ทั้งดาต้าเซ็ต) — ไม่ต้องมีแมตช์ของเราก็ดูได้
+  const gridQ = useQuery({
+    queryKey: ["analysis-grid", activeMap],
+    queryFn: () => api.analysisGrid(activeMap),
+    enabled: mode === "pro" && !!activeMap,
+    staleTime: Infinity, // ผล grid_ml1 ไม่เปลี่ยนระหว่างใช้งาน
+  });
+
+  // สลับโหมด/แมพ/ฝั่ง/แมตช์/ชั้น = ชุดข้อมูลเปลี่ยน คีย์ที่ค้างไฮไลต์ไว้จากชุดก่อนหน้าจึงไม่มีความหมายแล้ว
+  useEffect(() => {
+    setHovered(null);
+    setProHover(null);
+  }, [mode, activeMap, side, demo, layer]);
 
   if (matches.isLoading) return <p className="muted">กำลังโหลด…</p>;
   if (matches.error) return <p className="err">โหลดรายการแมตช์ไม่ได้: {(matches.error as Error).message}</p>;
-  if (maps.length === 0) return <NothingToCompare done={done} />;
+  if (refMapList.length === 0) return <NothingToCompare done={done} why="no-reference" />;
 
+  const copy = MODE_COPY[mode];
   const single = upload.data;
-  const loading = mode === "read" ? readQ.isLoading : upload.isLoading || (mode === "diff" && reference.isLoading);
-  const error = (mode === "read" ? readQ.error : (upload.error ?? reference.error)) as Error | null;
+  const loading =
+    mode === "pro" ? gridQ.isLoading
+    : mode === "read" ? readQ.isLoading
+    : upload.isLoading || (mode === "diff" && reference.isLoading);
+  const error = (
+    mode === "pro" ? gridQ.error : mode === "read" ? readQ.error : (upload.error ?? reference.error)
+  ) as Error | null;
   const rows = mode === "diff" && upload.data && reference.data ? compare(upload.data, reference.data) : [];
   // รวมตามชื่อ callout ครั้งเดียว ใช้ทั้งตาราง (top 8 ที่แย่สุด) และ heatmap ทีละโซน (ทุกโซน) จะได้ไม่มี
   // ทางแยกกันจนตัวเลข/เกณฑ์ไม่ตรงกันระหว่างสองที่
   const diffGroups = mode === "diff" ? groupDiffRows(rows) : [];
+  // โหมดที่เทียบกับทีมเรา แต่ยังไม่มีแมตช์ที่อัปโหลดบนแมพที่มีชุดอ้างอิง — บอกตรง ๆ แต่ยังสลับไปดูแผนที่ทีมอาชีพได้
+  const needsOurMatches = mode !== "pro" && bothMaps.length === 0;
 
   return (
     <div className="analysis" data-testid="analysis-page">
       <header className="an-head">
         <div>
-          <h1>ทีมเราตายตรงไหนบ่อย</h1>
-          <p className="muted">
-            ดูจุดที่ผู้เล่นในแมตช์ของทีมตาย แล้วเทียบกับเดโมการแข่งของทีมอาชีพ 50 แมตช์บนแมพเดียวกัน
-            ว่าตรงไหนเราเสียคนบ่อยกว่าเขา
-          </p>
+          <h1>{copy.title}</h1>
+          <p className="muted">{copy.blurb}</p>
         </div>
       </header>
 
       <div className="an-controls">
-        <div className="seg" role="group" aria-label="สิ่งที่ดู">
-          <span className="seg-h">ดู</span>
+        <div className="mode-tabs" role="group" aria-label="สิ่งที่ดู">
           {MODES.map((m) => (
-            <button key={m.key} type="button" className={`seg-btn${mode === m.key ? " on" : ""}`}
-              aria-pressed={mode === m.key} title={m.hint} onClick={() => setMode(m.key)} data-testid={`mode-${m.key}`}>
-              {m.label}
+            <button key={m.key} type="button" className={`mode-tab${mode === m.key ? " on" : ""}`}
+              aria-pressed={mode === m.key} onClick={() => setMode(m.key)} data-testid={`mode-${m.key}`}>
+              <b>{m.label}</b>
+              <small>{m.hint}</small>
             </button>
           ))}
         </div>
 
-        <label className="an-select">
-          แมพ
-          <select value={activeMap} onChange={(e) => setMap(e.target.value)}>
-            {maps.map((m) => (
-              <option key={m} value={m}>{m}</option>
-            ))}
-          </select>
-        </label>
+        <div className="an-filters">
+          <label className="an-select">
+            แมพ
+            <select value={activeMap} onChange={(e) => setMap(e.target.value)}>
+              {mapOptions.map((m) => (
+                <option key={m} value={m}>{m}</option>
+              ))}
+            </select>
+          </label>
 
-        <label className="an-select">
-          แมตช์ของทีม
-          <select value={demo} onChange={(e) => setDemo(e.target.value)}>
-            <option value="">ทุกแมตช์ที่อัปโหลด ({mine.length})</option>
-            {mine.map((m) => (
-              <option key={m.demo_file} value={m.demo_file}>{matchLabel(m)}</option>
-            ))}
-          </select>
-        </label>
+          {mode !== "pro" && (
+            <label className="an-select">
+              แมตช์ของทีม
+              <select value={demo} onChange={(e) => setDemo(e.target.value)}>
+                <option value="">ทุกแมตช์ที่อัปโหลด ({mine.length})</option>
+                {mine.map((m) => (
+                  <option key={m.demo_file} value={m.demo_file}>{matchLabel(m)}</option>
+                ))}
+              </select>
+            </label>
+          )}
+        </div>
       </div>
 
+      {needsOurMatches ? (
+        <NothingToCompare done={done} why="no-upload" />
+      ) : (
+        <>
       {error && <p className="err">โหลดข้อมูลไม่ได้: {error.message}</p>}
-      {loading && <p className="muted">{mode === "read" ? "กำลังให้โมเดลอ่านทีละรอบ…" : "กำลังนับจุดตาย…"}</p>}
+      {loading && (
+        <p className="muted">
+          {mode === "pro" ? "กำลังโหลดแผนที่ทีมอาชีพ…" : mode === "read" ? "กำลังให้โมเดลอ่านทีละรอบ…" : "กำลังนับจุดตาย…"}
+        </p>
+      )}
+
+      {!loading && !error && mode === "pro" && gridQ.data && (
+        <ProMapSection overlay={gridQ.data} layer={layer} onLayer={setLayer} hovered={proHover} onHover={setProHover} />
+      )}
 
       {!loading && !error && mode === "read" && readQ.data && (
         <ReadabilityReport data={readQ.data} demo={target} />
       )}
 
-      {!loading && !error && mode !== "read" && (
+      {!loading && !error && (mode === "upload" || mode === "diff") && (
         <div className="an-grid">
           {/* แผงนี้อยู่เสมอไม่ว่าจะเลือกรอบ/ผู้เล่นไว้กี่คน — กด "ไม่เอาเลย" แล้วต้องยังเห็นปุ่ม "ทั้งหมด"
               เพื่อย้อนกลับได้ ไม่ใช่ทั้งแผงหายไปพร้อมกับแผนที่จนหาทางกลับไม่เจอ */}
@@ -233,6 +302,8 @@ export function AnalysisPage() {
           )}
         </div>
       )}
+        </>
+      )}
     </div>
   );
 }
@@ -281,22 +352,6 @@ function HeatmapControls({
 
   return (
     <aside className="hm-panel" aria-label="ตั้งค่าการแสดงผล heatmap">
-      <div className="hm-field">
-        <div className="hm-field-h"><span>รัศมี</span><span className="num muted">{radius.toFixed(1)}×</span></div>
-        <input type="range" min={0.5} max={2.5} step={0.1} value={radius}
-          onChange={(e) => onRadius(Number(e.target.value))} aria-label="รัศมีของจุดความร้อน" />
-      </div>
-      <div className="hm-field">
-        <div className="hm-field-h"><span>เบลอ</span><span className="num muted">{blur.toFixed(1)}</span></div>
-        <input type="range" min={0} max={10} step={0.5} value={blur}
-          onChange={(e) => onBlur(Number(e.target.value))} aria-label="ความเบลอเพิ่มเติม" />
-      </div>
-      <div className="hm-field">
-        <div className="hm-field-h"><span>ความทึบ</span><span className="num muted">{Math.round(opacity * 100)}%</span></div>
-        <input type="range" min={0.2} max={1} step={0.05} value={opacity}
-          onChange={(e) => onOpacity(Number(e.target.value))} aria-label="ความทึบของชั้นสี" />
-      </div>
-
       <div className="hm-field">
         <div className="hm-field-h"><span>ฝั่งของคนที่ตาย</span></div>
         <div className="seg hm-seg" role="group" aria-label="ฝั่งของคนที่ตาย">
@@ -358,9 +413,25 @@ function HeatmapControls({
         </>
       )}
 
-      <p className="muted small hm-note">
-        ประเภทเหตุการณ์ (ระเบิด) และตัวกรองทีมยังทำไม่ได้ในรุ่นนี้
-      </p>
+      {/* ปุ่มปรับหน้าตา heatmap พับไว้ — คนส่วนใหญ่ไม่ต้องแตะ และ "รัศมี/เบลอ" ไม่ใช่คำที่โค้ชอยากเห็นก่อนข้อมูล */}
+      <details className="hm-adv">
+        <summary>ปรับการแสดงผล</summary>
+        <div className="hm-field">
+          <div className="hm-field-h"><span>รัศมี</span><span className="num muted">{radius.toFixed(1)}×</span></div>
+          <input type="range" min={0.5} max={2.5} step={0.1} value={radius}
+            onChange={(e) => onRadius(Number(e.target.value))} aria-label="รัศมีของจุดความร้อน" />
+        </div>
+        <div className="hm-field">
+          <div className="hm-field-h"><span>เบลอ</span><span className="num muted">{blur.toFixed(1)}</span></div>
+          <input type="range" min={0} max={10} step={0.5} value={blur}
+            onChange={(e) => onBlur(Number(e.target.value))} aria-label="ความเบลอเพิ่มเติม" />
+        </div>
+        <div className="hm-field">
+          <div className="hm-field-h"><span>ความทึบ</span><span className="num muted">{Math.round(opacity * 100)}%</span></div>
+          <input type="range" min={0.2} max={1} step={0.05} value={opacity}
+            onChange={(e) => onOpacity(Number(e.target.value))} aria-label="ความทึบของชั้นสี" />
+        </div>
+      </details>
     </aside>
   );
 }
@@ -950,22 +1021,426 @@ function DeathMap<T extends DeathCellCount>({
   );
 }
 
-/** ยังไม่มีอะไรให้เทียบ — บอกตรง ๆ ว่าขาดอะไร ไม่ใช่หน้าว่าง */
-function NothingToCompare({ done }: { done: Match[] }) {
+/**
+ * ยังไม่มีอะไรให้เทียบ — บอกตรง ๆ ว่าขาดอะไร ไม่ใช่หน้าว่าง
+ *   no-reference  ไม่มีเดโมทีมอาชีพในระบบเลย (ทั้งหน้าใช้ไม่ได้)
+ *   no-upload     มีชุดอ้างอิง แต่ยังไม่มีแมตช์ของเราบนแมพนั้น — โหมด "แผนที่ทีมอาชีพ" ยังดูได้ จึงเป็นข้อความในหน้า ไม่ใช่แทนทั้งหน้า
+ */
+function NothingToCompare({ done, why }: { done: Match[]; why: "no-reference" | "no-upload" }) {
   const uploaded = done.filter((m) => m.source === "upload");
+  if (why === "no-reference") {
+    return (
+      <div className="pl-empty" data-testid="analysis-empty">
+        <h1>ยังไม่มีเดโมทีมอาชีพในระบบ</h1>
+        <p className="muted">หน้านี้ใช้เดโมทีมอาชีพเป็นฐานเทียบ — ต้องโหลดชุดอ้างอิงเข้ามาก่อน (ดู README หัวข้อชุดอ้างอิง)</p>
+        <Link className="btn-primary" to="/matches">ไปหน้าแมตช์</Link>
+      </div>
+    );
+  }
   return (
-    <div className="pl-empty" data-testid="analysis-empty">
-      <h1>ยังไม่มีแมตช์ให้เทียบ</h1>
+    <div className="an-empty" data-testid="analysis-empty">
+      <h2>ยังไม่มีแมตช์ของทีมให้เทียบ</h2>
       <p className="muted">
-        หน้านี้เทียบแมตช์ของทีมกับเดโมทีมอาชีพบนแมพเดียวกัน
+        โหมดนี้เทียบแมตช์ของทีมกับเดโมทีมอาชีพบนแมพเดียวกัน
         {uploaded.length === 0
           ? " — ยังไม่มีแมตช์ที่อัปโหลดเข้ามาเลย"
           : ` — มีแมตช์ที่อัปโหลด ${uploaded.length} แมตช์ แต่ยังไม่ตรงกับแมพที่มีเดโมทีมอาชีพให้เทียบ (ตอนนี้มีแค่ de_mirage)`}
+        {" "}ระหว่างนี้ดู "แผนที่ทีมอาชีพ" ได้เลย
       </p>
-      <Link className="btn-primary" to="/matches">
-        ไปหน้าแมตช์
-      </Link>
+      <Link className="btn-primary" to="/matches">อัปโหลดแมตช์</Link>
     </div>
+  );
+}
+
+// ================================================================================================
+// "แผนที่ทีมอาชีพ" — ผลของ research/grid_ml1.py ทั้งดาต้าเซ็ต วาดเป็น heatmap แบบเดียวกับโหมดอื่นของหน้านี้
+// (ย้ายมาจากหน้ารอบ 2026-09-17) ระบายได้ทีละชั้นเพราะหนึ่งช่องมีได้สีเดียว · ตัวเลขทุกตัวเป็นของทั้งดาต้าเซ็ต
+// ช่องของ grid_ml1 มีชื่อ callout เหมือน DeathCellCount จึงใช้ groupByPlace / placeLabels / cellKey ชุดเดียวกัน
+// ป้ายโซน ตาราง และการชี้เมาส์จึงทำงานเหมือนโหมด "ทีมเราตายตรงไหน" ทุกประการ — คนที่ใช้โหมดหนึ่งเป็น ใช้อีกโหมดได้เลย
+// ================================================================================================
+const PRO_LAYERS: { key: GridLayer; label: string; hint: string }[] = [
+  { key: "freq", label: "ดวลบ่อย", hint: "ยิ่งเข้ม = ตรงนั้นดวลกันบ่อย · เลขบนแผนที่คือจุดปะทะที่โมเดลหาเจอ เรียงจากหนักสุด" },
+  { key: "ct", label: "CT ได้เปรียบ", hint: "ยิ่งเข้ม = ฝั่ง CT ยิ่งชนะดวลบ่อย · ที่ไม่ระบายคือ CT ชนะไม่ถึงครึ่ง" },
+  { key: "t", label: "T ได้เปรียบ", hint: "ยิ่งเข้ม = ฝั่ง T ยิ่งชนะดวลบ่อย · ที่ไม่ระบายคือ T ชนะไม่ถึงครึ่ง" },
+  { key: "type", label: "ประเภทพื้นที่", hint: "โมเดลจัดกลุ่มช่องที่การปะทะคล้ายกันไว้ด้วยกันเอง โดยไม่รู้ว่าใครชนะ" },
+];
+
+/** ช่องของ grid_ml1 ในรูปที่ตัวช่วยของหน้านี้ใช้ได้ — deaths/share = จำนวน/สัดส่วนการดวล */
+interface ProCell extends DeathCellCount {
+  duels: number;
+  ct_win: number;
+  cluster_id: number;
+}
+type ProHotspots = NonNullable<GridOverlay["hotspots"]>;
+type ProClusters = NonNullable<GridOverlay["clusters"]>;
+type AdvSide = "ct" | "t";
+
+const HOTSPOTS_SHOWN = 8;  // จุดปะทะที่ปักเลขบนแผนที่และอยู่ในตาราง — ที่เหลือเล็กเกินกว่าจะมีประโยชน์กับคนอ่าน
+const ADV_MIN_DUELS = 30;  // ตาราง "โซนที่ฝั่งนี้ชนะ" นับเฉพาะโซนที่ดวลกันมากพอ — สิบกว่าดวลบอกอะไรไม่ได้
+
+interface ProProps {
+  overlay: GridOverlay;
+  layer: GridLayer;
+  onLayer: (l: GridLayer) => void;
+  /** สิ่งที่ชี้อยู่: "h:<id>" จุดปะทะ · "p:<โซน>" โซน · "c:<id>" ประเภทพื้นที่ — ตาราง <-> แผนที่ใช้คีย์เดียวกัน */
+  hovered: string | null;
+  onHover: (key: string | null) => void;
+}
+
+function ProMapSection({ overlay, layer, onLayer, hovered, onHover }: ProProps) {
+  if (!overlay.available || !overlay.cells || !overlay.hotspots || !overlay.radar) {
+    return (
+      <div className="an-empty" data-testid="pro-empty">
+        <h2>ยังไม่มีผลของโมเดลสำหรับแมพนี้</h2>
+        <p className="muted">{overlay.reason ?? "รัน python research/grid_ml1.py ก่อน แล้วรีเฟรชหน้านี้"}</p>
+      </div>
+    );
+  }
+  const total = overlay.cells.reduce((s, c) => s + c.duels, 0);
+  const cells: ProCell[] = overlay.cells.map((c) => ({ ...c, deaths: c.duels, share: total ? c.duels / total : 0 }));
+  const hotspots = overlay.hotspots.slice(0, HOTSPOTS_SHOWN); // backend เรียงจากดวลมากไปน้อยแล้ว (เบอร์ 1 = หนักสุด)
+  const clusters = overlay.clusters ?? [];
+  const sourceLabel = overlay.source?.label ?? "เดโมทีมอาชีพ";
+  const adv: AdvSide | null = layer === "ct" || layer === "t" ? layer : null;
+  const current = PRO_LAYERS.find((l) => l.key === layer);
+  return (
+    <div className="an-grid two" data-testid="pro-map">
+      <section className="an-map-col">
+        <div className="an-layers">
+          <span className="grid-layers" role="group" aria-label="ระบายแผนที่ด้วย" data-testid="layer-bar">
+            <span className="muted">แสดง:</span>
+            {PRO_LAYERS.map((l) => (
+              <button key={l.key} type="button" className={`chip${layer === l.key ? " on" : ""}`}
+                aria-pressed={layer === l.key} onClick={() => onLayer(l.key)} data-testid={`grid-${l.key}`}>
+                {l.label}
+              </button>
+            ))}
+          </span>
+          <span className="muted small an-layer-hint">{current?.hint}</span>
+        </div>
+        <div className="an-map">
+          <ProHeatMap radar={overlay.radar} cells={cells} layer={layer} hotspots={layer === "freq" ? hotspots : []}
+            hovered={hovered} onHover={onHover} />
+        </div>
+        <ProKey layer={layer} cells={cells} clusters={clusters} minDuels={overlay.min_kills ?? 0} sourceLabel={sourceLabel} />
+      </section>
+
+      <aside className="an-side">
+        {layer === "freq" && (
+          <HotspotTable hotspots={hotspots} all={overlay.hotspots} hovered={hovered} onHover={onHover} />
+        )}
+        {adv && <PlaceAdvTable rows={placeAdvantage(cells, adv)} side={adv} hovered={hovered} onHover={onHover} />}
+        {layer === "type" && (
+          <ClusterList clusters={clusters} overall={overlay.ct_win_overall} hovered={hovered} onHover={onHover} />
+        )}
+        <p className="muted small an-note">
+          ตัวเลขทุกตัวมาจาก {sourceLabel} — "CT ชนะดวล" คือสัดส่วนที่ CT เป็นฝ่ายชนะการดวลในพื้นที่นั้น
+          ไม่ใช่ผลของรอบใดรอบหนึ่ง และไม่ได้บอกว่าใครเล่นดีหรือไม่ดี
+        </p>
+      </aside>
+    </div>
+  );
+}
+
+/**
+ * ไล่ log1p ระหว่างช่องที่ดวลน้อยสุดถึงมากสุด "ที่ระบายจริง" — ทุกช่องของ grid_ml1 มีอย่างน้อย min_kills (10) ดวล
+ * ถ้าไล่จาก 0 แบบ deathT ช่องที่จางสุดจะยังเข้มเกือบครึ่งสเกล ทั้งแมพเลยแดงพอ ๆ กันจนจุดร้อนจริงไม่โดดออกมา
+ */
+function duelT(v: number, min: number, max: number): number {
+  const lo = Math.log1p(min);
+  const hi = Math.log1p(max);
+  return hi > lo ? Math.min(1, Math.max(0, (Math.log1p(v) - lo) / (hi - lo))) : 1;
+}
+
+/** สีของช่องตามชั้นที่เลือก — ไล่ต่อเนื่องแบบเดียวกับโหมด "ทีมเราตายตรงไหน" ไม่ตัดเป็นขั้น */
+function proPaint(cells: ProCell[], layer: GridLayer) {
+  const duelsList = cells.map((c) => c.duels);
+  const minDuels = Math.min(...duelsList);
+  const maxDuels = Math.max(1, ...duelsList);
+  return (c: ProCell): { fill: string; opacity: number; title: string } | null => {
+    if (layer === "freq") {
+      const t = duelT(c.duels, minDuels, maxDuels);
+      const ramp = DEATH_RAMP.all;
+      return { fill: mixHex(ramp[0], ramp[ramp.length - 1], t), opacity: 0.32 + t * 0.6, title: `ดวลกัน ${c.duels} ครั้งในทั้งดาต้าเซ็ต` };
+    }
+    if (layer === "type") {
+      return { fill: typeFill(c.cluster_id), opacity: 0.62, title: `ประเภทพื้นที่ ${c.cluster_id} · ดวล ${c.duels} ครั้ง` };
+    }
+    const win = layer === "ct" ? c.ct_win : 1 - c.ct_win;
+    if (win < 0.5) return null; // ฝั่งนี้ชนะไม่ถึงครึ่ง = ไม่ระบาย — อีกฝั่งชนะที่นั่น ดูได้จากอีกชั้น
+    const t = advT(win);
+    const ramp = DEATH_RAMP[layer];
+    return {
+      fill: mixHex(ramp[0], ramp[ramp.length - 1], t),
+      opacity: 0.35 + t * 0.55,
+      title: `ฝั่ง ${sideLabel(layer)} ชนะดวล ${pct(win)} จาก ${c.duels} ครั้งในทั้งดาต้าเซ็ต`,
+    };
+  };
+}
+
+/**
+ * แผนที่ทีมอาชีพ — วาดเหมือน DeathMap: ชั้นสีเป็นวงถ่วงน้ำหนักที่กึ่งกลางช่องแล้วเบลอทั้งกลุ่ม (heatmap)
+ * ชั้นรับชี้เมาส์เป็นสี่เหลี่ยมโปร่งใสตรงช่องจริง · ป้ายโซนหลัก (บอมบ์ไซต์/กลางแมพ/จุดเกิด) จาก placeLabels()
+ * "ประเภทพื้นที่" เป็นกลุ่มไม่มีลำดับ จึงไม่เบลอ (เบลอสีสามสีเข้าหากันจะได้สีที่ไม่มีความหมาย) วาดเป็นช่องมุมมนแทน
+ * จุดปะทะ (MeanShift) เป็นหมุดเลขเล็ก ๆ ที่กึ่งกลาง ชี้แล้วค่อยเห็นรัศมีจริง — วงประ 17 วงตลอดเวลาบังแผนที่จนอ่านไม่ออก
+ */
+function ProHeatMap({ radar, cells, layer, hotspots, hovered, onHover }: {
+  radar: NonNullable<GridOverlay["radar"]>;
+  cells: ProCell[];
+  layer: GridLayer;
+  hotspots: ProHotspots;
+  hovered: string | null;
+  onHover: (key: string | null) => void;
+}) {
+  const s = radar.size;
+  const labels = placeLabels(cells);
+  const paint = proPaint(cells, layer);
+  const painted = cells
+    .map((c) => ({ c, p: paint(c) }))
+    .filter((x): x is { c: ProCell; p: { fill: string; opacity: number; title: string } } => x.p != null)
+    .sort((a, b) => a.p.opacity - b.p.opacity); // เข้มสุดวาดทับบนสุด
+  // ชี้โซน = เน้นช่องของโซนนั้น · ชี้ประเภท = หรี่ประเภทอื่นลง · ชี้จุดปะทะ = แผนที่ไม่เปลี่ยน (หมุดเองที่ขยาย)
+  const state = (c: ProCell): "on" | "off" | null => {
+    if (!hovered) return null;
+    if (hovered.startsWith("p:")) return hovered === `p:${cellKey(c)}` ? "on" : null;
+    if (hovered.startsWith("c:")) return hovered === `c:${c.cluster_id}` ? "on" : "off";
+    return null;
+  };
+  const blurred = layer !== "type";
+  return (
+    <svg viewBox={`0 0 ${s} ${s}`} className="radar" data-testid="analysis-radar">
+      <defs>
+        <filter id="pro-blur" x="-40%" y="-40%" width="180%" height="180%">
+          <feGaussianBlur stdDeviation={3.2} />
+        </filter>
+      </defs>
+      <image href={radar.image} x={0} y={0} width={s} height={s} />
+
+      <g filter={blurred ? "url(#pro-blur)" : undefined} style={{ pointerEvents: "none" }}>
+        {painted.map(({ c, p }) => {
+          const st = state(c);
+          const op = st === "on" ? 1 : st === "off" ? p.opacity * 0.22 : p.opacity;
+          const style = { transition: "opacity .12s" };
+          return blurred ? (
+            <circle key={`fill-${c.cx}-${c.cy}`} cx={c.x + c.w / 2} cy={c.y + c.w / 2} r={c.w * 1.4} fill={p.fill} opacity={op} style={style} />
+          ) : (
+            <rect key={`fill-${c.cx}-${c.cy}`} x={c.x + 1} y={c.y + 1} width={c.w - 2} height={c.w - 2} rx={c.w * 0.22}
+              fill={p.fill} opacity={op} style={style} />
+          );
+        })}
+      </g>
+
+      {painted.map(({ c, p }) => {
+        const key = `p:${cellKey(c)}`;
+        const on = state(c) === "on";
+        return (
+          <rect key={`hit-${c.cx}-${c.cy}`} x={c.x} y={c.y} width={c.w} height={c.w}
+            fill="transparent" stroke={on ? "#ffffff" : "transparent"} strokeWidth={on ? 2.5 : 0}
+            onMouseEnter={() => onHover(key)} onMouseLeave={() => onHover(null)}
+            data-testid="overlay-cell" data-active={on || undefined}>
+            <title>{`${c.place ?? "ไม่มีชื่อเรียก"} (ช่อง ${c.cx}, ${c.cy}) · ${p.title}`}</title>
+          </rect>
+        );
+      })}
+
+      {labels.map((l) => (
+        <text key={l.key} x={l.x} y={l.y} textAnchor="middle" className="zone-label"
+          opacity={hovered == null || hovered === `p:${l.key}` ? 1 : 0.4}>
+          {l.place}
+        </text>
+      ))}
+
+      {hotspots.map((h) => {
+        const on = hovered === `h:${h.id}`;
+        return (
+          <g key={h.id} data-testid="overlay-hotspot" style={{ cursor: "default" }}
+            onMouseEnter={() => onHover(`h:${h.id}`)} onMouseLeave={() => onHover(null)}>
+            {on && <circle cx={h.px} cy={h.py} r={h.r} fill="rgba(255,255,255,.14)" stroke="#ffffff" strokeWidth={3} strokeDasharray="10 7" />}
+            <circle cx={h.px} cy={h.py} r={on ? 26 : 21} fill="#ffffff" stroke="#0b0e14" strokeWidth={3} />
+            <text x={h.px} y={h.py} dy={8} textAnchor="middle" className="hot-mark">{h.id}</text>
+            <title>{`จุดปะทะ #${h.id} · ${h.place} · ดวล ${h.duels} ครั้ง (${pct(h.share)} ของทั้งหมด) · CT ชนะดวล ${pct(h.ct_win)}`}</title>
+          </g>
+        );
+      })}
+    </svg>
+  );
+}
+
+/** แถบไล่สีต่อเนื่องพร้อมค่าปลายสองข้าง — คำอธิบายสีของทุกชั้นในแผนที่ทีมอาชีพใช้แบบเดียวกัน */
+function RampKey({ id, text, from, to, colorAt, note }: {
+  id: string; text: string; from: string; to: string; colorAt: (f: number) => string; note: string;
+}) {
+  const steps = 10;
+  return (
+    <div className="map-key grad-key" aria-label="คำอธิบายสี" data-testid="grid-key">
+      <span className="muted">{text}</span>
+      <span className="grad-bar-wrap">
+        <span className="grad-num">{from}</span>
+        <svg className="grad-bar" viewBox="0 0 100 10" preserveAspectRatio="none" aria-hidden="true">
+          <defs>
+            <linearGradient id={id} x1="0" y1="0" x2="1" y2="0">
+              {Array.from({ length: steps + 1 }, (_, i) => (
+                <stop key={i} offset={`${(i / steps) * 100}%`} stopColor={colorAt(i / steps)} />
+              ))}
+            </linearGradient>
+          </defs>
+          <rect x="0" y="0" width="100" height="10" fill={`url(#${id})`} />
+        </svg>
+        <span className="grad-num">{to}</span>
+      </span>
+      <span className="muted">{note}</span>
+    </div>
+  );
+}
+
+/** คำอธิบายสีของชั้นที่เปิดอยู่ — ระบายอะไรลงแผนที่ ต้องบอกที่นี่เสมอว่ามันแปลว่าอะไรและมาจากไหน */
+function ProKey({ layer, cells, clusters, minDuels, sourceLabel }: {
+  layer: GridLayer; cells: ProCell[]; clusters: ProClusters; minDuels: number; sourceLabel: string;
+}) {
+  if (layer === "type") {
+    return (
+      <div className="legend" data-testid="grid-key">
+        {clusters.map((c) => (
+          <span key={c.id}>
+            <i style={{ background: typeFill(c.id) }} /> {c.id}: {typeLabelTh(c.name)}
+          </span>
+        ))}
+        <span className="muted">— สีบอกแค่ว่ากลุ่มไหน ไม่ได้แปลว่าดีหรือแย่กว่ากัน · {sourceLabel}</span>
+      </div>
+    );
+  }
+  if (layer === "freq") {
+    const duelsList = cells.map((c) => c.duels);
+    const min = Math.min(...duelsList);
+    const max = Math.max(1, ...duelsList);
+    const ramp = DEATH_RAMP.all;
+    return (
+      <RampKey id="pro-key-freq" text="จำนวนการดวลในช่องนั้น ยิ่งเข้มยิ่งบ่อย" from={String(min)} to={String(max)}
+        colorAt={(f) => mixHex(ramp[0], ramp[ramp.length - 1], duelT(min + (max - min) * f, min, max))}
+        note={`ครั้ง · ต่ำกว่า ${minDuels} ครั้งไม่ระบาย — ${sourceLabel}`} />
+    );
+  }
+  const ramp = DEATH_RAMP[layer];
+  const other = layer === "ct" ? "T" : "CT";
+  return (
+    <RampKey id={`pro-key-${layer}`} text={`ฝั่ง ${sideLabel(layer)} ชนะดวลกี่ % ในช่องนั้น ยิ่งเข้มยิ่งชนะบ่อย`} from="50%" to="100%"
+      colorAt={(f) => mixHex(ramp[0], ramp[ramp.length - 1], advT(0.5 + 0.5 * f))}
+      note={`ไม่ระบาย = ${sideLabel(layer)} ชนะไม่ถึงครึ่ง (ตรงนั้น ${other} ได้เปรียบ ดูได้จากปุ่ม "${other} ได้เปรียบ") — ${sourceLabel}`} />
+  );
+}
+
+/** โซน (ชื่อ callout) ที่ฝั่งนี้ชนะดวลบ่อยที่สุด — รวมทุกช่องของโซนแล้วถ่วงน้ำหนักด้วยจำนวนดวล */
+function placeAdvantage(cells: ProCell[], side: AdvSide) {
+  return groupByPlace(cells)
+    .filter((g) => g.place != null && g.deaths >= ADV_MIN_DUELS)
+    .map((g) => {
+      const ctWin = g.cells.reduce((s, c) => s + c.ct_win * c.duels, 0) / g.deaths;
+      return { key: g.key, place: g.place!, cells: g.cells, duels: g.deaths, win: side === "ct" ? ctWin : 1 - ctWin };
+    })
+    .sort((a, b) => b.win - a.win || b.duels - a.duels)
+    .slice(0, 8);
+}
+
+function PlaceAdvTable({ rows, side, hovered, onHover }: {
+  rows: ReturnType<typeof placeAdvantage>; side: AdvSide; hovered: string | null; onHover: (key: string | null) => void;
+}) {
+  const name = sideLabel(side);
+  return (
+    <>
+      <h2>โซนที่ฝั่ง {name} ชนะดวลบ่อย</h2>
+      <p className="muted small">
+        เรียงจากโซนที่ {name} ชนะดวลบ่อยที่สุด · นับเฉพาะโซนที่ดวลกันตั้งแต่ {ADV_MIN_DUELS} ครั้งขึ้นไป · ชี้แถวแล้วโซนบนแผนที่จะถูกเน้น
+      </p>
+      <table className="tbl compact an-tbl" data-testid="adv-table">
+        <thead>
+          <tr>
+            <th>ตรงไหนของแมพ</th>
+            <th className="num">ดวล</th>
+            <th className="num">{name} ชนะดวล</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r) => (
+            <tr key={r.key} className={hovered === `p:${r.key}` ? "hl" : ""} tabIndex={0}
+              onMouseEnter={() => onHover(`p:${r.key}`)} onMouseLeave={() => onHover(null)}
+              onFocus={() => onHover(`p:${r.key}`)} onBlur={() => onHover(null)}>
+              <td><PlaceCell place={r.place} cells={r.cells} /></td>
+              <td className="num">{r.duels}</td>
+              <td className="num"><b>{pct(r.win)}</b></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </>
+  );
+}
+
+/** จุดที่ดวลกันบ่อย (MeanShift) เรียงจากดวลมากไปน้อย — ชี้แถวแล้วหมุดบนแผนที่ขยายพร้อมโชว์รัศมีจริง */
+function HotspotTable({ hotspots, all, hovered, onHover }: {
+  hotspots: ProHotspots; all: ProHotspots; hovered: string | null; onHover: (key: string | null) => void;
+}) {
+  const covered = all.reduce((s, h) => s + h.share, 0);
+  return (
+    <>
+      <h2>จุดที่ดวลกันบ่อย</h2>
+      <p className="muted small">
+        โมเดลหาจุดปะทะเจอเอง {all.length} จุด รวมกันกินการดวล {pct(covered)} ของทั้งหมด — แสดง {hotspots.length} จุดที่หนักที่สุด
+        เบอร์ 1 คือจุดที่ดวลหนักที่สุด
+      </p>
+      <table className="tbl compact an-tbl" data-testid="hotspot-table">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>ตรงไหนของแมพ</th>
+            <th className="num">ดวล</th>
+            <th className="num">สัดส่วน</th>
+            <th className="num">CT ชนะดวล</th>
+          </tr>
+        </thead>
+        <tbody>
+          {hotspots.map((h) => (
+            <tr key={h.id} className={hovered === `h:${h.id}` ? "hl" : ""} tabIndex={0}
+              onMouseEnter={() => onHover(`h:${h.id}`)} onMouseLeave={() => onHover(null)}
+              onFocus={() => onHover(`h:${h.id}`)} onBlur={() => onHover(null)}>
+              <td><span className="hot-num">{h.id}</span></td>
+              <td><span className="an-place">{h.place}</span></td>
+              <td className="num">{h.duels}</td>
+              <td className="num">{pct(h.share)}</td>
+              <td className="num">{pct(h.ct_win)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </>
+  );
+}
+
+/** สามประเภทพื้นที่ที่ KMeans แบ่งเอง — โมเดลไม่เคยเห็นว่าใครชนะ แต่พอเอาผลมาเทียบทีหลัง แต่ละประเภทต่างกันชัด */
+function ClusterList({ clusters, overall, hovered, onHover }: {
+  clusters: ProClusters; overall: number | undefined; hovered: string | null; onHover: (key: string | null) => void;
+}) {
+  return (
+    <>
+      <h2>ประเภทพื้นที่</h2>
+      <p className="muted small">
+        โมเดลจัดกลุ่มช่องจากลักษณะการปะทะ (เกิดตอนไหนของรอบ · หลังวางบอมบ์ไหม · ดวลไกลแค่ไหน · ใช้ปืนซุ่มบ่อยไหม)
+        โดยไม่รู้ว่าใครชนะ{overall != null && <> — เฉลี่ยทั้งแมพ CT ชนะดวล {pct(overall)}</>} · ชี้แล้วแผนที่จะเหลือเฉพาะประเภทนั้น
+      </p>
+      <ul className="legend-type" data-testid="cluster-list">
+        {clusters.map((c) => (
+          <li key={c.id} className={hovered === `c:${c.id}` ? "hl" : ""} tabIndex={0}
+            onMouseEnter={() => onHover(`c:${c.id}`)} onMouseLeave={() => onHover(null)}
+            onFocus={() => onHover(`c:${c.id}`)} onBlur={() => onHover(null)}>
+            <i style={{ background: typeFill(c.id) }} />
+            <span>
+              <b>{c.id}: {typeLabelTh(c.name)}</b> <span className="en">({c.name})</span>
+              <br />
+              <span className="muted small">{c.n_cells} ช่อง · {c.duels} ดวล · CT ชนะดวล <b>{pct(c.ct_win)}</b></span>
+            </span>
+          </li>
+        ))}
+      </ul>
+    </>
   );
 }
 
