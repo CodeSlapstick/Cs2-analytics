@@ -1,0 +1,116 @@
+<!doctype html>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>CS2 Scouting — กระบวนการทำงานของ ML</title>
+<style>
+  :root {
+    --bg: #ffffff;
+    --dot: #d0d0d0;
+    --fg: #000000;
+    --blue-fill: #dae8fc; --blue-stroke: #6c8ebf;
+    --green-fill: #d5e8d4; --green-stroke: #82b366;
+    --orange-fill: #ffe6cc; --orange-stroke: #d79b00;
+    --red: #b85450;
+  }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 13px/1.4 "Helvetica Neue", Helvetica, Arial, "Leelawadee UI", sans-serif; }
+  main { margin: 0; padding: 0; }
+  svg { width: 1040px; height: 460px; display: block; }
+  .label { font-size: 13px; font-weight: 700; fill: var(--fg); }
+  .sub { font-size: 11.5px; fill: var(--fg); }
+  .small { font-size: 11.5px; fill: #333333; }
+  .num { font-size: 11.5px; font-weight: 700; fill: #000000; }
+  .node { stroke-width: 1.5px; }
+  .blue { fill: var(--blue-fill); stroke: var(--blue-stroke); }
+  .green { fill: var(--green-fill); stroke: var(--green-stroke); }
+  .orange { fill: var(--orange-fill); stroke: var(--orange-stroke); }
+  .edge { stroke: #000000; stroke-width: 1.2; fill: none; }
+  .zone { fill: none; stroke: #999999; stroke-width: 1.2; stroke-dasharray: 6 4; }
+  .zone-label { font-size: 12px; font-weight: 700; fill: #666666; }
+</style>
+<main>
+  <svg viewBox="0 0 1040 460" xmlns="http://www.w3.org/2000/svg" role="img"
+       aria-label="กระบวนการทำงานของ ML จากข้อมูลดิบผ่านสองอัลกอริทึมคู่ขนานจนถึงผลลัพธ์ที่ตรวจแล้ว">
+    <defs>
+      <pattern id="dots" width="14" height="14" patternUnits="userSpaceOnUse">
+        <circle cx="1" cy="1" r="1" fill="var(--dot)" />
+      </pattern>
+      <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M 0 0 L 10 5 L 0 10 z" fill="#000000" />
+      </marker>
+    </defs>
+
+    <rect width="1040" height="460" fill="url(#dots)" />
+
+    <!-- ============ edges ============ -->
+    <path class="edge" d="M 178 191 L 200 191 L 200 90 L 224 90" marker-end="url(#arrow)" />
+    <path class="edge" d="M 178 191 L 200 191 L 200 270 L 224 270" marker-end="url(#arrow)" />
+    <path class="edge" d="M 396 90 L 416 90" marker-end="url(#arrow)" />
+    <path class="edge" d="M 396 270 L 416 270" marker-end="url(#arrow)" />
+    <path class="edge" d="M 580 90 L 600 90 L 600 150 L 616 150" marker-end="url(#arrow)" />
+    <path class="edge" d="M 580 270 L 600 270 L 600 210 L 616 210" marker-end="url(#arrow)" />
+    <path class="edge" d="M 808 180 L 852 180" marker-end="url(#arrow)" />
+
+    <!-- ============ node 1: raw data ============ -->
+    <rect class="node orange" x="18" y="150" width="160" height="82" />
+    <circle cx="36" cy="168" r="12" fill="#ffffff" stroke="#666666" stroke-width="1.5" /><text class="num" x="36" y="172" text-anchor="middle">1</text>
+    <text class="label" x="98" y="195" text-anchor="middle">ข้อมูลดิบ</text>
+    <text class="sub" x="98" y="215" text-anchor="middle">7,158 การปะทะ</text>
+    <text class="sub" x="98" y="229" text-anchor="middle">Mirage · 50 แมตช์</text>
+
+    <!-- ============ branch A top: MeanShift -> hotspots ============ -->
+    <rect class="node blue" x="224" y="52" width="172" height="76" />
+    <circle cx="242" cy="70" r="12" fill="#ffffff" stroke="#666666" stroke-width="1.5" /><text class="num" x="242" y="74" text-anchor="middle">2a</text>
+    <text class="label" x="320" y="94" text-anchor="middle">MeanShift</text>
+    <text class="sub" x="320" y="112" text-anchor="middle">หาจุดปะทะ · bandwidth 300</text>
+
+    <rect class="node green" x="416" y="52" width="164" height="76" />
+    <circle cx="434" cy="70" r="12" fill="#ffffff" stroke="#666666" stroke-width="1.5" /><text class="num" x="434" y="74" text-anchor="middle">3a</text>
+    <text class="label" x="508" y="94" text-anchor="middle">17 จุดร้อน</text>
+    <text class="sub" x="508" y="112" text-anchor="middle">75% ของการปะทะทั้งหมด</text>
+
+    <!-- ============ branch B bottom: grid + KMeans -> fight types ============ -->
+    <rect class="node blue" x="224" y="232" width="172" height="76" />
+    <circle cx="242" cy="250" r="12" fill="#ffffff" stroke="#666666" stroke-width="1.5" /><text class="num" x="242" y="254" text-anchor="middle">2b</text>
+    <text class="label" x="320" y="270" text-anchor="middle">กริด 32×32 + KMeans</text>
+    <text class="sub" x="320" y="288" text-anchor="middle">ไล่ k = 2–8 → เลือก k = 3</text>
+    <text class="sub" x="320" y="302" text-anchor="middle">192 / 341 ช่องผ่านเกณฑ์</text>
+
+    <rect class="node green" x="416" y="232" width="164" height="76" />
+    <circle cx="434" cy="250" r="12" fill="#ffffff" stroke="#666666" stroke-width="1.5" /><text class="num" x="434" y="254" text-anchor="middle">3b</text>
+    <text class="label" x="498" y="270" text-anchor="middle">3 ประเภทพื้นที่</text>
+    <text class="sub" x="498" y="288" text-anchor="middle">silhouette 0.285 ที่ k = 3</text>
+
+    <!-- ============ node 4: three validation gates ============ -->
+    <rect class="zone" x="616" y="34" width="192" height="316" />
+    <text class="zone-label" x="632" y="54">4 · สามด่านตรวจ</text>
+
+    <rect class="node orange" x="632" y="66" width="160" height="66" />
+    <text class="label" x="712" y="92" text-anchor="middle">แยกกันชัดไหม</text>
+    <text class="sub" x="712" y="111" text-anchor="middle"><tspan font-weight="700" fill="#b85450">0.285</tspan> silhouette</text>
+
+    <rect class="node orange" x="632" y="144" width="160" height="66" />
+    <text class="label" x="712" y="170" text-anchor="middle">เสถียรไหม</text>
+    <text class="sub" x="712" y="189" text-anchor="middle"><tspan font-weight="700" fill="#b85450">77%</tspan> bootstrap 20 รอบ</text>
+
+    <rect class="node orange" x="632" y="222" width="160" height="112" />
+    <text class="label" x="712" y="248" text-anchor="middle">มีความหมายไหม</text>
+    <text class="sub" x="712" y="267" text-anchor="middle" font-weight="700" fill="#b85450">68.6 / 58.7 / 41.7%</text>
+    <text class="sub" x="712" y="283" text-anchor="middle">CT win rate (ซ่อนไว้)</text>
+    <text class="sub" x="712" y="297" text-anchor="middle">เทียบตอนจบเท่านั้น</text>
+
+    <!-- ============ node 5: output ============ -->
+    <rect class="node green" x="852" y="142" width="170" height="76" />
+    <circle cx="870" cy="160" r="12" fill="#ffffff" stroke="#666666" stroke-width="1.5" /><text class="num" x="870" y="164" text-anchor="middle">5</text>
+    <text class="label" x="937" y="182" text-anchor="middle">ผลลัพธ์ที่ตรวจแล้ว</text>
+    <text class="sub" x="937" y="200" text-anchor="middle">แผนที่จุดร้อน + 3 ประเภทพื้นที่</text>
+
+    <!-- caption row -->
+    <text class="small" x="18" y="378" font-weight="700" fill="#000000">เส้นทางเดียวที่ผลลัพธ์ไหลลง — ไม่มีทางลัด</text>
+    <text class="small" x="18" y="401">
+      ทั้ง MeanShift และ KMeans ไม่เคยเห็นว่าใครชนะการปะทะเลยสักครั้งระหว่างจัดกลุ่ม — อัตราชนะ (win rate) จะถูกนำมาเทียบ
+    </text>
+    <text class="small" x="18" y="421">
+      หลังจัดกลุ่มเสร็จแล้วเท่านั้น (ด่านที่ 4 กล่องล่างสุด) หากอัตราชนะของแต่ละกลุ่มไม่ต่างกัน ผลลัพธ์จะถูกปฏิเสธ ไม่ถูกนำไปใช้
+    </text>
+  </svg>
+</main>

@@ -1,0 +1,113 @@
+<!doctype html>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>CS2 Scouting — สามด่านตรวจของ unsupervised</title>
+<style>
+  :root {
+    --bg: #ffffff;
+    --dot: #d0d0d0;
+    --fg: #000000;
+    --blue-fill: #dae8fc; --blue-stroke: #6c8ebf;
+    --green-fill: #d5e8d4; --green-stroke: #82b366;
+    --orange-fill: #ffe6cc; --orange-stroke: #d79b00;
+    --gray-fill: #f5f5f5; --gray-stroke: #666666;
+    --red: #b85450;
+  }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--fg);
+    font: 13px/1.4 "Helvetica Neue", Helvetica, Arial, "Leelawadee UI", sans-serif;
+  }
+  main { margin: 0; padding: 0; }
+  svg { width: 1020px; height: 440px; display: block; }
+  .label { font-size: 13.5px; font-weight: 700; fill: var(--fg); }
+  .sub { font-size: 12px; fill: var(--fg); }
+  .small { font-size: 11.5px; fill: #333333; }
+  .num { font-size: 13.5px; font-weight: 700; fill: var(--red); }
+  .node { stroke-width: 1.5px; }
+  .blue { fill: var(--blue-fill); stroke: var(--blue-stroke); }
+  .green { fill: var(--green-fill); stroke: var(--green-stroke); }
+  .orange { fill: var(--orange-fill); stroke: var(--orange-stroke); }
+  .gray { fill: var(--gray-fill); stroke: var(--gray-stroke); }
+  .edge { stroke: #000000; stroke-width: 1.2; fill: none; }
+  .zone { fill: none; stroke: #999999; stroke-width: 1.2; stroke-dasharray: 6 4; }
+  .zone-label { font-size: 12px; font-weight: 700; fill: #666666; }
+  .held { stroke: var(--red); stroke-width: 1.5; fill: none; stroke-dasharray: 7 5; }
+</style>
+<main>
+  <svg viewBox="0 0 1020 440" xmlns="http://www.w3.org/2000/svg" role="img"
+       aria-label="ข้อมูลที่ซ่อนเฉลย ผ่าน MeanShift และ KMeans แล้วตรวจสามด่าน">
+    <defs>
+      <pattern id="dots" width="14" height="14" patternUnits="userSpaceOnUse">
+        <circle cx="1" cy="1" r="1" fill="var(--dot)" />
+      </pattern>
+      <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M 0 0 L 10 5 L 0 10 z" fill="#000000" />
+      </marker>
+      <marker id="arrow-red" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M 0 0 L 10 5 L 0 10 z" fill="#b85450" />
+      </marker>
+    </defs>
+
+    <rect width="1020" height="440" fill="url(#dots)" />
+
+    <!-- ============ edges first ============ -->
+    <path class="edge" d="M 196 176 L 232 126" marker-end="url(#arrow)" />
+    <path class="edge" d="M 196 216 L 232 272" marker-end="url(#arrow)" />
+    <path class="edge" d="M 424 126 L 474 150" marker-end="url(#arrow)" />
+    <path class="edge" d="M 424 272 L 474 248" marker-end="url(#arrow)" />
+    <path class="edge" d="M 796 200 L 846 200" marker-end="url(#arrow)" />
+    <!-- held-out outcome enters only at gate 3 -->
+    <path class="held" d="M 104 262 L 104 392 L 498 392 L 498 348" marker-end="url(#arrow-red)" />
+
+    <!-- ============ input ============ -->
+    <rect class="node orange" x="24" y="152" width="172" height="110" />
+    <text class="label" x="110" y="182" text-anchor="middle">7,158 การปะทะ</text>
+    <text class="sub" x="110" y="204" text-anchor="middle">Mirage · 50 แมตช์</text>
+    <text class="sub" x="110" y="228" text-anchor="middle" font-weight="700" fill="#b85450">ซ่อน &quot;ใครชนะ&quot; ไว้</text>
+    <text class="sub" x="110" y="246" text-anchor="middle" fill="#b85450">ตลอดกระบวนการ</text>
+
+    <!-- ============ two algorithms ============ -->
+    <rect class="node blue" x="232" y="82" width="192" height="88" />
+    <text class="label" x="328" y="112" text-anchor="middle">MeanShift</text>
+    <text class="sub" x="328" y="132" text-anchor="middle">จุดปะทะอยู่ตรงไหน</text>
+    <text class="sub" x="328" y="151" text-anchor="middle">รัศมี 300 → 17 จุด</text>
+
+    <rect class="node blue" x="232" y="228" width="192" height="88" />
+    <text class="label" x="328" y="258" text-anchor="middle">KMeans</text>
+    <text class="sub" x="328" y="278" text-anchor="middle">ช่องกริดเป็นแบบไหน</text>
+    <text class="sub" x="328" y="297" text-anchor="middle">192 ช่อง → 3 กลุ่ม</text>
+
+    <!-- ============ three gates ============ -->
+    <rect class="zone" x="474" y="36" width="322" height="330" />
+    <text class="zone-label" x="490" y="58">สามด่านตรวจ — ไม่มีเฉลยให้เทียบ จึงต้องพิสูจน์เอง</text>
+
+    <rect class="node gray" x="494" y="70" width="282" height="84" />
+    <text class="label" x="512" y="98">1 · แยกกันชัดไหม</text>
+    <text class="sub" x="512" y="119">silhouette เลือก k เอง จาก k = 2–8</text>
+    <text class="num" x="512" y="141">k = 3 · 0.285</text>
+
+    <rect class="node gray" x="494" y="168" width="282" height="84" />
+    <text class="label" x="512" y="196">2 · เปลี่ยนข้อมูลแล้วยังเหมือนเดิมไหม</text>
+    <text class="sub" x="512" y="217">bootstrap สุ่มชุดแมตช์ใหม่ 20 รอบ</text>
+    <text class="num" x="512" y="239">จุดเดิมกลับมา 77%</text>
+
+    <rect class="node green" x="494" y="266" width="282" height="84" />
+    <text class="label" x="512" y="294">3 · แปลว่าอะไรในเกมจริง</text>
+    <text class="sub" x="512" y="315">เอาเฉลยที่ซ่อนไว้มาเทียบตอนจบ</text>
+    <text class="num" x="512" y="337">CT ชนะ 68.6 / 58.7 / 41.7 %</text>
+
+    <!-- ============ conclusion ============ -->
+    <rect class="node green" x="846" y="140" width="150" height="120" />
+    <text class="label" x="921" y="176" text-anchor="middle">โครงสร้าง</text>
+    <text class="label" x="921" y="196" text-anchor="middle">มีอยู่จริง</text>
+    <text class="sub" x="921" y="220" text-anchor="middle">ไม่ใช่สีที่เรา</text>
+    <text class="sub" x="921" y="238" text-anchor="middle">ระบายให้ดูดี</text>
+
+    <!-- held-out label -->
+    <text class="small" x="120" y="386" fill="#b85450">เฉลย (CT win rate) เข้ามาที่ด่านสุดท้ายเท่านั้น — ไม่เคยเข้าไปตอนเทรน</text>
+    <text class="small" x="921" y="288" text-anchor="middle">เทียบค่ากลางแมพ</text>
+    <text class="small" x="921" y="306" text-anchor="middle">CT 54.0%</text>
+  </svg>
+</main>

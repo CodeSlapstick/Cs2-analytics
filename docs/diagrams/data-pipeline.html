@@ -1,0 +1,123 @@
+<!doctype html>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>CS2 Scouting — สองสายข้อมูลที่ไม่ปนกัน</title>
+<style>
+  :root {
+    --bg: #ffffff;
+    --dot: #d0d0d0;
+    --fg: #000000;
+    --blue-fill: #dae8fc; --blue-stroke: #6c8ebf;
+    --green-fill: #d5e8d4; --green-stroke: #82b366;
+    --orange-fill: #ffe6cc; --orange-stroke: #d79b00;
+    --gray-fill: #f5f5f5; --gray-stroke: #666666;
+    --red-stroke: #b85450;
+  }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--fg);
+    font: 13px/1.4 "Helvetica Neue", Helvetica, Arial, "Leelawadee UI", sans-serif;
+  }
+  main { margin: 0; padding: 0; }
+  svg { width: 1000px; height: 470px; display: block; }
+  .label { font-size: 13.5px; font-weight: 700; fill: var(--fg); }
+  .sub { font-size: 12px; fill: var(--fg); }
+  .small { font-size: 11.5px; fill: #333333; }
+  .lane { font-size: 12.5px; font-weight: 700; }
+  .node { stroke-width: 1.5px; }
+  .blue { fill: var(--blue-fill); stroke: var(--blue-stroke); }
+  .green { fill: var(--green-fill); stroke: var(--green-stroke); }
+  .orange { fill: var(--orange-fill); stroke: var(--orange-stroke); }
+  .gray { fill: var(--gray-fill); stroke: var(--gray-stroke); }
+  .edge { stroke: #000000; stroke-width: 1.2; fill: none; }
+  .barrier { stroke: var(--red-stroke); stroke-width: 2; stroke-dasharray: 9 6; fill: none; }
+</style>
+<main>
+  <svg viewBox="0 0 1000 470" xmlns="http://www.w3.org/2000/svg" role="img"
+       aria-label="สองสายข้อมูล: ชุดอ้างอิงที่ใช้เทรน กับเดโมของผู้ใช้">
+    <defs>
+      <pattern id="dots" width="14" height="14" patternUnits="userSpaceOnUse">
+        <circle cx="1" cy="1" r="1" fill="var(--dot)" />
+      </pattern>
+      <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M 0 0 L 10 5 L 0 10 z" fill="#000000" />
+      </marker>
+    </defs>
+
+    <rect width="1000" height="470" fill="url(#dots)" />
+
+    <!-- ============ edges (drawn first) ============ -->
+    <!-- lane A -->
+    <path class="edge" d="M 178 118 L 208 118" marker-end="url(#arrow)" />
+    <path class="edge" d="M 363 118 L 393 118" marker-end="url(#arrow)" />
+    <path class="edge" d="M 548 118 L 578 118" marker-end="url(#arrow)" />
+    <path class="edge" d="M 763 118 L 793 118" marker-end="url(#arrow)" />
+    <!-- lane B -->
+    <path class="edge" d="M 178 372 L 208 372" marker-end="url(#arrow)" />
+    <path class="edge" d="M 363 372 L 393 372" marker-end="url(#arrow)" />
+    <path class="edge" d="M 548 372 L 578 372" marker-end="url(#arrow)" />
+    <path class="edge" d="M 763 372 L 793 372" marker-end="url(#arrow)" />
+    <!-- allowed crossing: model output feeds the page (one way, downward) -->
+    <path class="edge" d="M 868 154 L 868 336" marker-end="url(#arrow)" />
+
+    <!-- ============ lane A — reference / training ============ -->
+    <text class="lane" x="28" y="62">ชุดอ้างอิง — สายเดียวที่โมเดลได้เรียน</text>
+
+    <rect class="node orange" x="28" y="84" width="150" height="68" />
+    <text class="label" x="103" y="111" text-anchor="middle">demos/reference/</text>
+    <text class="sub" x="103" y="131" text-anchor="middle">ทีมอาชีพ 50 แมตช์</text>
+
+    <rect class="node blue" x="208" y="84" width="155" height="68" />
+    <text class="label" x="285" y="111" text-anchor="middle">demoparser.py</text>
+    <text class="sub" x="285" y="131" text-anchor="middle">แกะทุกไฟล์ + แคช</text>
+
+    <rect class="node green" x="393" y="84" width="155" height="68" />
+    <text class="label" x="470" y="111" text-anchor="middle">all_kills.csv</text>
+    <text class="sub" x="470" y="131" text-anchor="middle">7,158 การปะทะ</text>
+
+    <rect class="node blue" x="578" y="84" width="185" height="68" />
+    <text class="label" x="670" y="107" text-anchor="middle">grid_ml1.py · site_ml.py</text>
+    <text class="sub" x="670" y="127" text-anchor="middle">MeanShift · KMeans · logistic</text>
+
+    <rect class="node green" x="793" y="84" width="150" height="68" />
+    <text class="label" x="868" y="111" text-anchor="middle">output/*.json</text>
+    <text class="sub" x="868" y="131" text-anchor="middle">ผลโมเดล</text>
+
+    <!-- ============ barrier ============ -->
+    <path class="barrier" d="M 24 245 L 800 245" />
+    <text class="small" x="24" y="232" fill="#b85450" font-weight="700">
+      เดโมของผู้ใช้ไม่เคยข้ามเส้นนี้ขึ้นไปเป็นชุดเทรน
+    </text>
+    <text class="small" x="24" y="266">
+      บังคับด้วยโครงสร้าง: คนละโฟลเดอร์ · คนละค่า matches.source · เทสต์ test_data_separation.py แดงทันทีถ้าสองสายมาเจอกัน
+    </text>
+
+    <!-- ============ lane B — user uploads ============ -->
+    <text class="lane" x="28" y="316">เดโมของทีมที่ผู้ใช้อัปโหลด — ใช้แสดงผลอย่างเดียว</text>
+
+    <rect class="node orange" x="28" y="338" width="150" height="68" />
+    <text class="label" x="103" y="365" text-anchor="middle">อัปโหลด .dem</text>
+    <text class="sub" x="103" y="385" text-anchor="middle">demos/uploads/</text>
+
+    <rect class="node gray" x="208" y="338" width="155" height="68" />
+    <text class="label" x="285" y="365" text-anchor="middle">คิว Redis</text>
+    <text class="sub" x="285" y="385" text-anchor="middle">งานเข้าเบื้องหลัง</text>
+
+    <rect class="node blue" x="393" y="338" width="155" height="68" />
+    <text class="label" x="470" y="365" text-anchor="middle">worker</text>
+    <text class="sub" x="470" y="385" text-anchor="middle">awpy แกะเดโม</text>
+
+    <rect class="node green" x="578" y="338" width="185" height="68" />
+    <text class="label" x="670" y="365" text-anchor="middle">PostgreSQL</text>
+    <text class="sub" x="670" y="385" text-anchor="middle">source = 'upload'</text>
+
+    <rect class="node blue" x="793" y="338" width="150" height="68" />
+    <text class="label" x="868" y="365" text-anchor="middle">หน้าเว็บ</text>
+    <text class="sub" x="868" y="385" text-anchor="middle">/analysis</text>
+
+    <!-- crossing label -->
+    <text class="small" x="884" y="252">ผลโมเดลไหลลงมา</text>
+    <text class="small" x="884" y="268">ทางเดียว</text>
+  </svg>
+</main>

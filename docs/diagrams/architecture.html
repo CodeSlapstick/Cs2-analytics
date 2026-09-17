@@ -1,0 +1,100 @@
+<!doctype html>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>CS2 Scouting — System Architecture</title>
+<style>
+  :root {
+    --bg: #ffffff;
+    --dot: #d0d0d0;
+    --fg: #000000;
+    --line: #000000;
+    --blue-fill: #dae8fc; --blue-stroke: #6c8ebf;
+    --green-fill: #d5e8d4; --green-stroke: #82b366;
+    --orange-fill: #ffe6cc; --orange-stroke: #d79b00;
+    --gray-fill: #f5f5f5; --gray-stroke: #666666;
+  }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--fg);
+    font: 13px/1.4 "Helvetica Neue", Helvetica, Arial, "Leelawadee UI", sans-serif;
+  }
+  main { margin: 0; padding: 0; }
+  svg { width: 980px; height: 440px; display: block; }
+  .label { font-size: 14px; font-weight: 700; fill: var(--fg); }
+  .sub { font-size: 12px; fill: var(--fg); }
+  .small { font-size: 11.5px; fill: #333333; }
+  .node { stroke-width: 1.5px; }
+  .blue { fill: var(--blue-fill); stroke: var(--blue-stroke); }
+  .green { fill: var(--green-fill); stroke: var(--green-stroke); }
+  .orange { fill: var(--orange-fill); stroke: var(--orange-stroke); }
+  .gray { fill: var(--gray-fill); stroke: var(--gray-stroke); }
+  .edge { stroke: #000000; stroke-width: 1.2; fill: none; }
+  .zone { fill: none; stroke: #999999; stroke-width: 1.2; stroke-dasharray: 6 4; }
+  .zone-label { font-size: 12px; font-weight: 700; fill: #666666; }
+</style>
+<main>
+  <svg viewBox="0 0 980 440" xmlns="http://www.w3.org/2000/svg" role="img"
+       aria-label="สถาปัตยกรรมระบบ CS2 Scouting">
+    <defs>
+      <pattern id="dots" width="14" height="14" patternUnits="userSpaceOnUse">
+        <circle cx="1" cy="1" r="1" fill="var(--dot)" />
+      </pattern>
+      <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M 0 0 L 10 5 L 0 10 z" fill="#000000" />
+      </marker>
+    </defs>
+
+    <rect width="980" height="440" fill="url(#dots)" />
+
+    <!-- zone: everything inside docker compose -->
+    <rect class="zone" x="212" y="38" width="752" height="252" />
+    <text class="zone-label" x="228" y="58">DOCKER COMPOSE — ขึ้นทั้งกองด้วยคำสั่งเดียว</text>
+
+    <!-- edges first so they sit behind nodes -->
+    <path class="edge" d="M 182 110 L 236 110" marker-end="url(#arrow)" />
+    <path class="edge" d="M 424 110 L 472 110" marker-end="url(#arrow)" />
+    <path class="edge" d="M 634 110 L 762 110" marker-end="url(#arrow)" />
+    <path class="edge" d="M 592 146 L 592 212" marker-end="url(#arrow)" />
+    <path class="edge" d="M 634 246 L 762 246" marker-end="url(#arrow)" />
+    <path class="edge" d="M 852 212 L 852 148" marker-end="url(#arrow)" />
+    <path class="edge" d="M 330 336 L 330 200 L 452 200 L 452 128 L 472 128" marker-end="url(#arrow)" />
+
+    <!-- nodes -->
+    <rect class="node orange" x="32" y="76" width="150" height="68" />
+    <text class="label" x="107" y="106" text-anchor="middle">เบราว์เซอร์</text>
+    <text class="sub" x="107" y="126" text-anchor="middle">โค้ช / ผู้เล่น</text>
+
+    <rect class="node blue" x="236" y="76" width="188" height="68" />
+    <text class="label" x="330" y="102" text-anchor="middle">frontend</text>
+    <text class="sub" x="330" y="122" text-anchor="middle">React + nginx · :3000</text>
+
+    <rect class="node blue" x="472" y="76" width="162" height="68" />
+    <text class="label" x="553" y="102" text-anchor="middle">api</text>
+    <text class="sub" x="553" y="122" text-anchor="middle">FastAPI</text>
+
+    <rect class="node green" x="762" y="76" width="180" height="68" />
+    <text class="label" x="852" y="102" text-anchor="middle">PostgreSQL</text>
+    <text class="sub" x="852" y="122" text-anchor="middle">แมตช์ · รอบ · การตาย</text>
+
+    <rect class="node gray" x="472" y="212" width="162" height="68" />
+    <text class="label" x="553" y="238" text-anchor="middle">Redis</text>
+    <text class="sub" x="553" y="258" text-anchor="middle">คิวงานแกะเดโม</text>
+
+    <rect class="node blue" x="762" y="212" width="180" height="68" />
+    <text class="label" x="852" y="238" text-anchor="middle">worker</text>
+    <text class="sub" x="852" y="258" text-anchor="middle">awpy · demoparser2</text>
+
+    <rect class="node green" x="236" y="336" width="188" height="72" />
+    <text class="label" x="330" y="362" text-anchor="middle">output/*.json</text>
+    <text class="sub" x="330" y="381" text-anchor="middle">ผลโมเดลจาก research/</text>
+    <text class="sub" x="330" y="398" text-anchor="middle">(รันออฟไลน์ ไม่ใช่ตอนเปิดหน้า)</text>
+
+    <!-- edge labels -->
+    <text class="small" x="330" y="166" text-anchor="middle">/api · /auth · /assets</text>
+    <text class="small" x="604" y="184">เข้าคิว</text>
+    <text class="small" x="864" y="184">INSERT</text>
+    <text class="small" x="120" y="252">อ่านตอนเสิร์ฟ (แคชไว้ในหน่วยความจำ)</text>
+    <text class="small" x="698" y="100" text-anchor="middle">อ่าน/เขียน</text>
+  </svg>
+</main>

@@ -1,0 +1,120 @@
+<!doctype html>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>CS2 Scouting — กระบวนการทำงานของโหมดเล่นย้อน</title>
+<style>
+  :root {
+    --bg: #ffffff;
+    --dot: #d0d0d0;
+    --fg: #000000;
+    --blue-fill: #dae8fc; --blue-stroke: #6c8ebf;
+    --green-fill: #d5e8d4; --green-stroke: #82b366;
+    --gray-fill: #f5f5f5; --gray-stroke: #666666;
+    --red: #b85450;
+  }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 13px/1.4 "Helvetica Neue", Helvetica, Arial, "Leelawadee UI", sans-serif; }
+  main { margin: 0; padding: 0; }
+  svg { width: 1040px; height: 430px; display: block; }
+  .label { font-size: 13.5px; font-weight: 700; fill: var(--fg); }
+  .sub { font-size: 11.5px; fill: var(--fg); }
+  .small { font-size: 11.5px; fill: #333333; }
+  .node { stroke-width: 1.5px; }
+  .blue { fill: var(--blue-fill); stroke: var(--blue-stroke); }
+  .green { fill: var(--green-fill); stroke: var(--green-stroke); }
+  .gray { fill: var(--gray-fill); stroke: var(--gray-stroke); }
+  .edge { stroke: #000000; stroke-width: 1.2; fill: none; }
+  .note { fill: #ffffff; stroke: var(--red); stroke-width: 1.5; stroke-dasharray: 6 5; }
+  .num { font-size: 12px; font-weight: 700; fill: #000000; }
+</style>
+<main>
+  <svg viewBox="0 0 1040 430" xmlns="http://www.w3.org/2000/svg" role="img"
+       aria-label="กระบวนการทำงานของโหมดเล่นย้อน จากการแกะเดโมจนถึงแผนที่ที่เคลื่อนไหวบนหน้าเว็บ">
+    <defs>
+      <pattern id="dots" width="14" height="14" patternUnits="userSpaceOnUse">
+        <circle cx="1" cy="1" r="1" fill="var(--dot)" />
+      </pattern>
+      <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M 0 0 L 10 5 L 0 10 z" fill="#000000" />
+      </marker>
+    </defs>
+
+    <rect width="1040" height="430" fill="url(#dots)" />
+
+    <!-- edges first -->
+    <path class="edge" d="M 190 130 L 218 130" marker-end="url(#arrow)" />
+    <path class="edge" d="M 396 130 L 424 130" marker-end="url(#arrow)" />
+    <path class="edge" d="M 626 130 L 654 130" marker-end="url(#arrow)" />
+    <path class="edge" d="M 856 130 L 884 130" marker-end="url(#arrow)" />
+
+    <!-- stage numbers (plain circles, no drop shadow) -->
+    <circle cx="40" cy="130" r="15" fill="#f5f5f5" stroke="#666666" stroke-width="1.5" />
+    <text class="num" x="40" y="135" text-anchor="middle">1</text>
+    <circle cx="270" cy="130" r="15" fill="#f5f5f5" stroke="#666666" stroke-width="1.5" />
+    <text class="num" x="270" y="135" text-anchor="middle">2</text>
+    <circle cx="500" cy="130" r="15" fill="#f5f5f5" stroke="#666666" stroke-width="1.5" />
+    <text class="num" x="500" y="135" text-anchor="middle">3</text>
+    <circle cx="730" cy="130" r="15" fill="#f5f5f5" stroke="#666666" stroke-width="1.5" />
+    <text class="num" x="730" y="135" text-anchor="middle">4</text>
+    <circle cx="960" cy="130" r="15" fill="#f5f5f5" stroke="#666666" stroke-width="1.5" />
+    <text class="num" x="960" y="135" text-anchor="middle">5</text>
+
+    <!-- 1: parser samples positions -->
+    <rect class="node blue" x="18" y="88" width="172" height="84" />
+    <text class="label" x="104" y="118" text-anchor="middle">แกะเดโม (awpy)</text>
+    <text class="sub" x="104" y="139" text-anchor="middle">เก็บตำแหน่งผู้เล่น</text>
+    <text class="sub" x="104" y="155" text-anchor="middle">1 ครั้ง/วินาที — ไม่ใช่ทุก tick</text>
+
+    <!-- 2: DB storage -->
+    <rect class="node green" x="218" y="88" width="178" height="84" />
+    <text class="label" x="307" y="115" text-anchor="middle">player_positions</text>
+    <text class="sub" x="307" y="136" text-anchor="middle">tick · steam_id · x, y</text>
+    <text class="sub" x="307" y="152" text-anchor="middle">side · hp · place</text>
+
+    <!-- 3: backend transforms -->
+    <rect class="node blue" x="424" y="82" width="202" height="96" />
+    <text class="label" x="525" y="108" text-anchor="middle">Backend</text>
+    <text class="sub" x="525" y="128" text-anchor="middle">build_round_positions()</text>
+    <text class="sub" x="525" y="146" text-anchor="middle">แปลงพิกัดเกม → พิกเซล</text>
+    <text class="sub" x="525" y="162" text-anchor="middle">จัดกลุ่มเป็นเฟรมตามวินาที</text>
+
+    <!-- 4: frontend interpolation -->
+    <rect class="node blue" x="654" y="82" width="202" height="96" />
+    <text class="label" x="755" y="108" text-anchor="middle">Frontend</text>
+    <text class="sub" x="755" y="128" text-anchor="middle">requestAnimationFrame</text>
+    <text class="sub" x="755" y="146" text-anchor="middle">playersAt() ประมาณตำแหน่ง</text>
+    <text class="sub" x="755" y="162" text-anchor="middle">ระหว่างสองเฟรม (เชิงเส้น)</text>
+
+    <!-- 5: map -->
+    <rect class="node gray" x="884" y="88" width="138" height="84" />
+    <text class="label" x="953" y="118" text-anchor="middle">แผนที่เล่นย้อน</text>
+    <text class="sub" x="953" y="139" text-anchor="middle">เล่น/หยุด · ปรับความเร็ว</text>
+    <text class="sub" x="953" y="155" text-anchor="middle">ลากไทม์ไลน์เอง</text>
+
+    <!-- stage labels -->
+    <text class="small" x="104" y="68" text-anchor="middle" font-weight="700">1 · เก็บข้อมูล</text>
+    <text class="small" x="307" y="68" text-anchor="middle" font-weight="700">2 · เก็บลง DB</text>
+    <text class="small" x="525" y="62" text-anchor="middle" font-weight="700">3 · แปลงพิกัด</text>
+    <text class="small" x="755" y="62" text-anchor="middle" font-weight="700">4 · เล่นภาพเคลื่อนไหว</text>
+    <text class="small" x="953" y="68" text-anchor="middle" font-weight="700">5 · แสดงผล</text>
+
+    <!-- honesty note -->
+    <rect class="note" x="18" y="220" width="1004" height="90" />
+    <text class="label" x="40" y="248" fill="#b85450">ข้อมูลจริงมีแค่ 1 จุดต่อวินาทีต่อคน</text>
+    <text class="sub" x="40" y="270">
+      สิ่งที่เห็นเคลื่อนไหวลื่น ๆ บนแผนที่คือการ "ประมาณ" ตำแหน่งระหว่างสองจุดที่มีข้อมูลจริงด้วยเส้นตรง (linear interpolation)
+    </text>
+    <text class="sub" x="40" y="290">
+      ไม่ใช่ตำแหน่งจริงจากเดโมทุกเฟรม — หน้าเว็บมีข้อความกำกับไว้ใต้แผนที่เสมอเพื่อไม่ให้เข้าใจผิดว่าเป็นข้อมูลดิบ
+    </text>
+
+    <!-- interpolation micro-diagram -->
+    <line x1="760" y1="365" x2="1000" y2="365" stroke="#666666" stroke-width="1.5" />
+    <circle cx="780" cy="365" r="6" fill="#dae8fc" stroke="#6c8ebf" stroke-width="1.5" />
+    <circle cx="980" cy="365" r="6" fill="#dae8fc" stroke="#6c8ebf" stroke-width="1.5" />
+    <circle cx="880" cy="365" r="5" fill="#f8cecc" stroke="#b85450" stroke-width="1.5" />
+    <text class="small" x="780" y="392" text-anchor="middle">วินาทีที่ 4</text>
+    <text class="small" x="980" y="392" text-anchor="middle">วินาทีที่ 5</text>
+    <text class="small" x="880" y="345" text-anchor="middle" fill="#b85450">ตำแหน่งประมาณ</text>
+    <text class="label" x="600" y="368" fill="#000000" font-weight="400" font-size="12">ข้อมูลจริง =</text>
+  </svg>
+</main>
