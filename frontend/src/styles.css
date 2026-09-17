@@ -700,26 +700,10 @@ html:has(.login-shell) { color-scheme: dark; scrollbar-color: #2E3647 #0B0E14; }
 @media (min-width: 1150px) {
   /* สามคอลัมน์: แผงตั้งค่าซ้าย · แผนที่กลาง · ตารางขวา */
   .an-grid { grid-template-columns: 220px minmax(0, 1fr) minmax(300px, 380px); }
-  /* โหมดแผนที่ทีมอาชีพไม่มีแผงซ้าย — สองคอลัมน์ แผนที่ได้พื้นที่เต็ม */
-  .an-grid.two { grid-template-columns: minmax(0, 1fr) minmax(300px, 380px); }
   /* ข้อความ "ยังไม่ได้เลือกรอบ/ผู้เล่น" กินพื้นที่แผนที่+ตารางแทน ไม่ใช่แค่คอลัมน์เดียว — แผงซ้ายยังอยู่เหมือนเดิม */
   .an-empty-fill { grid-column: 2 / -1; }
 }
 
-/* ---- แผนที่ทีมอาชีพ: แถบเลือกชั้น (+ คำอธิบายชั้นที่เปิดอยู่) เหนือแผนที่ ตารางอยู่ขวา ---- */
-.an-layers { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 14px; font-size: var(--fs-sm); }
-.an-layer-hint { flex: 1 1 260px; }
-.an-side .legend-type { display: flex; flex-direction: column; gap: 4px; margin: 10px 0 0; padding: 0; list-style: none; }
-.legend-type li { display: flex; align-items: baseline; gap: 8px; font-size: var(--fs-sm); padding: 5px 6px; border-radius: 6px; cursor: default; }
-.legend-type li.hl { background: var(--line-2); }
-.legend-type i { width: 12px; height: 12px; border-radius: 3px; flex: none; display: inline-block; vertical-align: -1px; }
-.legend-type .en { font-size: var(--fs-xs); color: var(--muted); }
-.hot-num {
-  display: inline-grid; place-items: center; min-width: 22px; height: 22px; padding: 0 5px; border-radius: 999px;
-  font: 700 var(--fs-xs)/1 inherit; font-variant-numeric: tabular-nums; color: #0b1220; background: #fff; border: 1px solid var(--line);
-}
-/* เลขบนหมุดจุดปะทะในแผนที่ (หน่วยเป็นพิกเซลของภาพเรดาร์ 1024 — บนจอเห็นราว 14-16px) */
-.hot-mark { font: 700 22px/1 inherit; fill: #0b1220; font-variant-numeric: tabular-nums; pointer-events: none; }
 /* ปุ่มปรับหน้าตา heatmap (รัศมี/เบลอ/ความทึบ) พับไว้ท้ายแผง */
 .hm-adv summary { cursor: pointer; font-size: var(--fs-sm); color: var(--muted); list-style: none; }
 .hm-adv summary::-webkit-details-marker { display: none; }
@@ -759,23 +743,18 @@ html:has(.login-shell) { color-scheme: dark; scrollbar-color: #2E3647 #0B0E14; }
 .hm-pill.ct:not(.on) { border-color: var(--ct); color: var(--ct-ink); }
 .hm-pill.t:not(.on) { border-color: var(--t); color: var(--t-ink); }
 
-/* ---- ปุ่มเลือกโหมด/ฝั่ง — ใช้ร่วมกับแถบชั้นแผนที่ในหน้ารอบ ---- */
+/* ---- ปุ่มเลือกฝั่งในแผงตั้งค่า heatmap ---- */
 .seg { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 4px; }
 .seg-h { color: var(--muted); margin-right: 4px; font-size: var(--fs-sm); }
-.grid-layers { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 4px; color: var(--muted); }
-.seg-btn, .chip {
+.seg-btn {
   background: var(--card); border: 1px solid var(--line); border-radius: var(--r);
   padding: 3px 10px; font-size: var(--fs-sm); color: var(--muted); cursor: pointer;
 }
-.seg-btn:hover:not(.on):not(:disabled), .chip:hover:not(.on):not(:disabled) { border-color: var(--text); color: var(--text); }
-.seg-btn.on, .chip.on { background: var(--text); border-color: var(--text); color: var(--card); }
+.seg-btn:hover:not(.on):not(:disabled) { border-color: var(--text); color: var(--text); }
+.seg-btn.on { background: var(--text); border-color: var(--text); color: var(--card); }
 /* ตัวที่เลือกอยู่ hover ต้องไม่กลายเป็นตัวหนังสือสีเดียวกับพื้น */
-.seg-btn.on:hover:not(:disabled), .chip.on:hover:not(:disabled) { filter: brightness(1.35); }
-.seg-btn:disabled, .chip:disabled { opacity: .4; cursor: default; }
-.chip.on[data-testid="grid-ct"] { background: var(--ct-ink); border-color: var(--ct-ink); color: #fff; }
-/* ส้มเป็นสีอ่อน ตัวหนังสือขาวบนส้มอ่านไม่ออก — ใช้ตัวเข้มแทน (contrast 4.6:1) */
-.chip.on[data-testid="grid-t"] { background: var(--t); border-color: var(--t); color: #2a1500; }
-.chip.on[data-testid="grid-freq"] { background: #b91c3c; border-color: #b91c3c; color: #fff; }   /* แดงชุดเดียวกับ heatmap "ดวลบ่อย" */
+.seg-btn.on:hover:not(:disabled) { filter: brightness(1.35); }
+.seg-btn:disabled { opacity: .4; cursor: default; }
 
 /* ---- "อ่านทางเราออกไหม" — ผลของโมเดลทายไซต์ ไม่มีแผนที่ ใช้ตัวเลขกับตารางแทน ---- */
 .read-report { margin-top: 16px; }

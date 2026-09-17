@@ -52,7 +52,6 @@ from backend.review import (
     build_round_list,
     build_round_positions,
     deaths_overlay,
-    grid_overlay,
     load_grid_model,
     radar_frame,
 )
@@ -925,17 +924,6 @@ async def api_readability(demo: str = Query(..., description="ชื่อไฟ
         "benchmark": model.get("metrics", {}).get("readability"),
         "source": model.get("source"), "note": model.get("note"),
     }
-
-
-@app.get("/api/analysis/grid")
-def api_analysis_grid(map: str = Query(..., description="เช่น de_mirage"), _: dict = Depends(require_viewer)):
-    """ช่องกริด (จัดกลุ่มแล้ว) + วง hotspot เป็นพิกเซลบนภาพเรดาร์ — หน้า /analysis โหมด "แผนที่ทีมอาชีพ" ซ้อนบนแผนที่
-    (หน้ารอบไม่เรียก endpoint นี้แล้ว — หน้ารอบตั้งใจให้เป็นข้อเท็จจริงจากเดโมล้วน ๆ)"""
-    frame = radar_frame(map)
-    model = load_grid_model()
-    if frame is None or model is None or model.map_name != map:
-        return {"available": False, "reason": "ยังไม่มีผล research/grid_ml1.py ของแมพนี้"}
-    return grid_overlay(model, frame)
 
 
 @app.get("/api/review/{demo_file}/rounds")
