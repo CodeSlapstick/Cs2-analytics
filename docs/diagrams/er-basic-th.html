@@ -1,0 +1,166 @@
+<!doctype html>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>CS2 Scouting — ER Diagram (ย่อ)</title>
+<style>
+  :root {
+    --bg: #ffffff; --dot: #d0d0d0; --fg: #000000;
+    --blue-fill: #dae8fc; --blue-stroke: #6c8ebf;
+    --green-fill: #d5e8d4; --green-stroke: #82b366;
+    --orange-fill: #ffe6cc; --orange-stroke: #d79b00;
+    --gray-fill: #f5f5f5; --gray-stroke: #666666;
+  }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 13px/1.4 "Helvetica Neue", Helvetica, Arial, "Leelawadee UI", sans-serif; }
+  main { margin: 0; padding: 0; }
+  svg { width: 1180px; height: 700px; display: block; }
+  .node { stroke-width: 1.5px; }
+  .blue { fill: var(--blue-fill); stroke: var(--blue-stroke); }
+  .green { fill: var(--green-fill); stroke: var(--green-stroke); }
+  .orange { fill: var(--orange-fill); stroke: var(--orange-stroke); }
+  .gray { fill: var(--gray-fill); stroke: var(--gray-stroke); }
+  .body-blue { fill: #ffffff; stroke: var(--blue-stroke); }
+  .body-green { fill: #ffffff; stroke: var(--green-stroke); }
+  .body-orange { fill: #ffffff; stroke: var(--orange-stroke); }
+  .tname { font-size: 14px; font-weight: 700; fill: var(--fg); }
+  .col { font-size: 12px; fill: var(--fg); }
+  .key { font-size: 10.5px; fill: #b85450; font-weight: 700; }
+  .fk { font-size: 10.5px; fill: #666666; }
+  .card { font-size: 12px; font-weight: 700; fill: #000000; }
+  .rel { font-size: 11px; fill: #333333; }
+  .title { font-size: 15px; font-weight: 700; fill: var(--fg); }
+  .note { font-size: 11.5px; fill: #444444; }
+  .edge { stroke: #000000; stroke-width: 1.2; fill: none; }
+  .sep { stroke: #cccccc; stroke-width: 1; }
+</style>
+<main>
+  <svg viewBox="0 0 1180 700" xmlns="http://www.w3.org/2000/svg" role="img"
+       aria-label="ER diagram ย่อของฐานข้อมูล CS2 Scouting — accounts, matches, rounds, kills, players, match_players, player_rounds">
+    <defs>
+      <pattern id="dots" width="14" height="14" patternUnits="userSpaceOnUse">
+        <circle cx="1" cy="1" r="1" fill="var(--dot)" />
+      </pattern>
+      <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M 0 0 L 10 5 L 0 10 z" fill="#000000" />
+      </marker>
+    </defs>
+
+    <rect width="1180" height="700" fill="url(#dots)" />
+    <text class="title" x="45" y="26">ER Diagram — ฐานข้อมูล CS2 Scouting (เฉพาะตารางหลัก)</text>
+
+    <!-- ============ เส้นความสัมพันธ์ (วาดก่อนกล่อง) ============ -->
+    <!-- accounts 1 : N matches -->
+    <path class="edge" d="M 172 126 V 180" marker-end="url(#arrow)" />
+    <text class="card" x="182" y="145">1</text>
+    <text class="card" x="182" y="176">N</text>
+    <text class="rel" x="196" y="162">อัปโหลด</text>
+
+    <!-- matches 1 : N rounds -->
+    <path class="edge" d="M 172 326 V 400" marker-end="url(#arrow)" />
+    <text class="card" x="182" y="345">1</text>
+    <text class="card" x="182" y="396">N</text>
+    <text class="rel" x="196" y="372">หนึ่งแมตช์มีหลายรอบ</text>
+
+    <!-- matches 1 : N match_players -->
+    <path class="edge" d="M 300 253 H 360 V 93 H 430" marker-end="url(#arrow)" />
+    <text class="card" x="308" y="246">1</text>
+    <text class="card" x="414" y="86">N</text>
+
+    <!-- rounds 1 : N kills -->
+    <path class="edge" d="M 300 435 H 362 V 293 H 430" marker-end="url(#arrow)" />
+    <text class="card" x="308" y="428">1</text>
+    <text class="card" x="414" y="286">N</text>
+
+    <!-- rounds 1 : N player_rounds -->
+    <path class="edge" d="M 300 478 H 392 V 503 H 430" marker-end="url(#arrow)" />
+    <text class="card" x="308" y="494">1</text>
+    <text class="card" x="414" y="496">N</text>
+
+    <!-- kills N : 1 players -->
+    <path class="edge" d="M 695 293 H 780 V 303 H 850" marker-end="url(#arrow)" />
+    <text class="card" x="703" y="286">N</text>
+    <text class="card" x="836" y="296">1</text>
+    <text class="rel" x="740" y="333" text-anchor="middle">คนยิง / คนตาย</text>
+
+    <!-- match_players N : 1 players -->
+    <path class="edge" d="M 695 93 H 975 V 270" marker-end="url(#arrow)" />
+    <text class="card" x="703" y="86">N</text>
+    <text class="card" x="985" y="264">1</text>
+
+    <!-- player_rounds N : 1 players -->
+    <path class="edge" d="M 695 503 H 975 V 336" marker-end="url(#arrow)" />
+    <text class="card" x="703" y="496">N</text>
+    <text class="card" x="985" y="352">1</text>
+
+    <!-- ============ accounts ============ -->
+    <rect class="node body-green" x="45" y="66" width="255" height="60" />
+    <rect class="node green" x="45" y="40" width="255" height="26" />
+    <text class="tname" x="172" y="58" text-anchor="middle">accounts</text>
+    <text class="col" x="57" y="84">id <tspan class="key">PK</tspan></text>
+    <text class="col" x="57" y="104">username</text>
+    <text class="col" x="57" y="124">steam_id <tspan class="fk">(SteamID64)</tspan></text>
+
+    <!-- ============ matches ============ -->
+    <rect class="node body-blue" x="45" y="206" width="255" height="120" />
+    <rect class="node blue" x="45" y="180" width="255" height="26" />
+    <text class="tname" x="172" y="198" text-anchor="middle">matches</text>
+    <text class="col" x="57" y="224">id <tspan class="key">PK</tspan></text>
+    <text class="col" x="57" y="244">demo_file <tspan class="fk">(ไม่ซ้ำ)</tspan></text>
+    <text class="col" x="57" y="264">map_name</text>
+    <text class="col" x="57" y="284">status <tspan class="fk">รอคิว / กำลังแกะ / พร้อม / พัง</tspan></text>
+    <text class="col" x="57" y="304">source <tspan class="fk">reference / upload</tspan></text>
+    <text class="col" x="57" y="324">uploaded_by <tspan class="key">FK</tspan></text>
+
+    <!-- ============ rounds ============ -->
+    <rect class="node body-blue" x="45" y="426" width="255" height="80" />
+    <rect class="node blue" x="45" y="400" width="255" height="26" />
+    <text class="tname" x="172" y="418" text-anchor="middle">rounds</text>
+    <text class="col" x="57" y="444">id <tspan class="key">PK</tspan></text>
+    <text class="col" x="57" y="464">match_id <tspan class="key">FK</tspan></text>
+    <text class="col" x="57" y="484">round_num</text>
+    <text class="col" x="57" y="504">winner_side <tspan class="fk">ct / t</tspan></text>
+
+    <!-- ============ match_players ============ -->
+    <rect class="node body-orange" x="430" y="66" width="265" height="80" />
+    <rect class="node orange" x="430" y="40" width="265" height="26" />
+    <text class="tname" x="562" y="58" text-anchor="middle">match_players</text>
+    <text class="col" x="442" y="84">match_id <tspan class="key">PK, FK</tspan></text>
+    <text class="col" x="442" y="104">steam_id <tspan class="key">PK, FK</tspan></text>
+    <text class="col" x="442" y="124">team_clan</text>
+    <text class="col" x="442" y="144">start_side</text>
+
+    <!-- ============ kills ============ -->
+    <rect class="node body-blue" x="430" y="236" width="265" height="140" />
+    <rect class="node blue" x="430" y="210" width="265" height="26" />
+    <text class="tname" x="562" y="228" text-anchor="middle">kills</text>
+    <text class="col" x="442" y="254">id <tspan class="key">PK</tspan></text>
+    <text class="col" x="442" y="274">round_id <tspan class="key">FK</tspan></text>
+    <text class="col" x="442" y="294">attacker_id <tspan class="key">FK</tspan></text>
+    <text class="col" x="442" y="314">victim_id <tspan class="key">FK</tspan></text>
+    <text class="col" x="442" y="334">victim_x, victim_y <tspan class="fk">พิกัดจุดตาย</tspan></text>
+    <text class="col" x="442" y="354">weapon</text>
+    <text class="col" x="442" y="374">tick <tspan class="fk">เกิดวินาทีไหนของรอบ</tspan></text>
+
+    <!-- ============ player_rounds ============ -->
+    <rect class="node body-blue" x="430" y="456" width="265" height="120" />
+    <rect class="node blue" x="430" y="430" width="265" height="26" />
+    <text class="tname" x="562" y="448" text-anchor="middle">player_rounds</text>
+    <text class="col" x="442" y="474">id <tspan class="key">PK</tspan></text>
+    <text class="col" x="442" y="494">round_id <tspan class="key">FK</tspan></text>
+    <text class="col" x="442" y="514">steam_id <tspan class="key">FK</tspan></text>
+    <text class="col" x="442" y="534">kills, deaths, assists</text>
+    <text class="col" x="442" y="554">adr, kast</text>
+    <text class="col" x="442" y="574">buy_type <tspan class="fk">full / force / eco / pistol</tspan></text>
+
+    <!-- ============ players ============ -->
+    <rect class="node body-green" x="850" y="296" width="250" height="40" />
+    <rect class="node green" x="850" y="270" width="250" height="26" />
+    <text class="tname" x="975" y="288" text-anchor="middle">players</text>
+    <text class="col" x="862" y="314">steam_id <tspan class="key">PK</tspan></text>
+    <text class="col" x="862" y="334">name</text>
+
+    <!-- ============ หมายเหตุ ============ -->
+    <text class="note" x="45" y="620">อ่านเป็นประโยค: บัญชีหนึ่งอัปโหลดได้หลายแมตช์ · แมตช์หนึ่งมีหลายรอบ · รอบหนึ่งมีการตายหลายครั้ง · ผู้เล่นคนหนึ่งลงเล่นได้หลายแมตช์ (ผ่าน match_players)</text>
+    <text class="note" x="45" y="642">ตารางที่ไม่ได้วาดเพื่อให้อ่านง่าย: damages · grenades · player_positions (ห้อยกับ rounds/matches แบบเดียวกับ kills) และ users (ของเดิม เลิกใช้แล้ว)</text>
+    <text class="note" x="45" y="664">ผลของโมเดล (grid_ml1) ไม่ได้เก็บในฐานข้อมูล — เป็นไฟล์ output/grid_ml1.json ที่ API อ่านแล้ว cache ไว้</text>
+  </svg>
+</main>

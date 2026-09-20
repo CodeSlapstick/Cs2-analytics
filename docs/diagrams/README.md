@@ -1,8 +1,10 @@
 # CS2 Scouting — Documentation Diagrams
 
-Seven diagrams covering requirements, data, process, and architecture. Each one has a
-standalone `.md` file holding the editable source (Mermaid or PlantUML) plus a rendered
-`.png` next to it, so the images can be dropped straight into a report or slide deck.
+Diagrams covering requirements, data, process, and architecture. Each one has an editable
+source next to a rendered `.png`, so the images can be dropped straight into a report or
+slide deck — either a `.md` holding Mermaid/PlantUML, or a hand-authored `.html` (SVG).
+
+**เริ่มอ่านที่หัวข้อ 0** ถ้าต้องการรูปย่อภาษาไทยสำหรับเล่มรายงาน
 
 All numbers shown in the diagrams come from the real pipeline output
 (`output/grid_ml1.json` — 50 reference matches on `de_mirage`, 7,158 duels).
@@ -16,6 +18,28 @@ All numbers shown in the diagrams come from the real pipeline output
 | 5 | Class | [05-class-diagram.md](05-class-diagram.md) | Mermaid |
 | 6 | System Architecture | [06-architecture.md](06-architecture.md) | Mermaid |
 | 7 | ML Decision Flow | [07-ml-flow.md](07-ml-flow.md) | Mermaid |
+
+---
+
+## 0. เวอร์ชันย่อภาษาไทย (ใช้ในเล่มรายงาน / สไลด์)
+
+สองรูปนี้วาดมือเป็น SVG สไตล์ draw.io เรียบ ๆ ตรงกับสคีมาและโค้ดปัจจุบัน — เอาไปแปะได้เลย
+แก้ไขที่ไฟล์ `.html` แล้วเรนเดอร์ใหม่ (ดูหัวข้อ "Regenerating the images" ท้ายไฟล์)
+
+### ER Diagram (เฉพาะตารางหลัก) — [er-basic-th.html](er-basic-th.html)
+
+![ER diagram ย่อ](er-basic-th.png)
+
+เจ็ดตารางหลักจาก `backend/models.py` พร้อม PK/FK และจำนวนความสัมพันธ์ (1 : N)
+ตารางที่ตัดออกเพื่อให้อ่านง่าย: `damages` · `grenades` · `player_positions` (ห้อยกับ `rounds`/`matches` แบบเดียวกับ `kills`) และ `users` ที่เลิกใช้แล้ว
+ต่างจาก [02-er-diagram.md](02-er-diagram.md) ตรงที่อันนั้นเป็น**แบบแนวคิด** (มี `DEMO` กับ `CLUSTER_RESULT` ที่ไม่ใช่ตารางจริง) ส่วนอันนี้คือ**ตารางจริงในฐานข้อมูล**
+
+### Flowchart (อัปโหลด → ดูผล) — [flowchart-basic-th.html](flowchart-basic-th.html)
+
+![Flowchart ย่อ](flowchart-basic-th.png)
+
+เส้นทางของผู้ใช้หนึ่งคน ตั้งแต่ลากไฟล์ `.dem` ลงเว็บจนเปิดดูผลได้ พร้อมทางแยกตอนแกะไฟล์ไม่สำเร็จ
+ต่างจาก [03-pipeline.md](03-pipeline.md) ตรงที่อันนั้นเล่าสาย **ML** (MeanShift/KMeans + สามด่านตรวจ) ส่วนอันนี้เล่าสาย **การใช้งานจริง**
 
 ---
 

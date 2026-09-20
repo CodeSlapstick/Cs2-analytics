@@ -1,0 +1,126 @@
+<!doctype html>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>CS2 Scouting — Flowchart (ย่อ)</title>
+<style>
+  :root {
+    --bg: #ffffff; --dot: #d0d0d0; --fg: #000000;
+    --blue-fill: #dae8fc; --blue-stroke: #6c8ebf;
+    --green-fill: #d5e8d4; --green-stroke: #82b366;
+    --orange-fill: #ffe6cc; --orange-stroke: #d79b00;
+    --gray-fill: #f5f5f5; --gray-stroke: #666666;
+    --red-fill: #f8cecc; --red-stroke: #b85450;
+  }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 13px/1.4 "Helvetica Neue", Helvetica, Arial, "Leelawadee UI", sans-serif; }
+  main { margin: 0; padding: 0; }
+  svg { width: 980px; height: 950px; display: block; }
+  .node { stroke-width: 1.5px; }
+  .blue { fill: var(--blue-fill); stroke: var(--blue-stroke); }
+  .green { fill: var(--green-fill); stroke: var(--green-stroke); }
+  .orange { fill: var(--orange-fill); stroke: var(--orange-stroke); }
+  .gray { fill: var(--gray-fill); stroke: var(--gray-stroke); }
+  .red { fill: var(--red-fill); stroke: var(--red-stroke); }
+  .rim { fill: none; stroke: var(--gray-stroke); stroke-width: 1.5px; }
+  .lbl { font-size: 13.5px; fill: var(--fg); }
+  .sub { font-size: 11.5px; fill: #444444; }
+  .branch { font-size: 12px; font-weight: 700; fill: #000000; }
+  .title { font-size: 15px; font-weight: 700; fill: var(--fg); }
+  .note { font-size: 11.5px; fill: #444444; }
+  .edge { stroke: #000000; stroke-width: 1.2; fill: none; }
+</style>
+<main>
+  <svg viewBox="0 0 980 950" xmlns="http://www.w3.org/2000/svg" role="img"
+       aria-label="Flowchart ย่อ: อัปโหลดไฟล์เดโมจนถึงดูผลบนหน้าเว็บ">
+    <defs>
+      <pattern id="dots" width="14" height="14" patternUnits="userSpaceOnUse">
+        <circle cx="1" cy="1" r="1" fill="var(--dot)" />
+      </pattern>
+      <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M 0 0 L 10 5 L 0 10 z" fill="#000000" />
+      </marker>
+    </defs>
+
+    <rect width="980" height="950" fill="url(#dots)" />
+    <text class="title" x="45" y="26">Flowchart — อัปโหลดไฟล์การแข่ง แล้วเกิดอะไรขึ้นบ้าง</text>
+
+    <!-- ============ เส้น (วาดก่อนกล่อง) ============ -->
+    <path class="edge" d="M 450 90 V 126" marker-end="url(#arrow)" />
+    <path class="edge" d="M 450 188 V 224" marker-end="url(#arrow)" />
+    <path class="edge" d="M 450 274 V 310" marker-end="url(#arrow)" />
+    <path class="edge" d="M 450 372 V 401" marker-end="url(#arrow)" />
+    <!-- diamond -> สำเร็จ -->
+    <path class="edge" d="M 450 505 V 541" marker-end="url(#arrow)" />
+    <text class="branch" x="462" y="528">สำเร็จ</text>
+    <!-- diamond -> ไม่สำเร็จ -->
+    <path class="edge" d="M 580 453 H 700" marker-end="url(#arrow)" />
+    <text class="branch" x="640" y="444" text-anchor="middle">ไม่สำเร็จ</text>
+    <!-- error -> end -->
+    <path class="edge" d="M 815 483 V 560" marker-end="url(#arrow)" />
+    <!-- flow ต่อ -->
+    <path class="edge" d="M 450 603 V 639" marker-end="url(#arrow)" />
+    <path class="edge" d="M 450 712 V 735" marker-end="url(#arrow)" />
+    <path class="edge" d="M 450 791 V 827" marker-end="url(#arrow)" />
+
+    <!-- ============ 1. เริ่ม ============ -->
+    <rect class="node green" x="280" y="40" width="340" height="50" rx="25" />
+    <text class="lbl" x="450" y="62" text-anchor="middle">โค้ชลากไฟล์ .dem ลงหน้าเว็บ</text>
+    <text class="sub" x="450" y="80" text-anchor="middle">ไฟล์ที่เกมสร้างให้เองหลังจบแมตช์</text>
+
+    <!-- ============ 2. API รับไฟล์ ============ -->
+    <rect class="node blue" x="280" y="126" width="340" height="62" />
+    <text class="lbl" x="450" y="150" text-anchor="middle">API รับไฟล์ เก็บลง demos/uploads/</text>
+    <text class="sub" x="450" y="170" text-anchor="middle">สร้างแถวใน matches สถานะ "รอคิว"</text>
+    <text class="sub" x="450" y="184" text-anchor="middle">ตอบกลับทันที ไม่ให้ผู้ใช้รอหน้าค้าง</text>
+
+    <!-- ============ 3. เข้าคิว ============ -->
+    <rect class="node blue" x="280" y="224" width="340" height="50" />
+    <text class="lbl" x="450" y="246" text-anchor="middle">ส่งงานเข้าคิว (Redis)</text>
+    <text class="sub" x="450" y="264" text-anchor="middle">งานหนักไม่ทำในคำขอของผู้ใช้</text>
+
+    <!-- ============ 4. worker แกะ ============ -->
+    <rect class="node blue" x="280" y="310" width="340" height="62" />
+    <text class="lbl" x="450" y="334" text-anchor="middle">worker หยิบงานไปแกะไฟล์</text>
+    <text class="sub" x="450" y="354" text-anchor="middle">awpy / demoparser2 · สถานะ "กำลังแกะ"</text>
+    <text class="sub" x="450" y="368" text-anchor="middle">อ่านเฉพาะ tick ที่ต้องใช้ (ไม่อ่านทุก tick)</text>
+
+    <!-- ============ 5. ตรวจว่าแกะได้ไหม ============ -->
+    <path class="node orange" d="M 450 401 L 580 453 L 450 505 L 320 453 Z" />
+    <text class="lbl" x="450" y="450" text-anchor="middle">แกะไฟล์สำเร็จไหม</text>
+    <text class="sub" x="450" y="468" text-anchor="middle">ไฟล์พัง / คนละเกม = ไม่สำเร็จ</text>
+
+    <!-- ============ 5b. พัง ============ -->
+    <rect class="node red" x="700" y="423" width="230" height="60" />
+    <text class="lbl" x="815" y="447" text-anchor="middle">บันทึกสถานะ "พัง"</text>
+    <text class="sub" x="815" y="467" text-anchor="middle">พร้อมเหตุผลที่แกะไม่ได้</text>
+
+    <rect class="node green" x="700" y="560" width="230" height="56" rx="28" />
+    <text class="lbl" x="815" y="583" text-anchor="middle">จบ — หน้าเว็บบอกสาเหตุ</text>
+    <text class="sub" x="815" y="601" text-anchor="middle">ส่งไฟล์ใหม่ได้เลย</text>
+
+    <!-- ============ 6. คำนวณฟีเจอร์ ============ -->
+    <rect class="node blue" x="280" y="541" width="340" height="62" />
+    <text class="lbl" x="450" y="565" text-anchor="middle">คำนวณฟีเจอร์จากสิ่งที่แกะได้</text>
+    <text class="sub" x="450" y="585" text-anchor="middle">opening · trade · clutch · buy type</text>
+    <text class="sub" x="450" y="599" text-anchor="middle">ADR · KAST — นิยามเดียวทั้งระบบ</text>
+
+    <!-- ============ 7. เก็บลงฐานข้อมูล (cylinder) ============ -->
+    <path class="node gray" d="M 280 646 A 170 14 0 0 1 620 646 L 620 698 A 170 14 0 0 1 280 698 Z" />
+    <path class="rim" d="M 280 646 A 170 14 0 0 0 620 646" />
+    <text class="lbl" x="450" y="672" text-anchor="middle">เก็บลง PostgreSQL · สถานะ "พร้อม"</text>
+    <text class="sub" x="450" y="692" text-anchor="middle">โหลดไฟล์เดิมซ้ำกี่ครั้งก็ได้ข้อมูลชุดเดียว</text>
+
+    <!-- ============ 8. หน้าเว็บรู้เอง ============ -->
+    <rect class="node blue" x="280" y="735" width="340" height="56" />
+    <text class="lbl" x="450" y="758" text-anchor="middle">หน้าเว็บถามสถานะทุก 2 วินาที</text>
+    <text class="sub" x="450" y="778" text-anchor="middle">แถวในรายการขยับเอง ไม่ต้องรีเฟรช</text>
+
+    <!-- ============ 9. ดูผล ============ -->
+    <rect class="node green" x="280" y="827" width="340" height="50" rx="25" />
+    <text class="lbl" x="450" y="849" text-anchor="middle">โค้ชเปิดดูผลได้</text>
+    <text class="sub" x="450" y="867" text-anchor="middle">หน้าดูทีละรอบ · เครื่องมือวิเคราะห์ · สถิติรายคน</text>
+
+    <!-- ============ หมายเหตุ ============ -->
+    <text class="note" x="45" y="912">ขั้นตอนที่ 3-7 ทำงานเบื้องหลังทั้งหมด ผู้ใช้ปิดหน้าเว็บไปก่อนได้ · เปิดแมตช์ที่ยังแกะไม่เสร็จก็ได้ ระบบจะพาเข้ารอบ 1 ให้เองเมื่อเสร็จ</text>
+    <text class="note" x="45" y="932">เดโมที่ผู้ใช้อัปโหลดเก็บคนละโฟลเดอร์กับชุดอ้างอิงที่ใช้เทรนโมเดล และมีเทสต์ดักไม่ให้สองสายมาปนกัน</text>
+  </svg>
+</main>
