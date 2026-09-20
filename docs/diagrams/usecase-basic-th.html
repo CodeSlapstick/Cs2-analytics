@@ -1,0 +1,135 @@
+<!doctype html>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>CS2 Scouting — Use Case (ย่อ)</title>
+<style>
+  :root {
+    --bg: #ffffff; --dot: #d0d0d0; --fg: #000000;
+    --blue-fill: #dae8fc; --blue-stroke: #6c8ebf;
+    --green-fill: #d5e8d4; --green-stroke: #82b366;
+    --orange-fill: #ffe6cc; --orange-stroke: #d79b00;
+  }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 13px/1.4 "Helvetica Neue", Helvetica, Arial, "Leelawadee UI", sans-serif; }
+  main { margin: 0; padding: 0; }
+  svg { width: 1120px; height: 690px; display: block; }
+  .node { stroke-width: 1.5px; }
+  .blue { fill: var(--blue-fill); stroke: var(--blue-stroke); }
+  .green { fill: var(--green-fill); stroke: var(--green-stroke); }
+  .orange { fill: var(--orange-fill); stroke: var(--orange-stroke); }
+  .uc { font-size: 13.5px; fill: var(--fg); }
+  .uc-sub { font-size: 11px; fill: #444444; }
+  .actor-name { font-size: 13.5px; font-weight: 700; fill: var(--fg); }
+  .actor-role { font-size: 11px; fill: #444444; }
+  .rel { font-size: 11px; fill: #333333; }
+  .boundary-label { font-size: 13px; font-weight: 700; fill: #666666; }
+  .title { font-size: 15px; font-weight: 700; fill: var(--fg); }
+  .note { font-size: 11.5px; fill: #444444; }
+  .edge { stroke: #000000; stroke-width: 1.2; fill: none; }
+  .dashed { stroke: #666666; stroke-width: 1.2; fill: none; stroke-dasharray: 6 4; }
+  .figure { stroke: #000000; stroke-width: 1.8; fill: none; }
+</style>
+<main>
+  <svg viewBox="0 0 1120 690" xmlns="http://www.w3.org/2000/svg" role="img"
+       aria-label="Use case diagram ย่อของระบบ CS2 Scouting">
+    <defs>
+      <pattern id="dots" width="14" height="14" patternUnits="userSpaceOnUse">
+        <circle cx="1" cy="1" r="1" fill="var(--dot)" />
+      </pattern>
+      <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M 0 0 L 10 5 L 0 10 z" fill="#000000" />
+      </marker>
+      <marker id="arrow-open" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+        <path d="M 0 0 L 10 5 L 0 10" fill="none" stroke="#666666" stroke-width="1.4" />
+      </marker>
+    </defs>
+
+    <rect width="1120" height="690" fill="url(#dots)" />
+    <text class="title" x="45" y="26">Use Case Diagram — ระบบ CS2 Scouting</text>
+
+    <!-- ============ ขอบเขตระบบ ============ -->
+    <rect x="290" y="50" width="630" height="530" fill="none" stroke="#999999" stroke-width="1.5" />
+    <text class="boundary-label" x="605" y="74" text-anchor="middle">ระบบ CS2 Scouting</text>
+
+    <!-- ============ เส้นจาก actor (วาดก่อนกล่อง) ============ -->
+    <!-- โค้ช -->
+    <path class="edge" d="M 152 185 L 327 122" marker-end="url(#arrow)" />
+    <path class="edge" d="M 152 200 L 327 245" marker-end="url(#arrow)" />
+    <path class="edge" d="M 152 215 L 327 384" marker-end="url(#arrow)" />
+    <!-- ผู้เล่น -->
+    <path class="edge" d="M 152 425 L 327 406" marker-end="url(#arrow)" />
+    <path class="edge" d="M 152 440 L 327 502" marker-end="url(#arrow)" />
+    <!-- ตัวแกะเบื้องหลัง -->
+    <path class="edge" d="M 986 110 L 885 115" marker-end="url(#arrow)" />
+
+    <!-- ============ เส้น include / extend ============ -->
+    <path class="dashed" d="M 577 115 L 665 115" marker-end="url(#arrow-open)" />
+    <text class="rel" x="621" y="106" text-anchor="middle">«include»</text>
+
+    <path class="dashed" d="M 566 228 L 665 192" marker-end="url(#arrow-open)" />
+    <path class="dashed" d="M 577 253 L 665 255" marker-end="url(#arrow-open)" />
+    <path class="dashed" d="M 566 276 L 665 318" marker-end="url(#arrow-open)" />
+    <text class="rel" x="621" y="246" text-anchor="middle">«extend»</text>
+
+    <path class="dashed" d="M 577 400 L 665 418" marker-end="url(#arrow-open)" />
+    <text class="rel" x="621" y="401" text-anchor="middle">«extend»</text>
+
+    <!-- ============ use case คอลัมน์ซ้าย ============ -->
+    <ellipse class="node blue" cx="452" cy="115" rx="125" ry="30" />
+    <text class="uc" x="452" y="112" text-anchor="middle">อัปโหลดไฟล์การแข่ง</text>
+    <text class="uc-sub" x="452" y="129" text-anchor="middle">ลากไฟล์ .dem ลงเว็บ</text>
+
+    <ellipse class="node blue" cx="452" cy="252" rx="125" ry="30" />
+    <text class="uc" x="452" y="249" text-anchor="middle">เปิดเครื่องมือวิเคราะห์</text>
+    <text class="uc-sub" x="452" y="266" text-anchor="middle">เลือกได้ 3 มุมมอง</text>
+
+    <ellipse class="node blue" cx="452" cy="395" rx="125" ry="30" />
+    <text class="uc" x="452" y="392" text-anchor="middle">ดูแมตช์ทีละรอบบนแผนที่</text>
+    <text class="uc-sub" x="452" y="409" text-anchor="middle">ใครตายที่ไหน · ระเบิด · ไทม์ไลน์</text>
+
+    <ellipse class="node blue" cx="452" cy="510" rx="125" ry="30" />
+    <text class="uc" x="452" y="507" text-anchor="middle">ดูสถิติรายคน</text>
+    <text class="uc-sub" x="452" y="524" text-anchor="middle">K/D · ADR · KAST · clutch</text>
+
+    <!-- ============ use case คอลัมน์ขวา ============ -->
+    <ellipse class="node green" cx="775" cy="115" rx="110" ry="27" />
+    <text class="uc" x="775" y="112" text-anchor="middle">แกะไฟล์อัตโนมัติ</text>
+    <text class="uc-sub" x="775" y="129" text-anchor="middle">(เครื่องทำเอง ผู้ใช้ไม่ต้องรอ)</text>
+
+    <ellipse class="node blue" cx="775" cy="190" rx="110" ry="25" />
+    <text class="uc" x="775" y="195" text-anchor="middle">ดูจุดที่ทีมเราตาย</text>
+
+    <ellipse class="node blue" cx="775" cy="255" rx="110" ry="25" />
+    <text class="uc" x="775" y="260" text-anchor="middle">เทียบกับทีมอาชีพ</text>
+
+    <ellipse class="node blue" cx="775" cy="320" rx="110" ry="25" />
+    <text class="uc" x="775" y="317" text-anchor="middle">ดูว่าคู่แข่ง</text>
+    <text class="uc" x="775" y="333" text-anchor="middle">อ่านทางเราออกเร็วแค่ไหน</text>
+
+    <ellipse class="node blue" cx="775" cy="420" rx="110" ry="25" />
+    <text class="uc" x="775" y="417" text-anchor="middle">เล่นย้อนดูตำแหน่ง</text>
+    <text class="uc" x="775" y="433" text-anchor="middle">ผู้เล่นตามเวลา</text>
+
+    <!-- ============ actor: โค้ช ============ -->
+    <circle class="figure" cx="120" cy="150" r="15" />
+    <path class="figure" d="M 120 165 L 120 205 M 98 178 L 142 178 M 120 205 L 104 235 M 120 205 L 136 235" />
+    <text class="actor-name" x="120" y="262" text-anchor="middle">โค้ช / หัวหน้าทีม</text>
+    <text class="actor-role" x="120" y="280" text-anchor="middle">คนตัดสินใจว่าซ้อมอะไรต่อ</text>
+
+    <!-- ============ actor: ผู้เล่น ============ -->
+    <circle class="figure" cx="120" cy="390" r="15" />
+    <path class="figure" d="M 120 405 L 120 445 M 98 418 L 142 418 M 120 445 L 104 475 M 120 445 L 136 475" />
+    <text class="actor-name" x="120" y="502" text-anchor="middle">ผู้เล่นในทีม</text>
+    <text class="actor-role" x="120" y="520" text-anchor="middle">ดูผลงานตัวเอง</text>
+
+    <!-- ============ actor: ตัวแกะเบื้องหลัง ============ -->
+    <circle class="figure" cx="1018" cy="75" r="15" />
+    <path class="figure" d="M 1018 90 L 1018 130 M 996 103 L 1040 103 M 1018 130 L 1002 160 M 1018 130 L 1034 160" />
+    <text class="actor-name" x="1018" y="187" text-anchor="middle">ตัวแกะเบื้องหลัง</text>
+    <text class="actor-role" x="1018" y="205" text-anchor="middle">ไม่ใช่คน — โปรแกรมทำงานเอง</text>
+
+    <!-- ============ หมายเหตุ ============ -->
+    <text class="note" x="45" y="620">ก่อนใช้งานต้องเข้าสู่ระบบด้วย Steam หรือกด "เข้าชมแบบผู้เยี่ยมชม" ซึ่งดูได้ทุกอย่างเหมือนกัน แต่อัปโหลดไฟล์ไม่ได้ (ระบบตอบปฏิเสธ)</text>
+    <text class="note" x="45" y="642">«include» = ทำทุกครั้งที่ใช้เคสนั้น (อัปโหลดเสร็จ ระบบแกะไฟล์ให้เองเสมอ) · «extend» = จะทำหรือไม่ทำก็ได้</text>
+    <text class="note" x="45" y="664">สามมุมมองในเครื่องมือวิเคราะห์เป็น «extend» เพราะเปิดหน้าแล้วเลือกดูอันไหนก็ได้ ไม่ได้บังคับว่าต้องดูครบ</text>
+  </svg>
+</main>
