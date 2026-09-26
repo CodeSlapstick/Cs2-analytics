@@ -1,29 +1,33 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { type DragEvent as ReactDragEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError, matchesQuery, type Match, type MatchStatus } from "./api";
-import { matchTitle, mb, num } from "./utils";
+import { MapThumb, matchTitle, mb, num } from "./utils";
+import { useT } from "./i18n";
 
 // ================================================================================================
-// หน้าแมตช์: /matches — อัปโหลด + ค้นหา + กรอง + รายการทั้งหมด
+// หน้าแมตช์: /matches — อัปโหลด + ค้นหา + รายการทั้งหมด
 // ================================================================================================
 /**
- * งานเดียวของหน้านี้คือ "หาแมตช์ให้เจอ แล้วเข้าไปดู" — เดิมอยู่ใน sidebar ของหน้ารีวิวรอบ
+ * งานเดียวของหน้านี้คือ "หาแมตช์ให้เจอ แล้วเข้าไปดู" — กดทั้งแถวแล้วเข้าหน้ารีวิวรอบทันที (คลิกเดียว)
+ * สกอร์บอร์ดทั้งแมตช์อยู่ห่างออกไปอีกคลิกจากหัวหน้ารีวิวรอบ
  *
- * ฟอร์มอัปโหลดอยู่หน้าเดียวกับรายการ เพราะอัปเสร็จแถวใหม่โผล่ในรายการทันที เห็นผลของการกระทำตัวเอง
- * ตัวกรองทำฝั่งหน้าเว็บจาก /api/matches ชุดเดิม ไม่มี endpoint ค้นหาแยก — จำนวนแมตช์ระดับหลักร้อย
- * การกรองในเบราว์เซอร์เร็วกว่าและไม่ต้องรอเน็ตทุกครั้งที่พิมพ์
+ * แมตช์ที่ทีมอัปโหลดเองขึ้นก่อนเสมอ — ชุดอ้างอิงทีมอาชีพมีหลายสิบนัด ถ้าปนกันแมตช์ของเราจะจมหาย
+ * อัปโหลด: ปุ่มเดียวบนหัวหน้า หรือลากไฟล์มาวางตรงไหนของหน้าก็ได้ ไม่ต้องติ๊กอะไรก่อน
+ * ตัวกรองทำฝั่งหน้าเว็บจาก /api/matches ชุดเดิม — จำนวนแมตช์ระดับหลักร้อย กรองในเบราว์เซอร์เร็วกว่า
  */
 const STATUS_LABEL: Record<MatchStatus, string> = { queued: "รอคิว", parsing: "กำลังแกะ", done: "พร้อม", error: "แกะไม่สำเร็จ" };
-const STATUS_ORDER: MatchStatus[] = ["done", "parsing", "queued", "error"];
+/** ชุดอ้างอิงแสดงเท่านี้ก่อน กด "แสดงทั้งหมด" ถึงจะกางครบ — ตอนค้นหาอยู่แสดงครบเสมอ */
+const REF_PREVIEW = 8;
 
 export function MatchesPage() {
   const matches = useQuery(matchesQuery);
   const rows = useMemo(() => [...(matches.data ?? [])].sort((a, b) => b.id - a.id), [matches.data]);
-
   const [q, setQ] = useState("");
   const [map, setMap] = useState("");
-  const [status, setStatus] = useState("");
+  const [showAllRef, setShowAllRef] = useState(false);
+  const upload = useUploader();
+  const { t, tn } = useT();
 
   const maps = useMemo(
     () => [...new Set(rows.map((m) => m.map_name).filter((x): x is string => !!x))].sort(),
@@ -34,113 +38,156 @@ export function MatchesPage() {
     return rows.filter(
       (m) =>
         (!map || m.map_name === map) &&
-        (!status || m.status === status) &&
         (!needle || matchTitle(m).toLowerCase().includes(needle) || m.demo_file.toLowerCase().includes(needle)),
     );
-  }, [rows, q, map, status]);
-
-  const filtering = Boolean(q.trim() || map || status);
+  }, [rows, q, map]);
+  const filtering = Boolean(q.trim() || map);
+  const mine = shown.filter((m) => m.source === "upload");
+  const refs = shown.filter((m) => m.source !== "upload");
+  const refShown = filtering || showAllRef ? refs : refs.slice(0, REF_PREVIEW);
 
   return (
-    <div className="matches-page" data-testid="matches-page">
-      <div className="page-head">
-        <p className="eyebrow">แมตช์</p>
-        <h1>แมตช์ทั้งหมด</h1>
-        <p className="muted">
-          {matches.data ? `${num(rows.length)} นัดในระบบ` : "กำลังโหลด…"}
-          {filtering && matches.data ? ` · ตรงกับตัวกรอง ${num(shown.length)} นัด` : ""}
-        </p>
+    <div className="matches-page" data-testid="matches-page" {...upload.dropHandlers}>
+      <div className="page-head head-row">
+        <div>
+          <h1>{t("แมตช์")}</h1>
+          <p className="muted small">
+            {matches.data ? t("{n} นัดในระบบ", { n: num(rows.length) }) : t("กำลังโหลด…")}
+            {filtering && matches.data ? ` · ${t("ตรงกับที่ค้น {n} นัด", { n: num(shown.length) })}` : ""}
+          </p>
+        </div>
+        <button type="button" className="btn-primary btn-icon" onClick={upload.pick} data-testid="upload-button">
+          <IconUpload /> {t("อัปโหลดเดโม")}
+        </button>
+        <input
+          ref={upload.inputRef}
+          type="file"
+          accept=".dem"
+          multiple
+          hidden
+          data-testid="file-input"
+          onChange={(e) => { upload.onFiles(e.target.files); e.target.value = ""; }}
+        />
       </div>
 
-      <UploadBox />
+      <UploadQueue items={upload.items} onOverwrite={upload.overwrite} onClear={upload.clearDone} />
 
-      <section className="card">
-        <div className="filters" role="search">
-          <label className="f-search">
-            <span className="muted small">ค้นหา</span>
-            <input
-              type="search"
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              placeholder="ชื่อทีมหรือชื่อไฟล์เดโม"
-              data-testid="filter-search"
-            />
-          </label>
+      <div className="filters" role="search">
+        <label className="f-search">
+          <span className="sr-only">{t("ค้นหาแมตช์")}</span>
+          <IconSearch />
+          <input
+            type="search"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder={t("ค้นหาชื่อทีมหรือชื่อไฟล์")}
+            data-testid="filter-search"
+          />
+        </label>
+        {maps.length > 1 && (
           <label>
-            <span className="muted small">แมพ</span>
+            <span className="sr-only">{t("แมพ")}</span>
             <select value={map} onChange={(e) => setMap(e.target.value)} data-testid="filter-map">
-              <option value="">ทุกแมพ</option>
+              <option value="">{t("ทุกแมพ")}</option>
               {maps.map((x) => <option key={x} value={x}>{x}</option>)}
             </select>
           </label>
-          <label>
-            <span className="muted small">สถานะ</span>
-            <select value={status} onChange={(e) => setStatus(e.target.value)} data-testid="filter-status">
-              <option value="">ทุกสถานะ</option>
-              {STATUS_ORDER.filter((s) => rows.some((m) => m.status === s)).map((s) => (
-                <option key={s} value={s}>{STATUS_LABEL[s]}</option>
-              ))}
-            </select>
-          </label>
-          {filtering && (
-            <button type="button" className="btn-ghost" onClick={() => { setQ(""); setMap(""); setStatus(""); }}>
-              ล้างตัวกรอง
-            </button>
+        )}
+        {filtering && (
+          <button type="button" className="btn-ghost" onClick={() => { setQ(""); setMap(""); }}>
+            {t("ล้าง")}
+          </button>
+        )}
+      </div>
+
+      {matches.isLoading && <p className="muted">{t("กำลังโหลด…")}</p>}
+      {matches.error && <p className="err">{t("โหลดรายการไม่ได้: {msg}", { msg: (matches.error as Error).message })}</p>}
+
+      {matches.data && (
+        <>
+          <section className="card mcard" aria-labelledby="h-mine">
+            <div className="card-head">
+              <h2 id="h-mine">{t("แมตช์ของทีม")}</h2>
+              <span className="muted small">{t("{n} นัด", { n: num(mine.length) })}</span>
+            </div>
+            {mine.length > 0 ? (
+              <MatchList rows={mine} />
+            ) : filtering ? (
+              <p className="muted small m-empty">{t("ไม่มีแมตช์ของทีมที่ตรงกับที่ค้น")}</p>
+            ) : (
+              <div className="m-empty">
+                <p>{tn("ยังไม่มีแมตช์ของทีม — ลากไฟล์ {dem} มาวางที่หน้านี้ หรือ", { dem: <b>.dem</b> })}</p>
+                <button type="button" className="btn-ghost" onClick={upload.pick}>{t("เลือกไฟล์")}</button>
+              </div>
+            )}
+          </section>
+
+          {refs.length > 0 && (
+            <section className="card mcard" aria-labelledby="h-ref">
+              <div className="card-head">
+                <h2 id="h-ref">{t("ชุดอ้างอิงทีมอาชีพ")}</h2>
+                <span className="muted small">{t("{n} นัด", { n: num(refs.length) })}</span>
+              </div>
+              <MatchList rows={refShown} />
+              {refShown.length < refs.length && (
+                <button type="button" className="more-btn" onClick={() => setShowAllRef(true)}>
+                  {t("แสดงทั้งหมด {n} นัด", { n: num(refs.length) })}
+                </button>
+              )}
+            </section>
           )}
-        </div>
 
-        {matches.isLoading && <p className="muted">กำลังโหลด…</p>}
-        {matches.error && <p className="err">โหลดรายการไม่ได้: {(matches.error as Error).message}</p>}
-        {matches.data && rows.length === 0 && <p className="muted">ยังไม่มีแมตช์ — อัปโหลดเดโมด้านบน</p>}
-        {matches.data && rows.length > 0 && shown.length === 0 && (
-          <p className="muted">ไม่มีแมตช์ที่ตรงกับตัวกรอง — ลองล้างตัวกรอง</p>
-        )}
+          {filtering && shown.length === 0 && (
+            <p className="muted">{t("ไม่มีแมตช์ที่ตรงกับ \"{q}\" — ลองคำอื่น หรือกด ล้าง", { q: q.trim() || map })}</p>
+          )}
+        </>
+      )}
 
-        {shown.length > 0 && (
-          <div className="tbl-wrap">
-            <table className="tbl" data-testid="match-table">
-              <thead>
-                <tr>
-                  <th>แมตช์</th>
-                  <th>แมพ</th>
-                  <th className="num">สกอร์</th>
-                  <th className="num">รอบ</th>
-                  <th className="num">คิล</th>
-                  <th>สถานะ</th>
-                </tr>
-              </thead>
-              <tbody>
-                {shown.map((m) => <MatchRow key={m.id} m={m} />)}
-              </tbody>
-            </table>
+      {upload.dragging && (
+        <div className="drop-overlay" aria-hidden="true">
+          <div>
+            <IconUpload />
+            <p>{t("วางไฟล์ .dem เพื่ออัปโหลด")}</p>
           </div>
-        )}
-      </section>
+        </div>
+      )}
     </div>
   );
 }
 
-function MatchRow({ m }: { m: Match }) {
-  const to = `/matches/${encodeURIComponent(m.demo_file)}`;
+/** แถวแมตช์ — ทั้งแถวเป็นลิงก์เดียว: แกะเสร็จแล้วเข้ารีวิวรอบ 1 · ยังไม่เสร็จเข้าหน้าความคืบหน้า */
+function MatchList({ rows }: { rows: Match[] }) {
+  const { t } = useT();
   return (
-    <tr data-testid="match-row" data-demo={m.demo_file}>
-      <td>
-        <Link to={to} className="row-title" title={m.demo_file}>{matchTitle(m)}</Link>
-      </td>
-      <td>{m.map_name ?? "—"}</td>
-      <td className="num">
-        {m.status === "done" ? (
-          <><span className="ct">{m.ct_rounds}</span><span className="sep">:</span><span className="t">{m.t_rounds}</span></>
-        ) : "—"}
-      </td>
-      <td className="num">{m.status === "done" ? num(m.rounds) : "—"}</td>
-      <td className="num">{m.status === "done" ? num(m.kills) : "—"}</td>
-      <td>
-        {m.status === "done"
-          ? <Link className="btn-sm" to={`${to}/rounds/1`}>รีวิวรอบ →</Link>
-          : <Link className={`badge b-${m.status}`} to={to}>{STATUS_LABEL[m.status]}</Link>}
-      </td>
-    </tr>
+    <ul className="mlist" data-testid="match-table">
+      {rows.map((m) => {
+        const base = `/matches/${encodeURIComponent(m.demo_file)}`;
+        const done = m.status === "done";
+        return (
+          <li key={m.id}>
+            <Link className="mrow" to={done ? `${base}/rounds/1` : base} data-testid="match-row" data-demo={m.demo_file}
+              title={m.demo_file}>
+              <MapThumb map={m.map_name} className="m-thumb" />
+              <span className="m-title">{matchTitle(m)}</span>
+              <span className="m-meta">
+                {m.map_name ?? t("ยังไม่รู้แมพ")}
+                {done && <> · {t("{n} รอบ", { n: num(m.rounds) })}</>}
+              </span>
+              {done ? (
+                <span className="m-score" aria-label={t("CT {ct} ต่อ T {t}", { ct: m.ct_rounds, t: m.t_rounds })}>
+                  <span className="ct">{m.ct_rounds}</span>
+                  <span className="sep">:</span>
+                  <span className="t">{m.t_rounds}</span>
+                </span>
+              ) : (
+                <span className={`badge b-${m.status}`}>{t(STATUS_LABEL[m.status])}</span>
+              )}
+              <IconChevron />
+            </Link>
+          </li>
+        );
+      })}
+    </ul>
   );
 }
 
@@ -148,85 +195,145 @@ function MatchRow({ m }: { m: Match }) {
 interface QueueItem {
   name: string;
   size: number;
-  state: "waiting" | "uploading" | "queued" | "failed";
+  file: File;
+  state: "waiting" | "uploading" | "queued" | "failed" | "duplicate";
   msg?: string;
 }
 
-/** ลากไฟล์ .dem มาวางหรือคลิกเลือก — ส่งทีละไฟล์ ไฟล์หนึ่งพังไม่ลากไฟล์อื่นล้มไปด้วย */
-function UploadBox() {
+/**
+ * ส่งทีละไฟล์ ไฟล์หนึ่งพังไม่ลากไฟล์อื่นล้มไปด้วย
+ * ไม่ถามเรื่อง "โหลดทับ" ก่อนส่ง — ส่วนใหญ่ไม่ซ้ำ ถ้าเซิร์ฟเวอร์ตอบว่าซ้ำ (409) ค่อยมีปุ่มโหลดทับในแถวนั้น
+ * ลากไฟล์มาวางได้ทั้งหน้า (ไม่ใช่แค่กล่องเล็ก ๆ) — ลากเข้ามาแล้วมีแผ่นบอกให้เห็นว่าวางได้
+ */
+function useUploader() {
   const qc = useQueryClient();
   const [items, setItems] = useState<QueueItem[]>([]);
-  const [force, setForce] = useState(false);
-  const [drag, setDrag] = useState(false);
+  const [dragging, setDragging] = useState(false);
+  const depth = useRef(0); // dragenter/leave ยิงซ้ำทุกครั้งที่ผ่านลูก — นับชั้นไว้ไม่ให้แผ่นกระพริบ
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const uploadAll = useCallback(
-    async (files: File[]) => {
-      setItems((prev) => [...files.map((f) => ({ name: f.name, size: f.size, state: "waiting" as const })), ...prev]);
+  const send = useCallback(
+    async (files: File[], force: boolean) => {
       const patch = (name: string, p: Partial<QueueItem>) =>
-        setItems((prev) => prev.map((it) => (it.name === name && it.state !== "queued" ? { ...it, ...p } : it)));
+        setItems((prev) => prev.map((it) => (it.name === name ? { ...it, ...p } : it)));
       for (const f of files) {
-        patch(f.name, { state: "uploading" });
+        patch(f.name, { state: "uploading", msg: undefined });
         try {
           const r = await api.upload(f, force);
-          patch(f.name, { state: "queued", msg: r.replaced ? `เข้าคิวแล้ว (ทับแมตช์ #${r.match_id})` : "เข้าคิวแล้ว" });
+          patch(f.name, { state: "queued", msg: r.replaced ? "โหลดทับแล้ว กำลังรอแกะ" : "เข้าคิวแล้ว กำลังรอแกะ" });
           qc.invalidateQueries({ queryKey: ["matches"] }); // แถวใหม่โผล่ทันที แล้ว poll ต่อเองจนแกะเสร็จ
         } catch (e) {
-          patch(f.name, { state: "failed", msg: e instanceof ApiError ? e.message : String(e) });
+          const dup = e instanceof ApiError && e.status === 409 && e.message.includes("มีอยู่ในระบบแล้ว");
+          patch(f.name, dup
+            ? { state: "duplicate", msg: "มีแมตช์นี้ในระบบแล้ว" }
+            : { state: "failed", msg: e instanceof ApiError ? e.message : String(e) });
         }
       }
     },
-    [force, qc],
+    [qc],
   );
 
   const onFiles = (list: FileList | null) => {
     if (!list) return;
     const files = Array.from(list).filter((f) => f.name.toLowerCase().endsWith(".dem"));
-    if (files.length) void uploadAll(files);
+    if (!files.length) return;
+    setItems((prev) => [
+      ...files.map((f) => ({ name: f.name, size: f.size, file: f, state: "waiting" as const })),
+      ...prev.filter((it) => !files.some((f) => f.name === it.name)),
+    ]);
+    void send(files, false);
   };
 
-  return (
-    <section className="card upload-card">
-      <div
-        className={`dropzone ${drag ? "drag" : ""}`}
-        onDragOver={(e) => { e.preventDefault(); setDrag(true); }}
-        onDragLeave={() => setDrag(false)}
-        onDrop={(e) => { e.preventDefault(); setDrag(false); onFiles(e.dataTransfer.files); }}
-        onClick={() => inputRef.current?.click()}
-        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") inputRef.current?.click(); }}
-        role="button"
-        tabIndex={0}
-      >
-        <div className="dz-icon" aria-hidden="true">↑</div>
-        <p className="dz-title"><b>อัปโหลดเดโม .dem</b></p>
-        <p className="dz-sub">ลากมาวางหรือคลิกเลือก · เลือกได้หลายไฟล์ · ระบบแกะในเบื้องหลัง</p>
-        <input
-          ref={inputRef}
-          type="file"
-          accept=".dem"
-          multiple
-          hidden
-          data-testid="file-input"
-          onChange={(e) => { onFiles(e.target.files); e.target.value = ""; }}
-        />
-      </div>
-      <label className="check">
-        <input type="checkbox" checked={force} onChange={(e) => setForce(e.target.checked)} />
-        โหลดทับของเดิม (แมตช์ที่เคยแกะไม่สำเร็จส่งใหม่ได้เลยไม่ต้องติ๊ก)
-      </label>
+  // ออกจากหน้าไประหว่างลากค้าง — อย่าให้แผ่นค้างอยู่
+  useEffect(() => () => { depth.current = 0; }, []);
 
-      {items.length > 0 && (
-        <ul className="uplist" data-testid="upload-list">
-          {items.map((it) => (
-            <li key={it.name} className={`up-${it.state}`}>
-              <span className="q-name">{it.name}</span>
-              <span className={it.state === "failed" ? "err small" : "small muted"}>
-                {it.state === "waiting" ? "รอส่ง" : it.state === "uploading" ? `กำลังส่ง ${mb(it.size)}…` : it.msg}
-              </span>
-            </li>
-          ))}
-        </ul>
-      )}
+  const hasFiles = (e: ReactDragEvent) => Array.from(e.dataTransfer.types).includes("Files");
+  return {
+    items,
+    dragging,
+    inputRef,
+    onFiles,
+    pick: () => inputRef.current?.click(),
+    overwrite: (name: string) => {
+      const it = items.find((x) => x.name === name);
+      if (it) void send([it.file], true);
+    },
+    clearDone: () => setItems((prev) => prev.filter((it) => it.state === "uploading" || it.state === "waiting")),
+    dropHandlers: {
+      onDragEnter: (e: ReactDragEvent) => {
+        if (!hasFiles(e)) return;
+        depth.current += 1;
+        setDragging(true);
+      },
+      onDragOver: (e: ReactDragEvent) => { if (hasFiles(e)) e.preventDefault(); },
+      onDragLeave: () => {
+        depth.current = Math.max(0, depth.current - 1);
+        if (depth.current === 0) setDragging(false);
+      },
+      onDrop: (e: ReactDragEvent) => {
+        if (!hasFiles(e)) return;
+        e.preventDefault();
+        depth.current = 0;
+        setDragging(false);
+        onFiles(e.dataTransfer.files);
+      },
+    },
+  };
+}
+
+function UploadQueue({ items, onOverwrite, onClear }: {
+  items: QueueItem[];
+  onOverwrite: (name: string) => void;
+  onClear: () => void;
+}) {
+  const { t } = useT();
+  if (items.length === 0) return null;
+  const busy = items.some((it) => it.state === "uploading" || it.state === "waiting");
+  return (
+    <section className="upqueue" aria-live="polite" data-testid="upload-list">
+      <ul className="uplist">
+        {items.map((it) => (
+          <li key={it.name} className={`up-${it.state}`}>
+            <span className="q-name">{it.name}</span>
+            <span className={it.state === "failed" ? "err small" : "small muted"}>
+              {it.state === "waiting" ? t("รอส่ง") : it.state === "uploading" ? t("กำลังส่ง {size}…", { size: mb(it.size) }) : it.msg && t(it.msg)}
+            </span>
+            {it.state === "duplicate" && (
+              <button type="button" className="btn-sm" onClick={() => onOverwrite(it.name)}>{t("โหลดทับของเดิม")}</button>
+            )}
+          </li>
+        ))}
+      </ul>
+      {!busy && <button type="button" className="link-btn small" onClick={onClear}>{t("ซ่อนรายการนี้")}</button>}
     </section>
+  );
+}
+
+// ------------------------------------------------------------------ ไอคอน (เส้น 2px ชุดเดียวกันทั้งแอป)
+function IconUpload() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+      strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
+      <path d="M12 15V4M7 9l5-5 5 5M5 15v3a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-3" />
+    </svg>
+  );
+}
+
+function IconSearch() {
+  return (
+    <svg className="f-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+      strokeLinecap="round" aria-hidden="true" focusable="false">
+      <circle cx="11" cy="11" r="6.5" />
+      <path d="m16 16 4 4" />
+    </svg>
+  );
+}
+
+export function IconChevron() {
+  return (
+    <svg className="chev" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+      strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
+      <path d="m9 6 6 6-6 6" />
+    </svg>
   );
 }

@@ -17,142 +17,94 @@
     "",
     "ที่มาของค่าที่ถูกต้อง: ไฟล์ resource/overviews/<map>.txt ในตัวเกม CS2",
     "อย่าเดาเอง และอย่าหาค่าด้วยการ fit จากข้อมูล — จะได้ค่าที่พอดีกับชุดข้อมูลชุดเดียว",
-    " ",
-    "·",
-    " ",
-    "s",
-    "i",
-    "t",
-    "e",
-    "s",
-    " ",
-    "=",
-    " ",
-    "ศ",
-    "ู",
-    "น",
-    "ย",
-    "์",
-    "ก",
-    "ล",
-    "า",
-    "ง",
-    "ไ",
-    "ซ",
-    "ต",
-    "์",
-    " ",
-    "A",
-    "/",
-    "B",
-    " ",
-    "ไ",
-    "ว",
-    "้",
-    "ต",
-    "ั",
-    "ด",
-    "ส",
-    "ิ",
-    "น",
-    "ว",
-    "่",
-    "า",
-    "บ",
-    "อ",
-    "ม",
-    "บ",
-    "์",
-    "ล",
-    "ง",
-    "ไ",
-    "ซ",
-    "ต",
-    "์",
-    "ไ",
-    "ห",
-    "น",
-    "จ",
-    "า",
-    "ก",
-    "พ",
-    "ิ",
-    "ก",
-    "ั",
-    "ด",
-    "จ",
-    "ุ",
-    "ด",
-    "ว",
-    "า",
-    "ง",
-    " ",
-    "(",
-    "a",
-    "w",
-    "p",
-    "y",
-    " ",
-    "ส",
-    "่",
-    "ง",
-    " ",
-    "b",
-    "o",
-    "m",
-    "b",
-    "_",
-    "s",
-    "i",
-    "t",
-    "e",
-    " ",
-    "ม",
-    "า",
-    "ผ",
-    "ิ",
-    "ด",
-    " ",
-    "ล",
-    "ง",
-    " ",
-    "b",
-    "o",
-    "m",
-    "b",
-    "s",
-    "i",
-    "t",
-    "e",
-    "_",
-    "b",
-    " ",
-    "ท",
-    "ุ",
-    "ก",
-    "แ",
-    "ถ",
-    "ว",
-    ")"
+    "sites = ศูนย์กลางไซต์ A/B ไว้ตัดสินว่าบอมบ์ลงไซต์ไหนจากพิกัดจุดวาง (awpy ส่ง bomb_site มาผิด ลง bombsite_b ทุกแถว)",
+    "เพิ่ม/อัปเดตหลายแมพพร้อมกันจากไฟล์เกม: python research/import_overviews.py --write"
   ],
-  "de_mirage": {
-    "image": "/maps/de_mirage.png",
+  "cs_italy": {
+    "image": "/maps/cs_italy.png",
     "size": 1024,
-    "pos_x": -3230,
-    "pos_y": 1713,
+    "pos_x": -2647,
+    "pos_y": 2592,
+    "scale": 4.6,
+    "grid": 300,
+    "source_note": "ค่าทางการจาก resource/overviews/cs_italy.txt ของ CS2 (research/import_overviews.py) — ยังไม่มีเดโมของแมพนี้ในระบบ ตรวจด้วย check_radar.py ได้เมื่อมีคนอัปโหลด"
+  },
+  "cs_office": {
+    "image": "/maps/cs_office.png",
+    "size": 1024,
+    "pos_x": -1838,
+    "pos_y": 1858,
+    "scale": 4.1,
+    "grid": 300,
+    "source_note": "ค่าทางการจาก resource/overviews/cs_office.txt ของ CS2 (research/import_overviews.py) — ยังไม่มีเดโมของแมพนี้ในระบบ ตรวจด้วย check_radar.py ได้เมื่อมีคนอัปโหลด"
+  },
+  "de_ancient": {
+    "image": "/maps/de_ancient.png",
+    "size": 1024,
+    "pos_x": -2953,
+    "pos_y": 2164,
     "scale": 5.0,
     "grid": 300,
-    "source_note": "ค่าทางการจาก resource/overviews/de_mirage.txt ของ CS2 — จุดตาย 7,270 จุดตกบนพื้นที่เดินได้ 99.6% (ค่าที่ fit เองรอบก่อนได้แค่ 83% กริดจึงเหลื่อมกับแมพ)",
+    "source_note": "ค่าทางการจาก resource/overviews/de_ancient.txt ของ CS2 (research/import_overviews.py) — ยังไม่มีเดโมของแมพนี้ในระบบ ตรวจด้วย check_radar.py ได้เมื่อมีคนอัปโหลด",
     "sites": {
       "A": [
-        -408,
-        -1884
+        -1366,
+        884
       ],
       "B": [
-        -1993,
-        247
+        1143,
+        116
       ],
-      "source_note": "ค่าเฉลี่ยพิกัดของ 2,523 การตายที่เดโมระบุ BombsiteA/BombsiteB บน Mirage"
+      "source_note": "ตำแหน่งไอคอนไซต์ bombA/bombB ใน resource/overviews/de_ancient.txt ของเกม"
+    }
+  },
+  "de_anubis": {
+    "image": "/maps/de_anubis.png",
+    "size": 1024,
+    "pos_x": -2796,
+    "pos_y": 3328,
+    "scale": 5.22,
+    "grid": 300,
+    "source_note": "ค่าทางการจาก resource/overviews/de_anubis.txt ของ CS2 (research/import_overviews.py) — ยังไม่มีเดโมของแมพนี้ในระบบ ตรวจด้วย check_radar.py ได้เมื่อมีคนอัปโหลด"
+  },
+  "de_cache": {
+    "image": "/maps/de_cache.png",
+    "size": 1024,
+    "pos_x": -2000,
+    "pos_y": 3250,
+    "scale": 5.5,
+    "grid": 300,
+    "source_note": "ค่าทางการจาก resource/overviews/de_cache.txt ของ CS2 (research/import_overviews.py) — ยังไม่มีเดโมของแมพนี้ในระบบ ตรวจด้วย check_radar.py ได้เมื่อมีคนอัปโหลด",
+    "sites": {
+      "A": [
+        -170,
+        1786
+      ],
+      "B": [
+        -57,
+        -1199
+      ],
+      "source_note": "ตำแหน่งไอคอนไซต์ bombA/bombB ใน resource/overviews/de_cache.txt ของเกม"
+    }
+  },
+  "de_dust": {
+    "image": "/maps/de_dust.png",
+    "size": 1024,
+    "pos_x": -2850,
+    "pos_y": 4073,
+    "scale": 6.0,
+    "grid": 300,
+    "source_note": "ค่าทางการจาก resource/overviews/de_dust.txt ของ CS2 (research/import_overviews.py) — ยังไม่มีเดโมของแมพนี้ในระบบ ตรวจด้วย check_radar.py ได้เมื่อมีคนอัปโหลด",
+    "sites": {
+      "A": [
+        2065,
+        694
+      ],
+      "B": [
+        406,
+        -474
+      ],
+      "source_note": "ตำแหน่งไอคอนไซต์ bombA/bombB ใน resource/overviews/de_dust.txt ของเกม"
     }
   },
   "de_dust2": {
@@ -173,6 +125,126 @@
         2113
       ],
       "source_note": "ค่าเฉลี่ยพิกัดของ 35 การตายที่เดโมระบุ BombsiteA/BombsiteB บน Dust2 (แมตช์เดียว ยังหยาบ)"
+    }
+  },
+  "de_inferno": {
+    "image": "/maps/de_inferno.png",
+    "size": 1024,
+    "pos_x": -2087,
+    "pos_y": 3870,
+    "scale": 4.9,
+    "grid": 300,
+    "source_note": "ค่าทางการจาก resource/overviews/de_inferno.txt ของ CS2 (research/import_overviews.py) — ยังไม่มีเดโมของแมพนี้ในระบบ ตรวจด้วย check_radar.py ได้เมื่อมีคนอัปโหลด",
+    "sites": {
+      "A": [
+        1977,
+        408
+      ],
+      "B": [
+        372,
+        2766
+      ],
+      "source_note": "ตำแหน่งไอคอนไซต์ bombA/bombB ใน resource/overviews/de_inferno.txt ของเกม"
+    }
+  },
+  "de_mirage": {
+    "image": "/maps/de_mirage.png",
+    "size": 1024,
+    "pos_x": -3230,
+    "pos_y": 1713,
+    "scale": 5.0,
+    "grid": 300,
+    "source_note": "ค่าทางการจาก resource/overviews/de_mirage.txt ของ CS2 — จุดตาย 7,270 จุดตกบนพื้นที่เดินได้ 99.6% (ค่าที่ fit เองรอบก่อนได้แค่ 83% กริดจึงเหลื่อมกับแมพ)",
+    "sites": {
+      "A": [
+        -408,
+        -1884
+      ],
+      "B": [
+        -1993,
+        247
+      ],
+      "source_note": "ค่าเฉลี่ยพิกัดของ 2,523 การตายที่เดโมระบุ BombsiteA/BombsiteB บน Mirage"
+    }
+  },
+  "de_nuke": {
+    "image": "/maps/de_nuke.png",
+    "size": 1024,
+    "pos_x": -3453,
+    "pos_y": 2887,
+    "scale": 7.0,
+    "grid": 300,
+    "source_note": "ค่าทางการจาก resource/overviews/de_nuke.txt ของ CS2 (research/import_overviews.py) — ยังไม่มีเดโมของแมพนี้ในระบบ ตรวจด้วย check_radar.py ได้เมื่อมีคนอัปโหลด",
+    "sites": {
+      "A": [
+        704,
+        -554
+      ],
+      "B": [
+        704,
+        -1270
+      ],
+      "source_note": "ตำแหน่งไอคอนไซต์ bombA/bombB ใน resource/overviews/de_nuke.txt ของเกม"
+    }
+  },
+  "de_overpass": {
+    "image": "/maps/de_overpass.png",
+    "size": 1024,
+    "pos_x": -4831,
+    "pos_y": 1781,
+    "scale": 5.2,
+    "grid": 300,
+    "source_note": "ค่าทางการจาก resource/overviews/de_overpass.txt ของ CS2 (research/import_overviews.py) — ยังไม่มีเดโมของแมพนี้ในระบบ ตรวจด้วย check_radar.py ได้เมื่อมีคนอัปโหลด",
+    "sites": {
+      "A": [
+        -1902,
+        556
+      ],
+      "B": [
+        -1104,
+        130
+      ],
+      "source_note": "ตำแหน่งไอคอนไซต์ bombA/bombB ใน resource/overviews/de_overpass.txt ของเกม"
+    }
+  },
+  "de_train": {
+    "image": "/maps/de_train.png",
+    "size": 1024,
+    "pos_x": -2308,
+    "pos_y": 2078,
+    "scale": 4.082077,
+    "grid": 300,
+    "source_note": "ค่าทางการจาก resource/overviews/de_train.txt ของ CS2 (research/import_overviews.py) — ยังไม่มีเดโมของแมพนี้ในระบบ ตรวจด้วย check_radar.py ได้เมื่อมีคนอัปโหลด",
+    "sites": {
+      "A": [
+        325,
+        30
+      ],
+      "B": [
+        -134,
+        -1099
+      ],
+      "source_note": "ตำแหน่งไอคอนไซต์ bombA/bombB ใน resource/overviews/de_train.txt ของเกม"
+    }
+  },
+  "de_vertigo": {
+    "image": "/maps/de_vertigo.png",
+    "size": 1024,
+    "pos_x": -3168,
+    "pos_y": 1762,
+    "scale": 4.0,
+    "grid": 300,
+    "source_note": "ค่าทางการจาก resource/overviews/de_vertigo.txt ของ CS2 (research/import_overviews.py) — ยังไม่มีเดโมของแมพนี้ในระบบ ตรวจด้วย check_radar.py ได้เมื่อมีคนอัปโหลด",
+    "sites": {
+      "A": [
+        -280,
+        -634
+      ],
+      "B": [
+        -2259,
+        849
+      ],
+      "source_note": "ตำแหน่งไอคอนไซต์ bombA/bombB ใน resource/overviews/de_vertigo.txt ของเกม"
     }
   }
 }

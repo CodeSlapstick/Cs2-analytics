@@ -48,10 +48,13 @@ from backend.db import (  # noqa: F401  (load_dotenv ทำงานตอน im
 from backend.features import assign_teams, rating2_approx  # ผูกคนกับทีม (Round Review) · Rating 2.0 ประมาณการ
 from backend.jobs import QueueUnavailable, enqueue_parse, job_state, queue_health  # คิวงาน parse (Sprint 2)
 from backend.review import (
+    HEATMAP_EVENTS,
+    build_economy,
     build_round_detail,
     build_round_list,
     build_round_positions,
     deaths_overlay,
+    heatmap_points,
     load_grid_model,
     radar_frame,
 )
@@ -656,11 +659,11 @@ async def api_upload_demo(
         raise HTTPException(400, "รับเฉพาะไฟล์ .dem และชื่อไฟล์ใช้ได้แค่ตัวอักษร ตัวเลข . _ - ( )")
 
     # ---- 2) เคยโหลดแมตช์นี้ไปแล้วหรือยัง --------------------------------
-    # เช็กก่อนแตะดิสก์ — แมตช์ที่เคยพัง (error) ยอมให้ส่งใหม่ได้เลยโดยไม่ต้องติ๊ก "โหลดทับ"
+    # เช็กก่อนแตะดิสก์ — แมตช์ที่เคยพัง (error) ยอมให้ส่งใหม่ได้เลยโดยไม่ต้องกด "โหลดทับ"
     existing = await conn.fetchrow("SELECT id, status FROM matches WHERE demo_file = $1;", name)
     if existing and not replace and existing["status"] != "error":
         raise HTTPException(409, f"แมตช์ {name} มีอยู่ในระบบแล้ว (Match ID: {existing['id']}, สถานะ {existing['status']}) "
-                                 "— ติ๊ก \"โหลดทับของเดิม\" ถ้าต้องการโหลดใหม่")
+                                 "— กด \"โหลดทับของเดิม\" ในรายการอัปโหลดถ้าต้องการโหลดใหม่")
 
     # ---- 3) โควตาต่อชั่วโมง — เช็คก่อนเขียนดิสก์ จะได้ไม่เสียพื้นที่ไปกับไฟล์ที่จะถูกปฏิเสธ
     await check_upload_quota(conn, viewer)
@@ -981,3 +984,96 @@ async def api_review_positions(demo_file: str, round_num: int, _: dict = Depends
         WHERE match_id = $1 AND round_num = $2 ORDER BY tick, steam_id""", m["id"], round_num)
     return build_round_positions(rows(pos), start_tick=rnd["start_tick"], tickrate=m["tickrate"],
                                  frame=radar_frame(m["map_name"]))
+
+
+# ------------------------------------------------------------------ heatmap ของแมตช์เดียว
+# แต่ละ event ดึงพิกัดของ "ใคร" คนละคน — ตัวกรองฝั่ง/ผู้เล่นใช้กับคนคนนั้นเสมอ
+#   kills      ตำแหน่งคนยิง ตอนยิงคู่แข่งตาย
+#   deaths     ตำแหน่งคนตาย
+#   positions  ตำแหน่งที่ผู้เล่นที่ยังไม่ตายยืน วินาทีละครั้ง (player_positions 1 Hz)
+#   ระเบิด     จุดที่ระเบิดตก/แตก ของคนขว้าง — ไม่มี decoy เพราะเดโมไม่บันทึกว่ามันตกตรงไหน
+#   ไม่มี "shots" เพราะ parser เก็บ weapon_fire เฉพาะของระเบิด ไม่ได้เก็บการยิงปืน
+_HEATMAP_SQL = {
+    "kills": """
+        SELECT k.attacker_x AS x, k.attacker_y AS y FROM kills k JOIN rounds r ON r.id = k.round_id
+        WHERE r.match_id = $1 AND k.attacker_id IS NOT NULL
+          AND ($2 = 'all' OR k.attacker_side = $2)
+          AND ($3::bigint[] IS NULL OR k.attacker_id = ANY($3))
+          AND ($4::int[] IS NULL OR r.round_num = ANY($4))""",
+    "deaths": """
+        SELECT k.victim_x AS x, k.victim_y AS y FROM kills k JOIN rounds r ON r.id = k.round_id
+        WHERE r.match_id = $1
+          AND ($2 = 'all' OR k.victim_side = $2)
+          AND ($3::bigint[] IS NULL OR k.victim_id = ANY($3))
+          AND ($4::int[] IS NULL OR r.round_num = ANY($4))""",
+    "positions": """
+        SELECT x, y FROM player_positions
+        WHERE match_id = $1 AND health > 0
+          AND ($2 = 'all' OR side = $2)
+          AND ($3::bigint[] IS NULL OR steam_id = ANY($3))
+          AND ($4::int[] IS NULL OR round_num = ANY($4))""",
+    "grenade": """
+        SELECT g.land_x AS x, g.land_y AS y FROM grenades g JOIN rounds r ON r.id = g.round_id
+        WHERE r.match_id = $1 AND g.type = $5
+          AND ($2 = 'all' OR g.side = $2)
+          AND ($3::bigint[] IS NULL OR g.thrower_id = ANY($3))
+          AND ($4::int[] IS NULL OR r.round_num = ANY($4))""",
+}
+
+
+@app.get("/api/review/{demo_file}/heatmap")
+async def api_review_heatmap(
+    demo_file: str,
+    event: str = Query("kills", description="kills | deaths | positions | smoke | flash | he | molotov"),
+    side: str = Query("all", description="ฝั่งของคนที่ทำ event: all | ct | t"),
+    players: str | None = Query(None, description="SteamID64 คั่นด้วยจุลภาค — ไม่ระบุ = ทุกคน"),
+    rounds: str | None = Query(None, description="เลขรอบคั่นด้วยจุลภาค — ไม่ระบุ = ทุกรอบ"),
+    _: dict = Depends(require_viewer),
+    conn: asyncpg.Connection = Depends(db),
+):
+    """จุดของ event ที่เลือกในแมตช์เดียว เป็นพิกเซลบนภาพเรดาร์ — หน้าเว็บเอาไปวาด heatmap เอง"""
+    if event not in HEATMAP_EVENTS:
+        raise HTTPException(400, f"event ต้องเป็น {' | '.join(HEATMAP_EVENTS)}")
+    if side not in DEATH_SIDES:
+        raise HTTPException(400, f"side ต้องเป็น {' หรือ '.join(DEATH_SIDES)}")
+    m = await _review_match(conn, demo_file)
+    frame = radar_frame(m["map_name"])
+    if frame is None:
+        raise HTTPException(404, f"ยังไม่มีภาพเรดาร์ที่ปรับเทียบพิกัดแล้วของแมพ {m['map_name']}")
+    player_ids = _parse_int_list(players, what="players")
+    round_nums = _parse_int_list(rounds, what="rounds")
+
+    sql = _HEATMAP_SQL["grenade" if event not in ("kills", "deaths", "positions") else event]
+    args = [m["id"], side, player_ids, round_nums] + ([event] if sql is _HEATMAP_SQL["grenade"] else [])
+    pts = await conn.fetch(sql, *args)
+    roster = await _review_roster(conn, m["id"])
+    n_rounds = await conn.fetchval("SELECT COUNT(*) FROM rounds WHERE match_id = $1", m["id"])
+    points = heatmap_points([r["x"] for r in pts], [r["y"] for r in pts], frame)
+    return {
+        "event": event,
+        "demo": demo_file,
+        "map": m["map_name"],
+        "points": points,
+        "count": len(points),
+        "rounds": n_rounds,
+        "roster": [{"steam_id": str(p["steam_id"]), "name": p["name"], "team": p["team"],
+                    "start_side": p["start_side"]} for p in sorted(roster, key=lambda p: (p["team"] or "", p["name"]))],
+        "radar": {"image": "/assets" + frame.image, "size": frame.size, "map": frame.map_name},
+    }
+
+
+@app.get("/api/review/{demo_file}/economy")
+async def api_review_economy(demo_file: str, _: dict = Depends(require_viewer), conn: asyncpg.Connection = Depends(db)):
+    """เศรษฐกิจรายรอบของสองทีม: มูลค่าอุปกรณ์ตอน freeze จบ + ประเภทการซื้อทั้งทีม + ใครชนะ
+
+    ประเภทการซื้อมาจาก view round_economy (views.sql) ที่เดียว — ที่นี่แค่ผูกฝั่งกับทีมทีละรอบ
+    """
+    m = await _review_match(conn, demo_file)
+    econ = await conn.fetch("""
+        SELECT round_num, winner_side, end_reason, ct_equip, t_equip, ct_buy_type, t_buy_type
+        FROM round_economy WHERE match_id = $1 ORDER BY round_num""", m["id"])
+    sides = await conn.fetch("""
+        SELECT r.round_num, pr.steam_id, pr.side FROM player_rounds pr
+        JOIN rounds r ON r.id = pr.round_id WHERE r.match_id = $1""", m["id"])
+    roster = await _review_roster(conn, m["id"])
+    return {"demo": demo_file, "map": m["map_name"], **build_economy(rows(econ), rows(sides), roster)}

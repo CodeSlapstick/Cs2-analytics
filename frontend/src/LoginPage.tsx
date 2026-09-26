@@ -7,6 +7,7 @@ import { type ReactNode, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import { ApiError, auth } from "./api";
+import { LangToggle, useT } from "./i18n";
 // เส้นโครงสีฟ้าที่สกัดจากภาพเรดาร์ de_mirage จริงของเกม (ที่มาฝังอยู่ในไฟล์ PNG)
 import radarLines from "./assets/brief-mirage-lines.png";
 
@@ -57,6 +58,7 @@ export function LoginPage() {
   const next = safeNext(params.get("next"));
   const navigate = useNavigate();
   const qc = useQueryClient();
+  const { t } = useT();
   const me = useQuery({ queryKey: ["me"], queryFn: auth.me, retry: false });
   const counts = useLiveCounts().data;
   const [guestErr, setGuestErr] = useState<string | null>(null);
@@ -101,32 +103,33 @@ export function LoginPage() {
             <span>Round-by-Round Breakdown.</span>
           </p>
           <p className="brief-lead">
-            รีวิวเดโมของทีมทีละรอบบนแผนที่เดียว — ใครตายที่ไหน โดนใคร และใครขว้าง smoke, flash, molotov ในจังหวะนั้น
+            {t("รีวิวเดโมของทีมทีละรอบบนแผนที่เดียว — ใครตายที่ไหน โดนใคร และใครขว้าง smoke, flash, molotov ในจังหวะนั้น")}
           </p>
-          <ul className="brief-stats" aria-label="ข้อมูลในระบบตอนนี้">
+          <ul className="brief-stats" aria-label={t("ข้อมูลในระบบตอนนี้")}>
             {counts && (
               <li>
                 <b>{counts.matches.toLocaleString("th-TH")}</b>
-                <span>แมตช์ในระบบ</span>
+                <span>{t("แมตช์ในระบบ")}</span>
               </li>
             )}
             {counts && (
               <li>
                 <b>{counts.kills.toLocaleString("th-TH")}</b>
-                <span>คิลที่แกะจากเดโมแล้ว</span>
+                <span>{t("คิลที่แกะจากเดโมแล้ว")}</span>
               </li>
             )}
             <li>
               <b lang="en">Mirage · Dust2</b>
-              <span>เรดาร์ปรับเทียบพิกัดแล้ว</span>
+              <span>{t("เรดาร์ปรับเทียบพิกัดแล้ว")}</span>
             </li>
           </ul>
         </div>
 
-        <p className="brief-caption">เรดาร์ de_mirage จากไฟล์ของเกม CS2</p>
+        <p className="brief-caption">{t("เรดาร์ de_mirage จากไฟล์ของเกม CS2")}</p>
       </section>
 
       <section className="login-side">
+        <LangToggle className="lang-toggle login-lang" />
         <div className="login-card" data-testid="login-card">
           <span className="lc-corner tl" aria-hidden="true" />
           <span className="lc-corner tr" aria-hidden="true" />
@@ -134,39 +137,38 @@ export function LoginPage() {
           <span className="lc-corner br" aria-hidden="true" />
 
           <div className="lc-head">
-            <h1>ยินดีต้อนรับ, Operator</h1>
-            <p>ล็อกอินด้วย Steam เพื่อผูกสถิติกับบัญชีของคุณ หรือเข้าชมก่อนก็ได้</p>
+            <h1>{t("ยินดีต้อนรับ, Operator")}</h1>
+            <p>{t("ล็อกอินด้วย Steam เพื่อผูกสถิติกับบัญชีของคุณ หรือเข้าชมก่อนก็ได้")}</p>
           </div>
 
           <a className="lc-steam" href={`/auth/steam/login?next=${encodeURIComponent(next)}`}>
             <IconSteam />
-            <span>เข้าสู่ระบบด้วย Steam</span>
+            <span>{t("เข้าสู่ระบบด้วย Steam")}</span>
           </a>
 
           <p className="lc-or">
-            <span>หรือ</span>
+            <span>{t("หรือ")}</span>
           </p>
 
           {/* ปุ่มรอง: เส้นขอบไม่ใช่พื้นทึบ เพื่อให้เห็นชัดว่าทางหลักคือ Steam */}
           <button type="button" className="lc-guest" onClick={enterAsGuest} disabled={busy} data-testid="guest-button">
             <IconVisitor />
-            <span>{busy ? "กำลังเข้า…" : "เข้าชมโดยไม่ต้องล็อกอิน"}</span>
+            <span>{busy ? t("กำลังเข้า…") : t("เข้าชมโดยไม่ต้องล็อกอิน")}</span>
           </button>
 
           {error && (
             <p className="lc-error" role="alert">
               <IconAlert />
-              <span>{error}</span>
+              <span>{t(error)}</span>
             </p>
           )}
 
           <p className="lc-note">
-            โหมดเยี่ยมชมใช้งานได้ทุกอย่างเหมือนกัน แต่ไม่มีสถิติของตัวเอง เพราะยังไม่ได้ผูกกับบัญชี Steam
-            — ล็อกอินภายหลังได้จากแถบบนของทุกหน้า
+            {t("โหมดเยี่ยมชมใช้งานได้ทุกอย่างเหมือนกัน แต่ไม่มีสถิติของตัวเอง เพราะยังไม่ได้ผูกกับบัญชี Steam — ล็อกอินภายหลังได้จากแถบบนของทุกหน้า")}
           </p>
         </div>
 
-        <ul className="channels" aria-label="ช่องทางของโปรเจกต์">
+        <ul className="channels" aria-label={t("ช่องทางของโปรเจกต์")}>
           {CHANNELS.map((c) => (
             <li key={c.name}>
               <a href={c.href} target="_blank" rel="noopener noreferrer">

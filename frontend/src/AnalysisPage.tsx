@@ -23,6 +23,7 @@ import {
   RATIO_RAMP,
   sideLabel,
 } from "./utils";
+import { useT } from "./i18n";
 
 /**
  * หน้าเครื่องมือวิเคราะห์ — สามคำถามเกี่ยวกับแมตช์ของทีมตัวเอง
@@ -40,28 +41,25 @@ import {
 type Mode = "upload" | "diff" | "read";
 type Side = "all" | "ct" | "t";
 
-// ปุ่มโหมดเป็นการ์ดที่มีคำอธิบายสั้น ๆ ในตัว — คนเปิดหน้านี้ครั้งแรกต้องรู้จากปุ่มเลยว่าแต่ละอันตอบคำถามอะไร ไม่ต้องลองกดดู
-const MODES: { key: Mode; label: string; hint: string }[] = [
-  { key: "upload", label: "ทีมเราตายตรงไหน", hint: "จุดตายจากแมตช์ที่ทีมอัปโหลด" },
-  { key: "diff", label: "เทียบกับทีมอาชีพ", hint: "ตรงไหนเราตายบ่อยกว่าทีมอาชีพ" },
-  { key: "read", label: "อ่านทางเราออกไหม", hint: "คู่แข่งเดาไซต์ที่เราจะเข้าได้เร็วแค่ไหน" },
+// สามโหมดเป็นแท็บแถวเดียว — ชื่อโหมดอยู่ที่แท็บที่เดียว ใต้แท็บมีประโยคเดียวบอกว่าโหมดนี้ตอบคำถามอะไร
+// (เดิมชื่อโหมดโผล่สองที่: หัวเรื่องใหญ่ + การ์ดปุ่ม และคำอธิบายซ้ำกันสองชั้น)
+const MODES: { key: Mode; label: string; blurb: string }[] = [
+  {
+    key: "upload",
+    label: "ทีมเราตายตรงไหน",
+    blurb: "จุดที่ผู้เล่นในแมตช์ของทีมตาย ยิ่งแดงเข้มยิ่งตายบ่อย — เลือกฝั่ง รอบ หรือผู้เล่นได้จากแผงซ้าย",
+  },
+  {
+    key: "diff",
+    label: "เทียบกับทีมอาชีพ",
+    blurb: "ตรงไหนที่ทีมเราเสียคนบ่อยกว่าทีมอาชีพ เทียบเป็นสัดส่วนของจุดตายทั้งหมด เพราะสองชุดมีจำนวนแมตช์ไม่เท่ากัน",
+  },
+  {
+    key: "read",
+    label: "อ่านทางเราออกไหม",
+    blurb: "ดูจากตำแหน่งผู้เล่นฝั่ง T ทีละวินาที ว่าเดาได้เร็วแค่ไหนว่าทีมจะเข้าไซต์ไหน — เดาออกเร็ว คู่แข่งที่ดูเทปก็อ่านทางออกเร็ว",
+  },
 ];
-
-/** หัวเรื่องเปลี่ยนตามโหมด — คนอ่านต้องรู้ทันทีว่ากำลังดูอะไร ไม่ใช่หัวเดียวกันทุกโหมด */
-const MODE_COPY: Record<Mode, { title: string; blurb: string }> = {
-  upload: {
-    title: "ทีมเราตายตรงไหน",
-    blurb: "จุดที่ผู้เล่นในแมตช์ของทีมตาย นับลงช่องเดียวกับชุดเทียบของทีมอาชีพ — เลือกฝั่ง แมตช์ รอบ หรือผู้เล่นได้จากแผงซ้าย",
-  },
-  diff: {
-    title: "เทียบกับทีมอาชีพ",
-    blurb: "ตรงไหนที่ทีมเราเสียคนบ่อยกว่าทีมอาชีพ คิดเป็นสัดส่วนของจุดตายทั้งหมด ไม่ใช่จำนวนครั้งดิบ เพราะสองชุดมีจำนวนแมตช์ไม่เท่ากัน",
-  },
-  read: {
-    title: "อ่านทางเราออกไหม",
-    blurb: "จากตำแหน่งที่ผู้เล่นฝั่ง T ยืนในแต่ละวินาที เดาได้ตั้งแต่เมื่อไรว่าทีมจะเข้าไซต์ไหน — ยิ่งเดาออกเร็ว คู่แข่งที่ดูเทปก็อ่านทางออกเร็วเท่านั้น",
-  },
-};
 const SIDES: { key: Side; label: string }[] = [
   { key: "all", label: "ทั้งสองฝั่ง" },
   { key: "ct", label: "ตอนเป็น CT" },
@@ -69,6 +67,7 @@ const SIDES: { key: Side; label: string }[] = [
 ];
 
 export function AnalysisPage() {
+  const { t } = useT();
   const [mode, setMode] = useState<Mode>("upload");
   const [side, setSide] = useState<Side>("all");
   const [demo, setDemo] = useState<string>(""); // "" = ทุกแมตช์ที่อัปโหลด
@@ -144,11 +143,11 @@ export function AnalysisPage() {
   // สลับโหมด/แมพ/ฝั่ง/แมตช์ = ชุดข้อมูลเปลี่ยน คีย์ที่ค้างไฮไลต์ไว้จากชุดก่อนหน้าจึงไม่มีความหมายแล้ว
   useEffect(() => setHovered(null), [mode, activeMap, side, demo]);
 
-  if (matches.isLoading) return <p className="muted">กำลังโหลด…</p>;
-  if (matches.error) return <p className="err">โหลดรายการแมตช์ไม่ได้: {(matches.error as Error).message}</p>;
+  if (matches.isLoading) return <p className="muted">{t("กำลังโหลด…")}</p>;
+  if (matches.error) return <p className="err">{t("โหลดรายการแมตช์ไม่ได้: {msg}", { msg: (matches.error as Error).message })}</p>;
   if (maps.length === 0) return <NothingToCompare done={done} />;
 
-  const copy = MODE_COPY[mode];
+  const copy = MODES.find((m) => m.key === mode)!;
   const single = upload.data;
   const loading = mode === "read" ? readQ.isLoading : upload.isLoading || (mode === "diff" && reference.isLoading);
   const error = (mode === "read" ? readQ.error : (upload.error ?? reference.error)) as Error | null;
@@ -160,47 +159,45 @@ export function AnalysisPage() {
   return (
     <div className="analysis" data-testid="analysis-page">
       <header className="an-head">
-        <div>
-          <h1>{copy.title}</h1>
-          <p className="muted">{copy.blurb}</p>
-        </div>
-      </header>
-
-      <div className="an-controls">
-        <div className="mode-tabs" role="group" aria-label="สิ่งที่ดู">
+        <h1>{t("เครื่องมือวิเคราะห์")}</h1>
+        <div className="an-tabs" role="tablist" aria-label={t("สิ่งที่ดู")}>
           {MODES.map((m) => (
-            <button key={m.key} type="button" className={`mode-tab${mode === m.key ? " on" : ""}`}
-              aria-pressed={mode === m.key} onClick={() => setMode(m.key)} data-testid={`mode-${m.key}`}>
-              <b>{m.label}</b>
-              <small>{m.hint}</small>
+            <button key={m.key} type="button" role="tab" className={`an-tab${mode === m.key ? " on" : ""}`}
+              aria-selected={mode === m.key} onClick={() => setMode(m.key)} data-testid={`mode-${m.key}`}>
+              {t(m.label)}
             </button>
           ))}
         </div>
+        <p className="muted an-blurb">{t(copy.blurb)}</p>
+      </header>
 
-        <div className="an-filters">
+      <div className="an-filters">
+        {maps.length > 1 ? (
           <label className="an-select">
-            แมพ
+            {t("แมพ")}
             <select value={activeMap} onChange={(e) => setMap(e.target.value)}>
               {maps.map((m) => (
                 <option key={m} value={m}>{m}</option>
               ))}
             </select>
           </label>
+        ) : (
+          <span className="an-select">{t("แมพ")} <b className="an-fixed">{activeMap}</b></span>
+        )}
 
-          <label className="an-select">
-            แมตช์ของทีม
-            <select value={demo} onChange={(e) => setDemo(e.target.value)}>
-              <option value="">ทุกแมตช์ที่อัปโหลด ({mine.length})</option>
-              {mine.map((m) => (
-                <option key={m.demo_file} value={m.demo_file}>{matchLabel(m)}</option>
-              ))}
-            </select>
-          </label>
-        </div>
+        <label className="an-select">
+          {t("แมตช์ของทีม")}
+          <select value={demo} onChange={(e) => setDemo(e.target.value)}>
+            <option value="">{t("ทุกแมตช์ที่อัปโหลด ({n})", { n: mine.length })}</option>
+            {mine.map((m) => (
+              <option key={m.demo_file} value={m.demo_file}>{matchLabel(m)}</option>
+            ))}
+          </select>
+        </label>
       </div>
 
-      {error && <p className="err">โหลดข้อมูลไม่ได้: {error.message}</p>}
-      {loading && <p className="muted">{mode === "read" ? "กำลังอ่านทีละรอบ…" : "กำลังนับจุดตาย…"}</p>}
+      {error && <p className="err">{t("โหลดข้อมูลไม่ได้: {msg}", { msg: error.message })}</p>}
+      {loading && <p className="muted">{mode === "read" ? t("กำลังอ่านทีละรอบ…") : t("กำลังนับจุดตาย…")}</p>}
 
       {!loading && !error && mode === "read" && readQ.data && (
         <ReadabilityReport data={readQ.data} demo={target} />
@@ -225,8 +222,9 @@ export function AnalysisPage() {
 
           {noRoundsPicked || noPlayersPicked ? (
             <p className="muted an-empty an-empty-fill" data-testid="analysis-nothing-picked">
-              ยังไม่ได้เลือก{noRoundsPicked ? "รอบ" : "ผู้เล่น"}เลยสักคน/รอบ — เลือกอย่างน้อยหนึ่งอย่างในแผงซ้าย
-              หรือกด "ทั้งหมด" เพื่อดูภาพรวมอีกครั้ง
+              {noRoundsPicked
+                ? t('ยังไม่ได้เลือกรอบเลยสักคน/รอบ — เลือกอย่างน้อยหนึ่งอย่างในแผงซ้าย หรือกด "ทั้งหมด" เพื่อดูภาพรวมอีกครั้ง')
+                : t('ยังไม่ได้เลือกผู้เล่นเลยสักคน/รอบ — เลือกอย่างน้อยหนึ่งอย่างในแผงซ้าย หรือกด "ทั้งหมด" เพื่อดูภาพรวมอีกครั้ง')}
             </p>
           ) : (
             <>
@@ -292,6 +290,7 @@ function HeatmapControls({
   side, onSide, radius, onRadius, blur, onBlur, opacity, onOpacity,
   demoSelected, roundsTotal, selRounds, onRounds, roster, rosterLoading, selPlayers, onPlayers,
 }: HeatmapControlsProps) {
+  const { t } = useT();
   const roundOn = (n: number) => selRounds === null || selRounds.includes(n);
   const toggleRound = (n: number) => {
     const base = selRounds ?? Array.from({ length: roundsTotal }, (_, i) => i + 1);
@@ -304,33 +303,33 @@ function HeatmapControls({
   };
 
   return (
-    <aside className="hm-panel" aria-label="ตั้งค่าการแสดงผล heatmap">
+    <aside className="hm-panel" aria-label={t("ตั้งค่าการแสดงผล heatmap")}>
       <div className="hm-field">
-        <div className="hm-field-h"><span>ฝั่งของคนที่ตาย</span></div>
-        <div className="seg hm-seg" role="group" aria-label="ฝั่งของคนที่ตาย">
+        <div className="hm-field-h"><span>{t("ฝั่งของคนที่ตาย")}</span></div>
+        <div className="seg hm-seg" role="group" aria-label={t("ฝั่งของคนที่ตาย")}>
           {SIDES.map((s) => (
             <button key={s.key} type="button" className={`seg-btn${side === s.key ? ` ${s.key} on` : ""}`}
               aria-pressed={side === s.key} onClick={() => onSide(s.key)}>
-              {s.label}
+              {t(s.label)}
             </button>
           ))}
         </div>
       </div>
 
       {!demoSelected ? (
-        <p className="muted small hm-note">เลือก "แมตช์ของทีม" แมตช์เดียวด้านบนก่อน ถึงจะเจาะจงรอบหรือผู้เล่นได้</p>
+        <p className="muted small hm-note">{t('เลือก "แมตช์ของทีม" แมตช์เดียวด้านบนก่อน ถึงจะเจาะจงรอบหรือผู้เล่นได้')}</p>
       ) : (
         <>
           <div className="hm-field">
             <div className="hm-field-h">
-              <span>รอบ</span>
+              <span>{t("รอบ")}</span>
               <span className="hm-quick">
-                <button type="button" className="link-btn" onClick={() => onRounds(null)}>ทั้งหมด</button>
+                <button type="button" className="link-btn" onClick={() => onRounds(null)}>{t("ทั้งหมด")}</button>
                 {" · "}
-                <button type="button" className="link-btn" onClick={() => onRounds([])}>ไม่เอาเลย</button>
+                <button type="button" className="link-btn" onClick={() => onRounds([])}>{t("ไม่เอาเลย")}</button>
               </span>
             </div>
-            <div className="hm-round-grid" role="group" aria-label="เลือกรอบ">
+            <div className="hm-round-grid" role="group" aria-label={t("เลือกรอบ")}>
               {Array.from({ length: roundsTotal }, (_, i) => i + 1).map((n) => (
                 <button key={n} type="button" className={`hm-round-btn${roundOn(n) ? " on" : ""}`}
                   aria-pressed={roundOn(n)} onClick={() => toggleRound(n)}>
@@ -342,17 +341,17 @@ function HeatmapControls({
 
           <div className="hm-field">
             <div className="hm-field-h">
-              <span>ผู้เล่น</span>
+              <span>{t("ผู้เล่น")}</span>
               <span className="hm-quick">
-                <button type="button" className="link-btn" onClick={() => onPlayers(null)}>ทั้งหมด</button>
+                <button type="button" className="link-btn" onClick={() => onPlayers(null)}>{t("ทั้งหมด")}</button>
                 {" · "}
-                <button type="button" className="link-btn" onClick={() => onPlayers([])}>ไม่เอาเลย</button>
+                <button type="button" className="link-btn" onClick={() => onPlayers([])}>{t("ไม่เอาเลย")}</button>
               </span>
             </div>
             {rosterLoading ? (
-              <p className="muted small">กำลังโหลดรายชื่อ…</p>
+              <p className="muted small">{t("กำลังโหลดรายชื่อ…")}</p>
             ) : (
-              <div className="hm-pills" role="group" aria-label="เลือกผู้เล่น">
+              <div className="hm-pills" role="group" aria-label={t("เลือกผู้เล่น")}>
                 {roster.map((p) => (
                   <button key={p.steam_id} type="button"
                     className={`hm-pill${playerOn(p.steam_id) ? ` ${p.start_side ?? ""} on` : ""}`}
@@ -368,21 +367,21 @@ function HeatmapControls({
 
       {/* ปุ่มปรับหน้าตา heatmap พับไว้ — คนส่วนใหญ่ไม่ต้องแตะ และ "รัศมี/เบลอ" ไม่ใช่คำที่โค้ชอยากเห็นก่อนข้อมูล */}
       <details className="hm-adv">
-        <summary>ปรับการแสดงผล</summary>
+        <summary>{t("ปรับการแสดงผล")}</summary>
         <div className="hm-field">
-          <div className="hm-field-h"><span>รัศมี</span><span className="num muted">{radius.toFixed(1)}×</span></div>
+          <div className="hm-field-h"><span>{t("รัศมี")}</span><span className="num muted">{radius.toFixed(1)}×</span></div>
           <input type="range" min={0.5} max={2.5} step={0.1} value={radius}
-            onChange={(e) => onRadius(Number(e.target.value))} aria-label="รัศมีของจุดความร้อน" />
+            onChange={(e) => onRadius(Number(e.target.value))} aria-label={t("รัศมีของจุดความร้อน")} />
         </div>
         <div className="hm-field">
-          <div className="hm-field-h"><span>เบลอ</span><span className="num muted">{blur.toFixed(1)}</span></div>
+          <div className="hm-field-h"><span>{t("เบลอ")}</span><span className="num muted">{blur.toFixed(1)}</span></div>
           <input type="range" min={0} max={10} step={0.5} value={blur}
-            onChange={(e) => onBlur(Number(e.target.value))} aria-label="ความเบลอเพิ่มเติม" />
+            onChange={(e) => onBlur(Number(e.target.value))} aria-label={t("ความเบลอเพิ่มเติม")} />
         </div>
         <div className="hm-field">
-          <div className="hm-field-h"><span>ความทึบ</span><span className="num muted">{Math.round(opacity * 100)}%</span></div>
+          <div className="hm-field-h"><span>{t("ความทึบ")}</span><span className="num muted">{Math.round(opacity * 100)}%</span></div>
           <input type="range" min={0.2} max={1} step={0.05} value={opacity}
-            onChange={(e) => onOpacity(Number(e.target.value))} aria-label="ความทึบของชั้นสี" />
+            onChange={(e) => onOpacity(Number(e.target.value))} aria-label={t("ความทึบของชั้นสี")} />
         </div>
       </details>
     </aside>
@@ -398,11 +397,12 @@ function HeatmapControls({
  * ตัวเลขทีมอาชีพวัดแบบ out-of-fold (ทำนายรอบไหนใช้โมเดลที่ไม่เคยเห็นแมตช์นั้น) จึงเอามาเทียบกันได้
  */
 function ReadabilityReport({ data, demo }: { data: Readability; demo: string }) {
+  const { t, tn } = useT();
   if (!data.available) {
     return (
       <div className="an-empty">
-        <h2>ยังอ่านแมตช์นี้ไม่ได้</h2>
-        <p className="muted">{data.reason}</p>
+        <h2>{t("ยังอ่านแมตช์นี้ไม่ได้")}</h2>
+        <p className="muted">{readReason(data.reason, t)}</p>
       </div>
     );
   }
@@ -418,37 +418,44 @@ function ReadabilityReport({ data, demo }: { data: Readability; demo: string }) 
     <div className="read-report" data-testid="readability">
       <section className="rr-hero">
         <div className="rr-stat">
-          <span className="rr-label">ทีมเรา ถูกอ่านออกเฉลี่ยวินาทีที่</span>
+          <span className="rr-label">{t("ทีมเรา ถูกอ่านออกเฉลี่ยวินาทีที่")}</span>
           <b className="num">{ours ?? "—"}</b>
           <span className="rr-bar"><i style={{ width: `${((ours ?? 0) / scale) * 100}%` }} /></span>
-          <span className="muted small">อ่านออก {s.read} จาก {s.rounds} รอบที่วางบอมบ์ · มัธยฐานวินาทีที่ {s.median_read_at ?? "—"}</span>
+          <span className="muted small">
+            {t("อ่านออก {read} จาก {rounds} รอบที่วางบอมบ์ · มัธยฐานวินาทีที่ {median}",
+              { read: s.read, rounds: s.rounds, median: s.median_read_at ?? "—" })}
+          </span>
         </div>
         <div className="rr-stat pro">
-          <span className="rr-label">ทีมอาชีพ ถูกอ่านออกเฉลี่ยวินาทีที่</span>
+          <span className="rr-label">{t("ทีมอาชีพ ถูกอ่านออกเฉลี่ยวินาทีที่")}</span>
           <b className="num">{pro?.toFixed(1) ?? "—"}</b>
           <span className="rr-bar"><i style={{ width: `${((pro ?? 0) / scale) * 100}%` }} /></span>
-          <span className="muted small">จาก {b.rounds} รอบ · มัธยฐานวินาทีที่ {b.median_read_at ?? "—"}</span>
+          <span className="muted small">
+            {t("จาก {rounds} รอบ · มัธยฐานวินาทีที่ {median}", { rounds: b.rounds, median: b.median_read_at ?? "—" })}
+          </span>
         </div>
       </section>
 
       {gap != null && (
         <p className="rr-verdict">
           {gap > 0
-            ? <>ทีมนี้ถูกอ่านออก<b> เร็วกว่าทีมอาชีพ {gap.toFixed(1)} วินาที</b> — ยิ่งเร็ว ฝ่ายรับยิ่งมีเวลาหมุนไปตั้งรับทัน</>
-            : <>ทีมนี้ถูกอ่านออก<b> ช้ากว่าทีมอาชีพ {Math.abs(gap).toFixed(1)} วินาที</b> — ปกปิดทิศทางได้ดีกว่าค่าเฉลี่ยของชุดเทียบ</>}
-          {s.avg_lead != null && <> · โดยเฉลี่ยรู้ทางก่อนบอมบ์ลงจริง {s.avg_lead} วินาที</>}
+            ? tn("ทีมนี้ถูกอ่านออก{gap} — ยิ่งเร็ว ฝ่ายรับยิ่งมีเวลาหมุนไปตั้งรับทัน",
+                { gap: <b> {t("เร็วกว่าทีมอาชีพ {s} วินาที", { s: gap.toFixed(1) })}</b> })
+            : tn("ทีมนี้ถูกอ่านออก{gap} — ปกปิดทิศทางได้ดีกว่าค่าเฉลี่ยของชุดเทียบ",
+                { gap: <b> {t("ช้ากว่าทีมอาชีพ {s} วินาที", { s: Math.abs(gap).toFixed(1) })}</b> })}
+          {s.avg_lead != null && <> · {t("โดยเฉลี่ยรู้ทางก่อนบอมบ์ลงจริง {s} วินาที", { s: s.avg_lead })}</>}
         </p>
       )}
 
-      <h2>ดูทีละรอบ</h2>
+      <h2>{t("ดูทีละรอบ")}</h2>
       <table className="tbl compact rr-tbl">
         <thead>
           <tr>
-            <th>รอบ</th>
-            <th>เข้าไซต์</th>
-            <th className="num">ถูกอ่านออกวินาทีที่</th>
-            <th className="num">ก่อนบอมบ์ลง</th>
-            <th>ผลรอบ</th>
+            <th>{t("รอบ")}</th>
+            <th>{t("เข้าไซต์")}</th>
+            <th className="num">{t("ถูกอ่านออกวินาทีที่")}</th>
+            <th className="num">{t("ก่อนบอมบ์ลง")}</th>
+            <th>{t("ผลรอบ")}</th>
             <th />
           </tr>
         </thead>
@@ -457,11 +464,11 @@ function ReadabilityReport({ data, demo }: { data: Readability; demo: string }) 
             <tr key={r.round_num} className={r.read_at != null && r.read_at <= 8 ? "rr-early" : ""}>
               <td className="num">{r.round_num}</td>
               <td><span className="rr-site">{r.site}</span></td>
-              <td className="num">{r.read_at ?? "อ่านไม่ออก"}</td>
-              <td className="num">{r.lead != null ? `${r.lead} วิ` : "—"}</td>
-              <td>{r.winner_side ? <span className={`side-tag ${r.winner_side}`}>{sideLabel(r.winner_side)} ชนะ</span> : "—"}</td>
+              <td className="num">{r.read_at ?? t("อ่านไม่ออก")}</td>
+              <td className="num">{r.lead != null ? t("{s} วิ", { s: r.lead }) : "—"}</td>
+              <td>{r.winner_side ? <span className={`side-tag ${r.winner_side}`}>{t("{side} ชนะ", { side: sideLabel(r.winner_side) })}</span> : "—"}</td>
               <td>
-                <Link className="link-btn" to={roundLink(demo, r)}>ดูรอบนี้</Link>
+                <Link className="link-btn" to={roundLink(demo, r)}>{t("ดูรอบนี้")}</Link>
               </td>
             </tr>
           ))}
@@ -469,11 +476,30 @@ function ReadabilityReport({ data, demo }: { data: Readability; demo: string }) 
       </table>
 
       <p className="muted small rr-note">
-        แถวที่เน้น = ถูกอ่านออกภายใน 8 วินาทีแรก · กด "ดูรอบนี้" แล้วหน้ารอบจะเปิดโหมดเล่นย้อนค้างไว้ที่วินาทีนั้นพอดี
+        {t('แถวที่เน้น = ถูกอ่านออกภายใน 8 วินาทีแรก · กด "ดูรอบนี้" แล้วหน้ารอบจะเปิดโหมดเล่นย้อนค้างไว้ที่วินาทีนั้นพอดี')}
       </p>
-      <p className="muted small">{data.note} · เทียบกับ{data.source?.label}</p>
+      <p className="muted small">
+        {t("{note} · เทียบกับ{source}", { note: data.note ? t(data.note) : "", source: sourceLabel(data, t) })}
+      </p>
     </div>
   );
+}
+
+type TFn = (s: string, vars?: Record<string, string | number>) => string;
+
+/** เหตุผลที่อ่านแมตช์ไม่ได้ มาจาก backend เป็นภาษาไทย — ข้อความที่มีชื่อแมพฝังอยู่ ดึงชื่อแมพออกมาแล้วแปลทั้งประโยค */
+function readReason(reason: string | undefined, t: TFn): string {
+  if (!reason) return "";
+  const m = /^ยังไม่มีโมเดลทายไซต์ของแมพ (.+)$/.exec(reason);
+  return m ? t("ยังไม่มีโมเดลทายไซต์ของแมพ {map}", { map: m[1] }) : t(reason);
+}
+
+/** ประกอบป้ายชุดเทียบใหม่จากตัวเลขที่ส่งมา (สูตรเดียวกับ research/site_ml.py) แทนการแสดงข้อความไทยจาก backend ตรง ๆ */
+function sourceLabel(data: Readability, t: TFn): string {
+  const src = data.source;
+  if (!src) return "";
+  if (!data.map) return t(src.label);
+  return t("เดโมทีมอาชีพ {n} แมตช์ ({rounds} รอบที่วางบอมบ์บน {map})", { n: src.matches, rounds: src.rounds, map: data.map });
 }
 
 /** เปิดหน้ารอบในโหมดเล่นย้อน ค้างไว้ที่วินาทีที่โมเดลอ่านออก — เห็นเลยว่าตอนนั้นทุกคนยืนตรงไหน */
@@ -522,17 +548,18 @@ function groupByPlace<T extends DeathCellCount>(cells: T[]): PlaceGroup<T>[] {
  * ช่องที่ไม่มีชื่อเรียก ยังบอกพิกัดกำกับไว้เหมือนเดิม เพราะเป็นช่องเดี่ยว ไม่ได้ถูกรวม
  */
 function PlaceCell({ place, cells }: { place: string | null; cells: { cx: number; cy: number }[] }) {
+  const { t } = useT();
   if (place) {
     return (
       <span className="an-place">
         {place}
-        {cells.length > 1 && <span className="muted num"> · {cells.length} ช่อง</span>}
+        {cells.length > 1 && <span className="muted num"> · {t("{n} ช่อง", { n: cells.length })}</span>}
       </span>
     );
   }
   return (
     <span className="an-place">
-      ไม่มีชื่อเรียก
+      {t("ไม่มีชื่อเรียก")}
       <span className="muted num"> {cells[0].cx},{cells[0].cy}</span>
     </span>
   );
@@ -631,10 +658,11 @@ function zoneRatioFill(groups: ReturnType<typeof groupDiffRows>) {
 }
 
 function DiffKey() {
+  const { t } = useT();
   const gid = "diff-ratio-grad";
   return (
-    <div className="map-key grad-key" aria-label="คำอธิบายสี">
-      <span className="muted">สีของแต่ละโซน = ทีมเราตายบ่อยกว่าทีมอาชีพกี่เท่า ยิ่งเข้มยิ่งต่างมาก</span>
+    <div className="map-key grad-key" aria-label={t("คำอธิบายสี")}>
+      <span className="muted">{t("สีของแต่ละโซน = ทีมเราตายบ่อยกว่าทีมอาชีพกี่เท่า ยิ่งเข้มยิ่งต่างมาก")}</span>
       <span className="grad-bar-wrap">
         <span className="grad-num">{DIFF_STEPS.near}×</span>
         <svg className="grad-bar" viewBox="0 0 100 10" preserveAspectRatio="none" aria-hidden="true">
@@ -650,8 +678,8 @@ function DiffKey() {
         <span className="grad-num">{DIFF_STEPS.far}×+</span>
       </span>
       <span className="muted small key-adv">
-        ต่ำกว่า {DIFF_STEPS.near}× หรือทีมเราตายในโซนนั้นไม่ถึง {DIFF_MIN_DEATHS} ครั้ง = ไม่ระบาย
-        (ต่างกันไม่ชัดพอจะสรุปอะไรได้)
+        {t("ต่ำกว่า {near}× หรือทีมเราตายในโซนนั้นไม่ถึง {min} ครั้ง = ไม่ระบาย (ต่างกันไม่ชัดพอจะสรุปอะไรได้)",
+          { near: DIFF_STEPS.near, min: DIFF_MIN_DEATHS })}
       </span>
     </div>
   );
@@ -668,26 +696,29 @@ function DiffTable({ groups, upload, reference, hovered, onHover }:
     .filter((g) => g.level > 0)
     .sort((a, b) => b.level - a.level || b.deaths - a.deaths)
     .slice(0, 8);
+  const { t } = useT();
   return (
     <>
-      <h2>จุดที่ทีมเราตายบ่อยกว่าทีมอาชีพ</h2>
+      <h2>{t("จุดที่ทีมเราตายบ่อยกว่าทีมอาชีพ")}</h2>
       <p className="muted small">
-        {upload.label} · ตาย {upload.deaths} ครั้ง — เทียบกับ {reference.label} · ตาย {reference.deaths} ครั้ง
+        {t("{a} · ตาย {ad} ครั้ง — เทียบกับ {b} · ตาย {bd} ครั้ง", {
+          a: overlayLabel(upload, t), ad: upload.deaths, b: overlayLabel(reference, t), bd: reference.deaths,
+        })}
       </p>
       {worst.length === 0 ? (
         <p className="muted small">
-          ยังไม่มีจุดไหนที่ทีมเราตายบ่อยกว่าทีมอาชีพถึง {DIFF_STEPS.near}× และมีจำนวนมากพอจะสรุป —
-          อัปโหลดแมตช์เพิ่มแล้วตัวเลขจะชัดขึ้น
+          {t("ยังไม่มีจุดไหนที่ทีมเราตายบ่อยกว่าทีมอาชีพถึง {near}× และมีจำนวนมากพอจะสรุป — อัปโหลดแมตช์เพิ่มแล้วตัวเลขจะชัดขึ้น",
+            { near: DIFF_STEPS.near })}
         </p>
       ) : (
         <table className="tbl compact an-tbl">
           <thead>
             <tr>
-              <th>ตรงไหนของแมพ</th>
-              <th className="num">เราตาย</th>
-              <th className="num">ของเรา</th>
-              <th className="num">ทีมอาชีพ</th>
-              <th className="num">ต่างกี่เท่า</th>
+              <th>{t("ตรงไหนของแมพ")}</th>
+              <th className="num">{t("เราตาย")}</th>
+              <th className="num">{t("ของเรา")}</th>
+              <th className="num">{t("ทีมอาชีพ")}</th>
+              <th className="num">{t("ต่างกี่เท่า")}</th>
             </tr>
           </thead>
           <tbody>
@@ -706,8 +737,7 @@ function DiffTable({ groups, upload, reference, hovered, onHover }:
         </table>
       )}
       <p className="muted small an-note">
-        "ของเรา" กับ "ทีมอาชีพ" คือสัดส่วนของจุดตายทั้งหมดในชุดนั้น ไม่ใช่จำนวนครั้งดิบ — ทีมอาชีพมี 50 แมตช์
-        ถ้าเอาจำนวนครั้งมาเทียบกันตรง ๆ ฝั่งที่มีแมตช์เยอะกว่าก็ตายเยอะกว่าเสมอ ซึ่งไม่ได้บอกอะไร
+        {t('"ของเรา" กับ "ทีมอาชีพ" คือสัดส่วนของจุดตายทั้งหมดในชุดนั้น ไม่ใช่จำนวนครั้งดิบ — ทีมอาชีพมี 50 แมตช์ ถ้าเอาจำนวนครั้งมาเทียบกันตรง ๆ ฝั่งที่มีแมตช์เยอะกว่าก็ตายเยอะกว่าเสมอ ซึ่งไม่ได้บอกอะไร')}
       </p>
     </>
   );
@@ -776,12 +806,14 @@ const SIDE_NOTE: Record<Side, string> = {
  * กับช่วงค่าที่ระบายจริงบนแผนที่ ไม่ใช่ช่วงค่าทั้งหมดที่มีในข้อมูล
  */
 function GradientKey({ cells, side }: { cells: DeathCellCount[]; side: Side }) {
+  const { t } = useT();
   const max = Math.max(0, ...cells.map((c) => c.deaths));
   const ramp = DEATH_RAMP[side];
   if (max < MIN_PAINTED_DEATHS) {
     return (
       <p className="muted small key-adv" data-testid="grad-key-empty">
-        ยังไม่มีช่องไหนตายถึง {MIN_PAINTED_DEATHS} ครั้ง (ตายมากสุด {max} ครั้ง) — ข้อมูลน้อยเกินกว่าจะระบายแผนที่
+        {t("ยังไม่มีช่องไหนตายถึง {min} ครั้ง (ตายมากสุด {max} ครั้ง) — ข้อมูลน้อยเกินกว่าจะระบายแผนที่",
+          { min: MIN_PAINTED_DEATHS, max })}
       </p>
     );
   }
@@ -792,8 +824,8 @@ function GradientKey({ cells, side }: { cells: DeathCellCount[]; side: Side }) {
     return { pos: (i / steps) * 100, color: mixHex(ramp[0], ramp[ramp.length - 1], deathT(value, max)) };
   });
   return (
-    <div className="map-key grad-key" aria-label="คำอธิบายสี">
-      <span className="muted">จำนวนครั้งที่ตายในช่องนั้น ({SIDE_NOTE[side]}) ยิ่งเข้มยิ่งตายบ่อย</span>
+    <div className="map-key grad-key" aria-label={t("คำอธิบายสี")}>
+      <span className="muted">{t("จำนวนครั้งที่ตายในช่องนั้น ({note}) ยิ่งเข้มยิ่งตายบ่อย", { note: t(SIDE_NOTE[side]) })}</span>
       <span className="grad-bar-wrap">
         <span className="grad-num">{MIN_PAINTED_DEATHS}</span>
         <svg className="grad-bar" viewBox="0 0 100 10" preserveAspectRatio="none" aria-hidden="true">
@@ -809,23 +841,26 @@ function GradientKey({ cells, side }: { cells: DeathCellCount[]; side: Side }) {
         </svg>
         <span className="grad-num">{max}</span>
       </span>
-      <span className="muted">ครั้ง · ต่ำกว่า {MIN_PAINTED_DEATHS} ครั้งไม่ระบาย</span>
+      <span className="muted">{t("ครั้ง · ต่ำกว่า {min} ครั้งไม่ระบาย", { min: MIN_PAINTED_DEATHS })}</span>
     </div>
   );
 }
 
 function SingleSummary({ data, hovered, onHover }: { data: DeathsOverlay } & TableHoverProps) {
+  const { t } = useT();
   const top = groupByPlace(data.cells).sort((a, b) => b.deaths - a.deaths).slice(0, 8);
   return (
     <>
-      <h2>ช่องที่ตายบ่อยที่สุด</h2>
-      <p className="muted small">{data.label} · ตายรวม {data.deaths} ครั้ง ใน {data.cells.length} ช่อง</p>
+      <h2>{t("ช่องที่ตายบ่อยที่สุด")}</h2>
+      <p className="muted small">
+        {t("{label} · ตายรวม {d} ครั้ง ใน {n} ช่อง", { label: overlayLabel(data, t), d: data.deaths, n: data.cells.length })}
+      </p>
       <table className="tbl compact an-tbl">
         <thead>
           <tr>
-            <th>ตรงไหนของแมพ</th>
-            <th className="num">ตาย</th>
-            <th className="num">สัดส่วน</th>
+            <th>{t("ตรงไหนของแมพ")}</th>
+            <th className="num">{t("ตาย")}</th>
+            <th className="num">{t("สัดส่วน")}</th>
           </tr>
         </thead>
         <tbody>
@@ -907,6 +942,7 @@ function placeLabels<T extends DeathCellCount>(cells: T[]) {
 function DeathMap<T extends DeathCellCount>({
   radar, cells, paint, highlightKey, onHoverKey, radius = 1, blur = 3.2, layerOpacity = 1, zoneFill,
 }: MapProps<T>) {
+  const { t } = useT();
   const s = radar.size;
   const labels = placeLabels(cells);
   const painted = cells
@@ -957,7 +993,8 @@ function DeathMap<T extends DeathCellCount>({
             onMouseEnter={() => onHoverKey?.(key)} onMouseLeave={() => onHoverKey?.(null)}
             data-testid="analysis-cell" data-active={active || undefined}
           >
-            <title>{`${c.place ?? "ไม่มีชื่อเรียก"} (ช่อง ${c.cx}, ${c.cy}) · ตาย ${c.deaths} ครั้ง`}</title>
+            <title>{t("{place} (ช่อง {cx}, {cy}) · ตาย {d} ครั้ง",
+              { place: c.place ?? t("ไม่มีชื่อเรียก"), cx: c.cx, cy: c.cy, d: c.deaths })}</title>
           </rect>
         );
       })}
@@ -976,19 +1013,35 @@ function DeathMap<T extends DeathCellCount>({
 
 /** ยังไม่มีอะไรให้เทียบ — บอกตรง ๆ ว่าขาดอะไร ไม่ใช่หน้าว่าง */
 function NothingToCompare({ done }: { done: Match[] }) {
+  const { t } = useT();
   const uploaded = done.filter((m) => m.source === "upload");
   return (
     <div className="pl-empty" data-testid="analysis-empty">
-      <h1>ยังไม่มีแมตช์ให้เทียบ</h1>
+      <h1>{t("ยังไม่มีแมตช์ให้เทียบ")}</h1>
       <p className="muted">
-        หน้านี้เทียบแมตช์ของทีมกับเดโมทีมอาชีพบนแมพเดียวกัน
         {uploaded.length === 0
-          ? " — ยังไม่มีแมตช์ที่อัปโหลดเข้ามาเลย"
-          : ` — มีแมตช์ที่อัปโหลด ${uploaded.length} แมตช์ แต่ยังไม่ตรงกับแมพที่มีเดโมทีมอาชีพให้เทียบ (ตอนนี้มีแค่ de_mirage)`}
+          ? t("หน้านี้เทียบแมตช์ของทีมกับเดโมทีมอาชีพบนแมพเดียวกัน — ยังไม่มีแมตช์ที่อัปโหลดเข้ามาเลย")
+          : t("หน้านี้เทียบแมตช์ของทีมกับเดโมทีมอาชีพบนแมพเดียวกัน — มีแมตช์ที่อัปโหลด {n} แมตช์ แต่ยังไม่ตรงกับแมพที่มีเดโมทีมอาชีพให้เทียบ (ตอนนี้มีแค่ de_mirage)",
+            { n: uploaded.length })}
       </p>
-      <Link className="btn-primary" to="/matches">ไปหน้าแมตช์</Link>
+      <Link className="btn-primary" to="/matches">{t("ไปหน้าแมตช์")}</Link>
     </div>
   );
+}
+
+/**
+ * ป้ายของชุดข้อมูลจุดตาย — backend ส่ง label มาเป็นภาษาไทยสำเร็จรูป จึงประกอบใหม่จากฟิลด์ที่มีอยู่แล้ว
+ * (scope/demo/matches/rounds/players) ด้วยสูตรเดียวกับ backend/app.py ภาษาไทยจึงออกมาเหมือนเดิมทุกตัวอักษร
+ */
+function overlayLabel(d: DeathsOverlay, t: TFn): string {
+  const parts = [
+    d.demo
+      ? t("{demo} (1 แมตช์)", { demo: d.demo })
+      : t(d.scope === "reference" ? "เดโมทีมอาชีพ {n} แมตช์" : "แมตช์ของทีม {n} แมตช์", { n: d.matches }),
+  ];
+  if (d.rounds?.length) parts.push(t("{n} รอบที่เลือก", { n: d.rounds.length }));
+  if (d.players?.length) parts.push(t("{n} คนที่เลือก", { n: d.players.length }));
+  return parts.join(" · ");
 }
 
 

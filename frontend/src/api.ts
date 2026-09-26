@@ -1,3 +1,4 @@
+import { tr } from "./i18n";
 // ชั้นเดียวที่คุยกับ backend — ทุกหน้าเรียกผ่านที่นี่ จะได้ไม่มี fetch กระจายตามหน้า
 
 export type MatchStatus = "queued" | "parsing" | "done" | "error";
@@ -110,7 +111,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const r = await fetch(path, { credentials: "same-origin", ...init });
   if (!r.ok) {
     if (r.status === 401 && !path.startsWith("/auth/")) window.dispatchEvent(new Event(UNAUTHORIZED_EVENT));
-    let msg = `เซิร์ฟเวอร์ตอบ ${r.status}`;
+    let msg = tr("เซิร์ฟเวอร์ตอบ {status}", { status: r.status });
     try {
       const body = await r.json();
       if (body?.detail) msg = typeof body.detail === "string" ? body.detail : JSON.stringify(body.detail);
@@ -313,6 +314,41 @@ export interface Readability {
   note?: string;
 }
 
+/** heatmap ของแมตช์เดียว — จุดเป็นพิกเซลบนภาพเรดาร์ (backend แปลงพิกัดให้แล้ว) */
+/** เศรษฐกิจของแมตช์ — ประเภทการซื้อทั้งทีมมาจาก view round_economy (views.sql) */
+export type TeamBuy = "pistol" | "eco" | "semi_eco" | "semi_buy" | "full";
+export interface EconomyTeamRound {
+  side: "ct" | "t";
+  equip: number | null;
+  buy_type: TeamBuy | null;
+  won: boolean;
+}
+export interface MatchEconomy {
+  demo: string;
+  map: string | null;
+  teams: string[];
+  buy_types: TeamBuy[];
+  rounds: {
+    round_num: number;
+    winner_side: "ct" | "t" | null;
+    end_reason: string | null;
+    winner_team: string | null;
+    teams: Record<string, EconomyTeamRound>;
+  }[];
+}
+
+export type HeatEvent = "kills" | "deaths" | "positions" | "smoke" | "flash" | "he" | "molotov";
+export interface MatchHeatmap {
+  event: HeatEvent;
+  demo: string;
+  map: string;
+  points: [number, number][];
+  count: number;
+  rounds: number;
+  roster: { steam_id: string; name: string; team: string | null; start_side: string | null }[];
+  radar: { image: string; size: number; map: string };
+}
+
 const enc = encodeURIComponent;
 
 export const api = {
@@ -320,6 +356,13 @@ export const api = {
   reviewRound: (demo: string, n: number) => request<RoundDetail>(`/api/review/${enc(demo)}/rounds/${n}`),
   reviewPositions: (demo: string, n: number) =>
     request<RoundPositions>(`/api/review/${enc(demo)}/rounds/${n}/positions`),
+  economy: (demo: string) => request<MatchEconomy>(`/api/review/${enc(demo)}/economy`),
+  heatmap: (demo: string, event: HeatEvent, side: "all" | "ct" | "t", players: string[] | null, rounds: number[] | null) =>
+    request<MatchHeatmap>(
+      `/api/review/${enc(demo)}/heatmap?event=${event}&side=${side}` +
+        (players ? `&players=${players.join(",")}` : "") +
+        (rounds ? `&rounds=${rounds.join(",")}` : ""),
+    ),
   // --- หน้าเครื่องมือวิเคราะห์ ---
   readability: (demo: string) => request<Readability>(`/api/analysis/readability?demo=${enc(demo)}`),
   analysisDeaths: (

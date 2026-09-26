@@ -15,6 +15,7 @@ import {
   fmtT,
   MAX_ZOOM,
   NADE_COLOR,
+  NADE_ICON,
   nadeActiveAt,
   nadeLabel,
   NADE_TYPES,
@@ -26,6 +27,7 @@ import {
   type ViewState,
   weaponLabel,
 } from "./utils";
+import { useT } from "./i18n";
 
 /** แถวที่กดได้ (li ในไทม์ไลน์ / บริบท) — คลิก หรือ Enter / Space จากคีย์บอร์ด */
 const pressable = (fn: () => void) => ({
@@ -59,6 +61,7 @@ export function RoundView({ demo, roundNum, view, setView }: RoundViewProps) {
   // ชี้เมาส์ที่แถวในตาราง (หรือที่ตัวผู้เล่นบนแผนที่) = ไฮไลต์ชั่วคราว ไม่เขียนลง URL
   // ต่างจาก view.player ที่เป็นการ "กดค้างไว้" และติดไปกับลิงก์ที่แชร์ได้
   const [hover, setHover] = useState<string | null>(null);
+  const { t } = useT();
   const q = useQuery({
     queryKey: ["review-round", demo, roundNum],
     queryFn: () => api.reviewRound(demo, roundNum),
@@ -132,9 +135,9 @@ export function RoundView({ demo, roundNum, view, setView }: RoundViewProps) {
     return () => window.removeEventListener("keydown", onKey);
   }, [view.playback, endT]);
 
-  if (q.isLoading) return <p className="muted">กำลังโหลดรอบ {roundNum}…</p>;
-  if (q.error instanceof ApiError && q.error.status === 404) return <NotFound title="ไม่พบรอบนี้" detail={q.error.message} />;
-  if (q.error) return <p className="err">โหลดรอบนี้ไม่ได้: {(q.error as Error).message}</p>;
+  if (q.isLoading) return <p className="muted">{t("กำลังโหลดรอบ {n}…", { n: roundNum })}</p>;
+  if (q.error instanceof ApiError && q.error.status === 404) return <NotFound title={t("ไม่พบรอบนี้")} detail={q.error.message} />;
+  if (q.error) return <p className="err">{t("โหลดรอบนี้ไม่ได้: {msg}", { msg: (q.error as Error).message })}</p>;
   if (!q.data) return null;
 
   const d = q.data;
@@ -160,29 +163,29 @@ export function RoundView({ demo, roundNum, view, setView }: RoundViewProps) {
     <div className="review" data-testid="round-view">
       <div className="review-head">
         <h2>
-          รอบ {d.round.num}
-          {d.round.winner_side && <span className={`badge b-${d.round.winner_side} big`}>{sideLabel(d.round.winner_side)} ชนะ</span>}
+          {t("รอบ {n}", { n: d.round.num })}
+          {d.round.winner_side && <span className={`badge b-${d.round.winner_side} big`}>{t("{side} ชนะ", { side: sideLabel(d.round.winner_side) })}</span>}
         </h2>
         <span className="muted">
           {endReasonLabel(d.round.end_reason)}
-          {d.round.bomb_planted_t != null && ` · วางบอมบ์ ${fmtT(d.round.bomb_planted_t)}`} · ตาย {d.deaths.length} คน
+          {d.round.bomb_planted_t != null && ` · ${t("วางบอมบ์ {time}", { time: fmtT(d.round.bomb_planted_t) })}`} · {t("ตาย {n} คน", { n: d.deaths.length })}
         </span>
         <div className="toggles">
           <span className="toggle-group">
-            <span className="muted">ระเบิด</span>
-            {NADE_TYPES.map((t) => {
-              const n = d.grenades.filter((g) => g.type === t).length;
-              const on = n > 0 && view.nades.includes(t);   // รอบนี้ไม่มีชนิดนี้เลย = ปุ่มดับไว้ ไม่นับว่าเปิดอยู่
+            <span className="muted">{t("ระเบิด")}</span>
+            {NADE_TYPES.map((k) => {
+              const n = d.grenades.filter((g) => g.type === k).length;
+              const on = n > 0 && view.nades.includes(k);   // รอบนี้ไม่มีชนิดนี้เลย = ปุ่มดับไว้ ไม่นับว่าเปิดอยู่
               return (
-                <label key={t} className={`nade-toggle${on ? " on" : ""}`} title={`${nadeLabel(t)} ${n} ลูกในรอบนี้`}>
+                <label key={k} className={`nade-toggle${on ? " on" : ""}`} title={t("{nade} {n} ลูกในรอบนี้", { nade: nadeLabel(k), n })}>
                   <input
                     type="checkbox"
                     checked={on}
                     disabled={n === 0}
-                    onChange={(e) => setView({ nades: e.target.checked ? [...view.nades, t] : view.nades.filter((x) => x !== t) })}
+                    onChange={(e) => setView({ nades: e.target.checked ? [...view.nades, k] : view.nades.filter((x) => x !== k) })}
                   />
-                  <i style={{ background: NADE_COLOR[t] }} />
-                  {nadeLabel(t)} {n}
+                  <img className="nade-ico" src={NADE_ICON[k]} alt="" />
+                  {nadeLabel(k)} {n}
                 </label>
               );
             })}
@@ -192,16 +195,16 @@ export function RoundView({ demo, roundNum, view, setView }: RoundViewProps) {
               onClick={() => setView({ nades: anyNadeOn ? [] : [...NADE_TYPES] })}
               disabled={d.grenades.length === 0}
             >
-              {anyNadeOn ? "ปิดทั้งหมด" : "เปิดทั้งหมด"}
+              {anyNadeOn ? t("ปิดทั้งหมด") : t("เปิดทั้งหมด")}
             </button>
-            {anyNadeOn && view.death != null && <span className="muted">· เฉพาะที่มีผลตอนการตาย #{view.death}</span>}
+            {anyNadeOn && view.death != null && <span className="muted">· {t("เฉพาะที่มีผลตอนการตาย #{n}", { n: view.death })}</span>}
           </span>
         </div>
       </div>
 
       {/* หน้าจอ laptop / projector: สามส่วนนี้อยู่ในความสูงจอเดียว แผนที่เป็นจัตุรัสเท่าที่ช่องให้ได้ (styles.css) */}
       <div className="review-grid">
-        <aside className="roster-col" aria-label="ตารางระบุตัวผู้เล่น">
+        <aside className="roster-col" aria-label={t("ตารางระบุตัวผู้เล่น")}>
           <TeamRoster
             teams={d.teams}
             highlight={focusPlayer}
@@ -211,12 +214,12 @@ export function RoundView({ demo, roundNum, view, setView }: RoundViewProps) {
           />
           {view.player && (
             <button type="button" className="link-btn" onClick={() => setView({ player: null })}>
-              ล้างการไฮไลต์
+              {t("ล้างการไฮไลต์")}
             </button>
           )}
         </aside>
 
-        <section className="map-col" aria-label="แผนที่ของรอบ">
+        <section className="map-col" aria-label={t("แผนที่ของรอบ")}>
           <div className="map-stage">
             {d.radar ? (
               <MapView
@@ -234,88 +237,108 @@ export function RoundView({ demo, roundNum, view, setView }: RoundViewProps) {
                 onSelect={(o) => setView({ death: o })}
               />
             ) : (
-              <p className="muted">ยังไม่มีภาพเรดาร์ของแมพ {d.match.map_name}</p>
+              <p className="muted">{t("ยังไม่มีภาพเรดาร์ของแมพ {map}", { map: d.match.map_name ?? "" })}</p>
             )}
+            {/* ซูมลอยอยู่มุมแผนที่ — ไม่กินบรรทัดใต้แผนที่อีกแถว (ล้อเมาส์บนแผนที่ก็ซูมได้) */}
+            <div className="map-zoom" role="group" aria-label={t("ซูมแผนที่")}>
+              <button type="button" onClick={() => setView({ zoom: clampZoom(view.zoom * 1.4), center: view.center })}
+                disabled={view.zoom >= MAX_ZOOM} aria-label={t("ซูมเข้า")} title={t("ซูมเข้า (หรือเลื่อนล้อเมาส์บนแผนที่)")}>+</button>
+              <button type="button" onClick={() => {
+                const next = clampZoom(view.zoom / 1.4);
+                setView(next <= 1.01 ? { zoom: 1, center: null } : { zoom: next, center: view.center });
+              }} disabled={view.zoom <= 1} aria-label={t("ซูมออก")} title={t("ซูมออก")}>−</button>
+              {view.zoom > 1 && (
+                <button type="button" className="mz-reset" onClick={() => setView({ zoom: 1, center: null })}
+                  title={t("กลับไปเห็นเต็มแมพ")}>
+                  {t("เต็มแมพ")}
+                </button>
+              )}
+            </div>
           </div>
+          {/* เล่นย้อน: กดครั้งเดียวทั้งเปิดโหมดและเริ่มเล่น (เดิมต้องกดเปิดโหมดก่อน แล้วกดเล่นอีกที) */}
           <div className="map-play">
-            <button
-              type="button"
-              className={`pb-mode${view.playback ? " on" : ""}`}
-              aria-pressed={view.playback}
-              onClick={() => {
-                setPlaying(false);
-                setTime(0);
-                setView({ playback: !view.playback, time: view.playback ? null : 0 });
-              }}
-            >
-              {view.playback ? "ปิดโหมดเล่นย้อน" : "โหมดเล่นย้อน"}
-            </button>
-            {view.playback &&
-              (positions.isLoading ? (
-                <span className="muted small">กำลังโหลดตำแหน่งผู้เล่น…</span>
-              ) : positions.error ? (
-                <span className="err small">โหลดตำแหน่งไม่ได้: {(positions.error as Error).message}</span>
-              ) : endT <= 0 ? (
-                <span className="muted small">รอบนี้ไม่มีตำแหน่งผู้เล่นที่บันทึกไว้</span>
-              ) : (
-                <>
-                  <button type="button" className="pb-play" onClick={() => setPlaying((p) => !p)}
-                    aria-label={playing ? "หยุด" : "เล่น"} aria-pressed={playing}>
-                    {playing ? <IconPause /> : <IconPlay />}
-                  </button>
-                  <input
-                    className="pb-range"
-                    type="range"
-                    min={0}
-                    max={endT}
-                    step={0.1}
-                    value={Math.min(time, endT)}
-                    onChange={(e) => {
-                      setPlaying(false);
-                      setTime(Number(e.target.value));
-                    }}
-                    aria-label="เลื่อนเวลาในรอบ"
-                  />
-                  <span className="pb-clock">
-                    {fmtT(time)} / {fmtT(endT)}
-                  </span>
+            {!view.playback ? (
+              <button
+                type="button"
+                className="pb-start"
+                onClick={() => {
+                  setTime(0);
+                  setView({ playback: true, time: 0 });
+                  setPlaying(true);
+                }}
+                data-testid="playback-start"
+              >
+                <IconPlay /> {t("เล่นย้อนรอบนี้")}
+              </button>
+            ) : positions.isLoading ? (
+              <span className="muted small">{t("กำลังโหลดตำแหน่งผู้เล่น…")}</span>
+            ) : positions.error ? (
+              <span className="err small">{t("โหลดตำแหน่งไม่ได้: {msg}", { msg: (positions.error as Error).message })}</span>
+            ) : endT <= 0 ? (
+              <span className="muted small">{t("รอบนี้ไม่มีตำแหน่งผู้เล่นที่บันทึกไว้")}</span>
+            ) : (
+              <>
+                <button type="button" className="pb-play" onClick={() => setPlaying((p) => !p)}
+                  aria-label={playing ? t("หยุด") : t("เล่น")} aria-pressed={playing} title={t("เว้นวรรค = เล่น/หยุด")}>
+                  {playing ? <IconPause /> : <IconPlay />}
+                </button>
+                <input
+                  className="pb-range"
+                  type="range"
+                  min={0}
+                  max={endT}
+                  step={0.1}
+                  value={Math.min(time, endT)}
+                  onChange={(e) => {
+                    setPlaying(false);
+                    setTime(Number(e.target.value));
+                  }}
+                  aria-label={t("เลื่อนเวลาในรอบ")}
+                  title={t(", กับ . = ถอย/เดินหน้าทีละวินาที")}
+                />
+                <span className="pb-clock">
+                  {fmtT(time)} / {fmtT(endT)}
+                </span>
+                <span className="pb-speeds" role="group" aria-label={t("ความเร็ว")}>
                   {SPEEDS.map((sp) => (
                     <button key={sp} type="button" className={`pb-speed${speed === sp ? " on" : ""}`}
                       aria-pressed={speed === sp} onClick={() => setSpeed(sp)}>
                       {sp}×
                     </button>
                   ))}
-                  <span className="muted small">เว้นวรรค = เล่น/หยุด · , . = ทีละวินาที</span>
-                </>
-              ))}
+                </span>
+              </>
+            )}
+            {view.playback && (
+              <button
+                type="button"
+                className="pb-close"
+                onClick={() => {
+                  setPlaying(false);
+                  setTime(0);
+                  setView({ playback: false, time: null });
+                }}
+                title={t("กลับไปภาพสรุปทั้งรอบ")}
+              >
+                {t("ภาพสรุปรอบ")}
+              </button>
+            )}
           </div>
-          <div className="map-zoom">
-            <button type="button" onClick={() => setView({ zoom: clampZoom(view.zoom * 1.4), center: view.center })}
-              disabled={view.zoom >= MAX_ZOOM} aria-label="ซูมเข้า">+</button>
-            <button type="button" onClick={() => {
-              const next = clampZoom(view.zoom / 1.4);
-              setView(next <= 1.01 ? { zoom: 1, center: null } : { zoom: next, center: view.center });
-            }} disabled={view.zoom <= 1} aria-label="ซูมออก">−</button>
-            <button type="button" className="link-btn" onClick={() => setView({ zoom: 1, center: null })} disabled={view.zoom <= 1}>
-              เต็มแมพ
-            </button>
-            <span className="muted small">{view.zoom > 1 ? `ซูม ${view.zoom.toFixed(1)}× · ลากเพื่อเลื่อนดู` : "เลื่อนล้อเมาส์บนแผนที่เพื่อซูม"}</span>
-          </div>
-          {view.playback && pos && pos.frames.length > 0 && <p className="muted small pb-note">{pos.note}</p>}
+          {view.playback && pos && pos.frames.length > 0 && <p className="muted small pb-note">{t(pos.note)}</p>}
           {anyNadeOn && (
             <div className="legend">
               {(["smoke", "flash", "he", "molotov"] as const).map((t) => (
                 <span key={t}>
-                  <i style={{ background: NADE_COLOR[t] }} /> {nadeLabel(t)}
+                  <img className="nade-ico" src={NADE_ICON[t]} alt="" /> {nadeLabel(t)}
                 </span>
               ))}
-              <span className="muted">ชื่อข้างวง = คนขว้าง · เส้นประ = ทางที่ขว้างมา</span>
+              <span className="muted">{t("ชื่อข้างวง = คนขว้าง · เส้นประ = ทางที่ขว้างมา")}</span>
             </div>
           )}
         </section>
 
-        <aside className="breakdown" aria-label="ไทม์ไลน์ของรอบ">
-          <h3 className="panel-h">ไทม์ไลน์</h3>
+        <aside className="breakdown" aria-label={t("ไทม์ไลน์ของรอบ")}>
+          <h3 className="panel-h">{t("ไทม์ไลน์")}</h3>
           <DeathTimeline
             deaths={d.deaths}
             highlight={view.player}
@@ -450,6 +473,7 @@ export function MapView({ radar, deaths, bomb, grenades, live, zoom, center, onV
   const x0 = cx - span / 2;
   const y0 = cy - span / 2;
   const drag = useRef<{ x: number; y: number; cx: number; cy: number; moved: number } | null>(null);
+  const { t } = useT();
 
   /** พิกัดบนจอ -> พิกัดในภาพเรดาร์ (ใช้ตอนซูมที่ตำแหน่งเมาส์) */
   const toMap = (clientX: number, clientY: number) => {
@@ -480,7 +504,7 @@ export function MapView({ radar, deaths, bomb, grenades, live, zoom, center, onV
   const U = shown > 0 ? (span / shown) * Math.min(1.35, Math.max(1, shown / 620)) : 1; // หน่วยภาพต่อ 1 px บนจอ (ตามกรอบที่ซูมอยู่)
   const z = {
     dot: 12 * U, dotSel: 15 * U, num: 12 * U, name: 13 * U, atk: 5 * U, atkName: 12 * U,
-    nade: 6 * U, nadeName: 12 * U, line: 2 * U, bomb: 10 * U,
+    nade: 6 * U, nadeIco: 22 * U, nadeName: 12 * U, line: 2 * U, bomb: 10 * U,
   };
   const halo = (size: number) => ({ fontSize: size, strokeWidth: size * 0.3 });
 
@@ -495,14 +519,14 @@ export function MapView({ radar, deaths, bomb, grenades, live, zoom, center, onV
     if (d.victim_px) block(d.victim_px[0], d.victim_px[1], dotR(d));
     if (d.attacker_px) block(d.attacker_px[0], d.attacker_px[1], z.atk);
   });
-  nades.forEach((n) => n.r_px === 0 && block(n.land_px![0], n.land_px![1], z.nade));
+  nades.forEach((n) => n.r_px === 0 && block(n.land_px![0], n.land_px![1], z.nadeIco / 2));
   live?.forEach((p) => block(p.px[0], p.px[1], z.dot * 0.9));   // ยังกันไม่ให้ป้ายอื่นทับตัวผู้เล่น
   const deathLabel = new Map<number, LabelPos>();
   deaths.forEach((d) => {
     if (d.victim_px) deathLabel.set(d.order, place(d.victim_px[0], d.victim_px[1], dotR(d), d.victim.name, z.name));
   });
   const nadeLabelPos = nades.map((n) =>
-    place(n.land_px![0], n.land_px![1], n.r_px > 0 ? n.r_px : z.nade, `${n.thrower?.name ?? "?"} · ${nadeLabel(n.type)}`, z.nadeName),
+    place(n.land_px![0], n.land_px![1], n.r_px > 0 ? n.r_px : z.nadeIco / 2, `${n.thrower?.name ?? "?"} · ${nadeLabel(n.type)}`, z.nadeName),
   );
   const involved = (d: ReviewDeath) =>
     !highlight || d.victim.steamid === highlight || d.attacker?.steamid === highlight;
@@ -546,7 +570,7 @@ export function MapView({ radar, deaths, bomb, grenades, live, zoom, center, onV
           <text textAnchor="middle" dy={z.bomb * 0.38} className="bomb-label" style={{ fontSize: z.bomb * 1.05 }}>
             C4
           </text>
-          <title>{`วางบอมบ์${bomb.site ? ` (${bomb.site})` : ""}`}</title>
+          <title>{`${t("วางบอมบ์")}${bomb.site ? ` (${bomb.site})` : ""}`}</title>
         </g>
       )}
 
@@ -561,14 +585,21 @@ export function MapView({ radar, deaths, bomb, grenades, live, zoom, center, onV
               <line x1={n.throw_px[0]} y1={n.throw_px[1]} x2={x} y2={y} stroke={n.thrower?.color ?? c}
                 strokeWidth={z.line * 0.8} strokeDasharray={`${5 * U} ${5 * U}`} opacity={0.5} />
             )}
-            <circle cx={x} cy={y} r={n.r_px > 0 ? n.r_px : z.nade} fill={c} fillOpacity={n.r_px > 0 ? 0.4 : 0.95}
-              stroke={c} strokeWidth={z.line} />
+            {/* ควัน/ไฟ = วงโปร่งตามขนาดที่มีผลจริง + ไอคอนกลางวง · แฟลช/HE = ไอคอนอย่างเดียว (แตกแล้วหายทันที) */}
+            {n.r_px > 0 && (
+              <circle cx={x} cy={y} r={n.r_px} fill={c} fillOpacity={0.32} stroke={c} strokeWidth={z.line} />
+            )}
+            {NADE_ICON[n.type] ? (
+              <image href={NADE_ICON[n.type]} x={x - z.nadeIco / 2} y={y - z.nadeIco / 2} width={z.nadeIco} height={z.nadeIco} />
+            ) : (
+              <circle cx={x} cy={y} r={z.nade} fill={c} stroke={c} strokeWidth={z.line} />
+            )}
             <text x={nadeLabelPos[i].x} y={nadeLabelPos[i].y} textAnchor={nadeLabelPos[i].anchor} className="nade-label"
               style={{ ...halo(z.nadeName), fill: n.thrower?.color ?? c }}>
               {who} · {nadeLabel(n.type)}
             </text>
-            <title>{`${fmtT(n.t_land)} ${who} (${sideLabel(n.thrower?.side)}) ขว้าง${nadeLabel(n.type)}${
-              n.t_end != null && n.t_end > (n.t_land ?? 0) ? ` · มีผลถึง ${fmtT(n.t_end)}` : ""}`}</title>
+            <title>{`${t("{time} {who} ({side}) ขว้าง{nade}", { time: fmtT(n.t_land), who, side: sideLabel(n.thrower?.side), nade: nadeLabel(n.type) })}${
+              n.t_end != null && n.t_end > (n.t_land ?? 0) ? ` · ${t("มีผลถึง {time}", { time: fmtT(n.t_end) })}` : ""}`}</title>
           </g>
         );
       })}
@@ -681,7 +712,7 @@ export function MapView({ radar, deaths, bomb, grenades, live, zoom, center, onV
                   </text>
                 </>
               )}
-              <title>{`${live ? `${d.victim.slot ?? "?"} · ` : `${d.order}. `}${fmtT(d.t_round)} ${d.victim.name} ตาย · ${weaponLabel(d.weapon)}${d.attacker ? ` · โดย ${d.attacker.name}` : ""}`}</title>
+              <title>{`${live ? `${d.victim.slot ?? "?"} · ` : `${d.order}. `}${t("{time} {victim} ตาย · {weapon}", { time: fmtT(d.t_round), victim: d.victim.name, weapon: weaponLabel(d.weapon) })}${d.attacker ? ` · ${t("โดย {name}", { name: d.attacker.name })}` : ""}`}</title>
             </g>
           ),
       )}
@@ -711,6 +742,7 @@ interface RosterProps {
  * วงกลมเลขหน้าแถวใช้สีและรูปทรงเดียวกับบนแผนที่ เพื่อให้กวาดตาเทียบกันได้ทันที
  */
 export function TeamRoster({ teams, highlight, onHighlight, onHover, playback }: RosterProps) {
+  const { t: tx } = useT();
   return (
     <div className="roster" data-testid="team-roster">
       {teams.map((t) => (
@@ -718,7 +750,7 @@ export function TeamRoster({ teams, highlight, onHighlight, onHover, playback }:
           <div className="team-head">
             <b>{t.clan}</b>
             <span className={`badge b-${t.side_this_round}`}>{sideLabel(t.side_this_round)}</span>
-            <span className="muted small">รอบนี้</span>
+            <span className="muted small">{tx("รอบนี้")}</span>
           </div>
           <ul>
             {[...t.players].sort((a, b) => (a.slot ?? 99) - (b.slot ?? 99)).map((p) => (
@@ -738,7 +770,7 @@ export function TeamRoster({ teams, highlight, onHighlight, onHover, playback }:
                   type="button"
                   className="pname"
                   onClick={() => onHighlight(highlight === p.steamid ? null : p.steamid)}
-                  title="กดเพื่อไฮไลต์เฉพาะเหตุการณ์ของคนนี้ค้างไว้"
+                  title={tx("กดเพื่อไฮไลต์เฉพาะเหตุการณ์ของคนนี้ค้างไว้")}
                 >
                   <span
                     className="pslot"
@@ -748,15 +780,15 @@ export function TeamRoster({ teams, highlight, onHighlight, onHover, playback }:
                     {p.slot ?? "?"}
                   </span>
                   <span className="pn">{p.name}</span>
-                  {p.kills > 0 && <span className="kills">{p.kills} คิล</span>}
+                  {p.kills > 0 && <span className="kills">{tx("{n} คิล", { n: p.kills })}</span>}
                 </button>
                 <div className="pstat">
                   {p.survived ? (
-                    <span className="alive">รอดถึงจบรอบ</span>
+                    <span className="alive">{tx("รอดถึงจบรอบ")}</span>
                   ) : (
                     <>
-                      ตาย {fmtT(p.died_at_t)} · {weaponLabel(p.weapon)}
-                      {p.killed_by ? ` · โดย ${p.killed_by}` : ""}
+                      {tx("ตาย {time} · {weapon}", { time: fmtT(p.died_at_t), weapon: weaponLabel(p.weapon) })}
+                      {p.killed_by ? ` · ${tx("โดย {name}", { name: p.killed_by })}` : ""}
                       {p.death_order ? <span className="muted"> (#{p.death_order})</span> : null}
                     </>
                   )}
@@ -768,8 +800,8 @@ export function TeamRoster({ teams, highlight, onHighlight, onHover, playback }:
       ))}
       <p className="roster-note muted small">
         {playback
-          ? "หมายเลขบนแผนที่ตรงกับตารางนี้ · คนที่ตายแล้วเป็นเครื่องหมาย ✕ · แถวจางคือคนที่ตายในรอบนี้"
-          : "หมายเลขประจำตัวคงที่ทั้งแมตช์ · เปิดโหมดเล่นย้อนเพื่อเห็นหมายเลขบนแผนที่"}
+          ? tx("เลขบนแผนที่ = หมายเลขผู้เล่นในตารางนี้ · ✕ = ตายแล้ว")
+          : tx("เลขบนแผนที่ = ลำดับการตาย (ตรงกับไทม์ไลน์) · เลขในตารางนี้ = หมายเลขผู้เล่น ใช้ตอนเล่นย้อน")}
       </p>
     </div>
   );
@@ -808,20 +840,21 @@ export function DeathTimeline({ deaths, highlight, selected, onSelect, bombPlant
   if (bombPlantedT != null) items.push({ t: bombPlantedT, kind: "bomb" });
   grenades.forEach((n, i) => items.push({ t: n.t_land ?? n.t_throw ?? 0, kind: "nade", n, i }));
   items.sort((a, b) => a.t - b.t);
+  const { t, tn } = useT();
 
   return (
     <ol className="timeline-list" data-testid="death-timeline">
       {items.map((it) =>
         it.kind === "bomb" ? (
           <li key="bomb" className="tl-bomb">
-            <span className="tl-t">{fmtT(it.t)}</span> วางบอมบ์
+            <span className="tl-t">{fmtT(it.t)}</span> {t("วางบอมบ์")}
           </li>
         ) : it.kind === "nade" ? (
           <li key={`n${it.i}`} className={`tl-nade ${!highlight || it.n.thrower?.steamid === highlight ? "" : "dim"}`}>
-            <span className="nade-dot" style={{ background: NADE_COLOR[it.n.type] }} />
+            <img className="nade-dot" src={NADE_ICON[it.n.type]} alt="" />
             <span className="tl-t">{fmtT(it.t)}</span>
             <span className="tl-text">
-              {it.n.thrower ? <Who p={it.n.thrower} /> : "?"} ขว้าง{nadeLabel(it.n.type)}
+              {tn("{who} ขว้าง{nade}", { who: it.n.thrower ? <Who p={it.n.thrower} /> : "?", nade: nadeLabel(it.n.type) })}
             </span>
           </li>
         ) : (
@@ -836,35 +869,29 @@ export function DeathTimeline({ deaths, highlight, selected, onSelect, bombPlant
             <span className="tl-t">{fmtT(it.d.t_round)}</span>
             <span className="tl-text">
               {it.d.attacker && it.d.is_duel ? (
-                <>
-                  <Who p={it.d.attacker} /> ฆ่า <Who p={it.d.victim} />
-                </>
+                tn("{attacker} ฆ่า {victim}", { attacker: <Who p={it.d.attacker} />, victim: <Who p={it.d.victim} /> })
               ) : it.d.team_kill && it.d.attacker ? (
-                <>
-                  <Who p={it.d.attacker} /> ยิงเพื่อนร่วมทีม <Who p={it.d.victim} />
-                </>
+                tn("{attacker} ยิงเพื่อนร่วมทีม {victim}", { attacker: <Who p={it.d.attacker} />, victim: <Who p={it.d.victim} /> })
               ) : (
-                <>
-                  <Who p={it.d.victim} /> ตาย
-                </>
+                tn("{victim} ตาย", { victim: <Who p={it.d.victim} /> })
               )}
               <span className="tl-meta">
                 {" · "}
                 {weaponLabel(it.d.weapon)}
                 {it.d.headshot && " · HS"}
-                {it.d.distance != null && ` · ระยะ ${it.d.distance}u`}
+                {it.d.distance != null && ` · ${t("ระยะ {d}u", { d: it.d.distance })}`}
                 {it.d.place && ` · ${it.d.place}`}
-                {it.d.attacker_blind && " · คนยิงโดนแฟลช"}
-                {it.d.thru_smoke && " · ยิงผ่านควัน"}
-                {it.d.penetrated > 0 && " · ทะลุกำแพง"}
+                {it.d.attacker_blind && ` · ${t("คนยิงโดนแฟลช")}`}
+                {it.d.thru_smoke && ` · ${t("ยิงผ่านควัน")}`}
+                {it.d.penetrated > 0 && ` · ${t("ทะลุกำแพง")}`}
                 {it.d.noscope && " · noscope"}
-                {it.d.assister && ` · ช่วย: ${it.d.assister}`}
+                {it.d.assister && ` · ${t("ช่วย: {name}", { name: it.d.assister })}`}
               </span>
             </span>
           </li>
         ),
       )}
-      {deaths.length === 0 && <li className="muted">ไม่มีใครตายในรอบนี้</li>}
+      {deaths.length === 0 && <li className="muted">{t("ไม่มีใครตายในรอบนี้")}</li>}
     </ol>
   );
 }
@@ -875,20 +902,25 @@ export function DeathTimeline({ deaths, highlight, selected, onSelect, bombPlant
 /** สรุปรอบ: ใครตายคนแรก / ฝั่งที่เสียคนแรกแพ้ไหม */
 export function RoundSummary({ summary, winner }: { summary: RoundDetail["summary"]; winner: RoundDetail["round"]["winner_side"] }) {
   const f = summary.first_death;
+  const { t, tn } = useT();
   return (
     <section className="summary" data-testid="round-summary">
-      <h3 className="panel-h">สรุปรอบ</h3>
+      <h3 className="panel-h">{t("สรุปรอบ")}</h3>
       {f ? (
         <p>
-          ตายคนแรก: <b>{f.name}</b> ({sideLabel(f.side)}) ที่ {f.place ?? "—"} วินาทีที่ {fmtT(f.t_round)}
-          {f.by ? ` โดย ${f.by}` : ""}
+          {tn("ตายคนแรก: {name} ({side}) ที่ {place} วินาทีที่ {time}", {
+            name: <b>{f.name}</b>, side: sideLabel(f.side), place: f.place ?? "—", time: fmtT(f.t_round),
+          })}
+          {f.by ? ` ${t("โดย {name}", { name: f.by })}` : ""}
         </p>
       ) : (
-        <p className="muted">รอบนี้ไม่มีใครตาย</p>
+        <p className="muted">{t("รอบนี้ไม่มีใครตาย")}</p>
       )}
       {summary.first_death_side_lost !== null && f && (
         <p>
-          ฝั่ง {sideLabel(f.side)} เสียคนแรก และ{summary.first_death_side_lost ? "แพ้" : "ชนะ"}รอบนี้ (ผู้ชนะ {sideLabel(winner)})
+          {t(summary.first_death_side_lost
+            ? "ฝั่ง {side} เสียคนแรก และแพ้รอบนี้ (ผู้ชนะ {winner})"
+            : "ฝั่ง {side} เสียคนแรก และชนะรอบนี้ (ผู้ชนะ {winner})", { side: sideLabel(f.side), winner: sideLabel(winner) })}
         </p>
       )}
     </section>

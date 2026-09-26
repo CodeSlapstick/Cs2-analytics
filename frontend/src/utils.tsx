@@ -1,7 +1,12 @@
 // ตัวช่วยที่ทุกหน้าใช้ร่วมกัน: จัดรูปแบบข้อความ · state บน URL · หน้า 404
-import { useCallback } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { useCallback, useState } from "react";
+import { Link, NavLink, useSearchParams } from "react-router-dom";
 import type { ReviewGrenade, ReviewTeam, Side } from "./api";
+import { tr, useT } from "./i18n";
+import heIcon from "./assets/grenades/he.png";
+import flashIcon from "./assets/grenades/flash.png";
+import molotovIcon from "./assets/grenades/molotov.png";
+import smokeIcon from "./assets/grenades/smoke.png";
 
 // ================================================================================================
 // จัดรูปแบบข้อความ (เวลา / % / ชื่ออาวุธ / สาเหตุจบรอบ / สีประเภทช่อง)
@@ -26,7 +31,7 @@ const WEAPONS: Record<string, string> = {
   p90: "P90", sg556: "SG 553", aug: "AUG", hegrenade: "HE", inferno: "Molotov", knife: "มีด", world: "ตกที่สูง",
   planted_c4: "C4",
 };
-export const weaponLabel = (w: string | null | undefined) => (w ? WEAPONS[w] ?? w : "—");
+export const weaponLabel = (w: string | null | undefined) => (w ? tr(WEAPONS[w] ?? w) : "—");
 
 export const END_REASON: Record<string, string> = {
   ct_killed: "ฆ่า CT หมดทีม",
@@ -37,7 +42,7 @@ export const END_REASON: Record<string, string> = {
   ct_win: "CT ชนะ",
   t_win: "T ชนะ",
 };
-export const endReasonLabel = (r: string | null | undefined) => (r ? END_REASON[r] ?? r : "—");
+export const endReasonLabel = (r: string | null | undefined) => (r ? tr(END_REASON[r] ?? r) : "—");
 
 // ================================================================================================
 // สีฝั่ง + เลขผู้เล่น — สีสดในหน้ารอบมีแค่สองสี (CT ฟ้า / T ส้ม) แต่ละคนแยกกันด้วยเลข 1–5 ไม่ใช่สีรายคน
@@ -113,7 +118,22 @@ const NADE_LABEL: Record<string, string> = { smoke: "สโมค", flash: "แ�
 export const NADE_COLOR: Record<string, string> = {
   smoke: "#cbd5e1", flash: "#fde047", he: "#f87171", molotov: "#fb923c", decoy: "#a78bfa",
 };
-export const nadeLabel = (t: string) => NADE_LABEL[t] ?? t;
+/** ไอคอนระเบิด (ภาพจากเกม) — ใช้บนแผนที่ ปุ่มเปิด/ปิด คำอธิบายสี และไทม์ไลน์ ให้เห็นชนิดเดียวกันทุกที่ */
+export const NADE_ICON: Record<string, string> = { smoke: smokeIcon, flash: flashIcon, he: heIcon, molotov: molotovIcon };
+
+// ================================================================================================
+// ภาพหน้าปกของแมพ (assets/thumbs/<map>.webp เสิร์ฟโดย backend ที่ /assets เหมือนภาพเรดาร์)
+// ================================================================================================
+/** แมพที่ไม่มีภาพ (หรือยังไม่รู้แมพ) ได้กล่องสีพื้นแทน ไม่ขึ้นไอคอนภาพแตก */
+export function MapThumb({ map, className = "" }: { map: string | null | undefined; className?: string }) {
+  const [broken, setBroken] = useState(false);
+  if (!map || broken) return <span className={`map-thumb ph ${className}`} aria-hidden="true" />;
+  return (
+    <img className={`map-thumb ${className}`} src={`/assets/thumbs/${map}.webp`} alt="" loading="lazy"
+      decoding="async" onError={() => setBroken(true)} />
+  );
+}
+export const nadeLabel = (t: string) => tr(NADE_LABEL[t] ?? t);
 /** ชนิดที่วาดบนแผนที่ได้จริง — decoy ไม่มีในนี้เพราะเดโมไม่บันทึกว่ามันไปตกที่ไหน */
 export const NADE_TYPES = ["smoke", "flash", "he", "molotov"] as const;
 export type NadeType = (typeof NADE_TYPES)[number];
@@ -235,13 +255,37 @@ export interface Crumb {
  * ทำให้ screen reader อ่านว่ายังไปที่อื่นได้ ซึ่งไม่จริง
  */
 export function Breadcrumb({ items }: { items: Crumb[] }) {
+  const { t } = useT();
   return (
-    <nav className="crumbs" aria-label="เส้นทางหน้า" data-testid="breadcrumb">
+    <nav className="crumbs" aria-label={t("เส้นทางหน้า")} data-testid="breadcrumb">
       {items.map((c, i) => (
         <span key={`${c.label}-${i}`}>
           {i > 0 && <span className="crumb-sep" aria-hidden="true">›</span>}
-          {c.to ? <Link to={c.to}>{c.label}</Link> : <b aria-current="page">{c.label}</b>}
+          {c.to ? <Link to={c.to}>{t(c.label)}</Link> : <b aria-current="page">{t(c.label)}</b>}
         </span>
+      ))}
+    </nav>
+  );
+}
+
+// ================================================================================================
+// แท็บมุมมองของแมตช์ — ภาพรวม / ทีละรอบ / heatmap / เศรษฐกิจ สลับกันได้คลิกเดียว
+// ================================================================================================
+export function MatchTabs({ demo }: { demo: string }) {
+  const { t } = useT();
+  const base = `/matches/${encodeURIComponent(demo)}`;
+  const tabs = [
+    { to: base, label: "ภาพรวม", end: true },
+    { to: `${base}/rounds/1`, label: "ดูทีละรอบ", end: false },
+    { to: `${base}/heatmap`, label: "Heatmap", end: false },
+    { to: `${base}/economy`, label: "เศรษฐกิจ", end: false },
+  ];
+  return (
+    <nav className="an-tabs match-tabs" aria-label={t("มุมมองของแมตช์")} data-testid="match-tabs">
+      {tabs.map((tab) => (
+        <NavLink key={tab.to} to={tab.to} end={tab.end} className={({ isActive }) => `an-tab${isActive ? " on" : ""}`}>
+          {t(tab.label)}
+        </NavLink>
       ))}
     </nav>
   );
@@ -252,13 +296,14 @@ export function Breadcrumb({ items }: { items: Crumb[] }) {
 // ================================================================================================
 /** 404 ที่มีปุ่มกลับ — ใช้ทั้ง path ที่ไม่มีจริง แมตช์ที่ไม่มีในระบบ และเลขรอบที่เกินจำนวนรอบ */
 export function NotFound({ title = "ไม่พบหน้านี้", detail }: { title?: string; detail?: string }) {
+  const { t } = useT();
   return (
     <div className="notfound" data-testid="not-found">
-      <p className="eyebrow">404</p>
-      <h1>{title}</h1>
-      {detail && <p className="muted">{detail}</p>}
+      <p className="nf-code" aria-hidden="true">404</p>
+      <h1>{t(title)}</h1>
+      {detail && <p className="muted">{t(detail)}</p>}
       <Link className="btn-primary" to="/matches">
-        กลับไปหน้าแมตช์
+        {t("กลับไปหน้าแมตช์")}
       </Link>
     </div>
   );

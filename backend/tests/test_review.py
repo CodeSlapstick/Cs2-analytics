@@ -9,12 +9,14 @@ import pytest
 
 from backend.features import assign_teams
 from backend.review import (
+    build_economy,
     build_round_detail,
     build_round_list,
     cell_rect_world,
     cells_of,
     death_context,
     grid_overlay,
+    heatmap_points,
     in_frame,
     nearest_within,
     parse_grid_model,
@@ -361,3 +363,37 @@ def test_round_positions_without_radar_or_coords_are_dropped_not_guessed(frame):
     ok = [{"tick": 1000, "steam_id": 1, "side": "ct", "x": -1000.0, "y": 500.0, "health": 100, "place": None}]
     assert build_round_positions(ok, start_tick=1000, tickrate=128, frame=None)["frames"] == []
 
+
+def test_heatmap_points_are_radar_pixels_and_drop_what_cannot_be_drawn():
+    """heatmap ใช้สูตรพิกัดเดียวกับหน้ารอบ และทิ้งจุดที่ไม่มีพิกัด/หลุดขอบภาพ แทนที่จะกองไว้ริมรูป"""
+    frame = radar_frame("de_mirage")
+    xs = [frame.x_left, None, frame.x_left - 500, frame.x_left + frame.span / 2]
+    ys = [frame.y_top, 0.0, frame.y_top, frame.y_top - frame.span / 2]
+    pts = heatmap_points(xs, ys, frame)
+    assert pts[0] == [0.0, 0.0]
+    assert len(pts) == 2
+    half = frame.size / 2
+    assert pts[1] == [round(half, 1), round(half, 1)]
+
+
+def test_economy_follows_the_team_across_the_side_swap():
+    """ประเภทการซื้อใน round_economy เป็นของ "ฝั่ง" — หน้าเศรษฐกิจต้องผูกกับ "ทีม" ให้ถูกทั้งสองครึ่ง"""
+    roster = [{"steam_id": 1, "team": "Alpha"}, {"steam_id": 2, "team": "Alpha"}, {"steam_id": 3, "team": "Bravo"}]
+    econ = [
+        {"round_num": 1, "winner_side": "t", "end_reason": "ct_killed", "ct_equip": 4000, "t_equip": 3900,
+         "ct_buy_type": "pistol", "t_buy_type": "pistol"},
+        {"round_num": 13, "winner_side": "ct", "end_reason": "t_killed", "ct_equip": 21000, "t_equip": 4200,
+         "ct_buy_type": "full", "t_buy_type": "eco"},
+    ]
+    sides = [
+        {"round_num": 1, "steam_id": 1, "side": "ct"}, {"round_num": 1, "steam_id": 2, "side": "ct"},
+        {"round_num": 1, "steam_id": 3, "side": "t"},
+        {"round_num": 13, "steam_id": 1, "side": "t"}, {"round_num": 13, "steam_id": 2, "side": "t"},
+        {"round_num": 13, "steam_id": 3, "side": "ct"},
+    ]
+    out = build_economy(econ, sides, roster)
+    assert out["teams"] == ["Alpha", "Bravo"]          # ทีมที่เริ่ม CT มาก่อน
+    r1, r13 = out["rounds"]
+    assert r1["winner_team"] == "Bravo" and r1["teams"]["Alpha"]["side"] == "ct"
+    assert r13["teams"]["Alpha"] == {"side": "t", "equip": 4200, "buy_type": "eco", "won": False}
+    assert r13["teams"]["Bravo"]["buy_type"] == "full" and r13["winner_team"] == "Bravo"

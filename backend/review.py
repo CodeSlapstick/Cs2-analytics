@@ -14,6 +14,7 @@ grid_ml1.json
 import json
 import math
 import os
+from collections import Counter
 from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
@@ -608,3 +609,69 @@ def build_round_positions(positions: list[dict], *, start_tick, tickrate: int, f
         "note": "ตำแหน่งถูกเก็บวินาทีละครั้ง · ช่วงระหว่างวินาทีเป็นการวาดให้ต่อเนื่อง ไม่ใช่ข้อมูลจากเดโม",
     }
 
+
+
+# ---------------------------------------------------------------------------
+# heatmap ของแมตช์เดียว (/matches/{demo}/heatmap)
+#   คืนเป็นจุดพิกเซลบนภาพเรดาร์ดิบ ๆ ทีละจุด ไม่นับลงกริด — หน้าเว็บวาดความหนาแน่นเองบน canvas
+#   (ต่างจาก deaths_overlay ที่นับลงกริด 32x32 ของโมเดลไว้เทียบข้ามชุดข้อมูล)
+#   จุดที่หลุดขอบภาพเรดาร์ถูกทิ้ง เพราะวาดแล้วจะไปกองอยู่ริมรูปจนดูเหมือนมีคนยืนตรงนั้นจริง
+# ---------------------------------------------------------------------------
+HEATMAP_EVENTS = ("kills", "deaths", "positions", "smoke", "flash", "he", "molotov")
+
+
+def heatmap_points(xs, ys, frame: RadarFrame) -> list[list[float]]:
+    """พิกัดเกม -> [[px, py], ...] บนภาพเรดาร์ ทิ้งจุดที่ไม่มีพิกัดหรืออยู่นอกภาพ"""
+    out: list[list[float]] = []
+    for x, y in zip(xs, ys, strict=True):
+        if x is None or y is None or not in_frame(x, y, frame):
+            continue
+        px, py = world_to_pixel(x, y, frame)
+        out.append([round(px, 1), round(py, 1)])
+    return out
+
+
+# ---------------------------------------------------------------------------
+# เศรษฐกิจของแมตช์ (/matches/{demo}/economy)
+#   ประเภทการซื้อ "ทั้งทีม" มาจาก view round_economy ใน views.sql ที่เดียว (ไม่นิยามซ้ำที่นี่)
+#     pistol = รอบ 1 และ 13 · eco <= $5,000 · semi_eco <= $10,000 · semi_buy <= $20,000 · full มากกว่านั้น
+#   view นั้นจัดตาม "ฝั่ง" (CT/T) ส่วนหน้าเว็บอยากดูตาม "ทีม" — ทีมสลับฝั่งตอนพักครึ่ง
+#   จึงผูกฝั่งกับทีมทีละรอบจาก player_rounds (ใครยืนฝั่งไหนในรอบนั้น) แล้วเลือกทีมที่คนส่วนใหญ่อยู่
+# ---------------------------------------------------------------------------
+TEAM_BUY_TYPES = ("pistol", "eco", "semi_eco", "semi_buy", "full")
+
+
+def build_economy(econ: list[dict], sides: list[dict], roster: list[dict]) -> dict:
+    """econ = แถวจาก round_economy · sides = [{round_num, steam_id, side}] · roster = _review_roster()
+
+    คืน {teams: [ทีมที่เริ่ม CT, อีกทีม], rounds: [{round_num, winner_side, end_reason, winner_team,
+         teams: {ชื่อทีม: {side, equip, buy_type, won}}}]}
+    """
+    team_of = {int(p["steam_id"]): (p.get("team") or "ไม่ทราบทีม") for p in roster}
+    votes: dict[tuple[int, str], Counter] = {}
+    for s in sides:
+        team = team_of.get(int(s["steam_id"]))
+        if team and s.get("side") in ("ct", "t"):
+            votes.setdefault((s["round_num"], s["side"]), Counter())[team] += 1
+
+    rounds: list[dict] = []
+    order: list[str] = []
+    for e in sorted(econ, key=lambda r: r["round_num"]):
+        per: dict[str, dict] = {}
+        for side in ("ct", "t"):
+            v = votes.get((e["round_num"], side))
+            if not v:
+                continue
+            team = v.most_common(1)[0][0]
+            if team not in order:
+                order.append(team)
+            per[team] = {
+                "side": side,
+                "equip": e.get(f"{side}_equip"),
+                "buy_type": e.get(f"{side}_buy_type"),
+                "won": e.get("winner_side") == side,
+            }
+        winner = next((t for t, x in per.items() if x["won"]), None)
+        rounds.append({"round_num": e["round_num"], "winner_side": e.get("winner_side"),
+                       "end_reason": e.get("end_reason"), "winner_team": winner, "teams": per})
+    return {"teams": order[:2], "rounds": rounds, "buy_types": list(TEAM_BUY_TYPES)}

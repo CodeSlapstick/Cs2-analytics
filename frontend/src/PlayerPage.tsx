@@ -1,7 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, useLocation, useParams } from "react-router-dom";
 import { ApiError, auth, isGuest, playerApi, type PlayerMap, type PlayerWeapon } from "./api";
-import { NotFound, weaponLabel } from "./utils";
+import { MapThumb, NotFound, num, weaponLabel } from "./utils";
+import unknownAvatar from "./assets/avatar-unknown.jpg";
+import { useT } from "./i18n";
 
 /**
  * หน้าสถิติรายคน — ทุกตัวเลขมาจากเดโมที่โหลดเข้าระบบเท่านั้น
@@ -11,20 +13,21 @@ import { NotFound, weaponLabel } from "./utils";
 export function PlayerPage() {
   const { steamId } = useParams();
   const who = steamId ?? "me";
+  const { t, tn } = useT();
   const summary = useQuery({ queryKey: ["player", who], queryFn: () => playerApi.summary(who), retry: false });
   const matches = useQuery({ queryKey: ["player-matches", who], queryFn: () => playerApi.matches(who), retry: false, enabled: !!summary.data });
   const maps = useQuery({ queryKey: ["player-maps", who], queryFn: () => playerApi.maps(who), retry: false, enabled: !!summary.data });
   const weapons = useQuery({ queryKey: ["player-weapons", who], queryFn: () => playerApi.weapons(who), retry: false, enabled: !!summary.data });
 
-  if (summary.isLoading) return <p className="muted">กำลังโหลดสถิติ…</p>;
+  if (summary.isLoading) return <p className="muted">{t("กำลังโหลดสถิติ…")}</p>;
   if (summary.error instanceof ApiError) {
     return <PlayerEmpty status={summary.error.status} message={summary.error.message} mine={!steamId} />;
   }
-  if (summary.error) return <p className="err">โหลดสถิติไม่ได้: {(summary.error as Error).message}</p>;
+  if (summary.error) return <p className="err">{t("โหลดสถิติไม่ได้: {msg}", { msg: t((summary.error as Error).message) })}</p>;
   if (!summary.data) return <NotFound title="ไม่พบผู้เล่นคนนี้" />;
 
   const d = summary.data;
-  const t = d.totals;
+  const tot = d.totals;
   const record = matches.data
     ? {
         win: matches.data.filter((m) => m.result === "win").length,
@@ -37,40 +40,39 @@ export function PlayerPage() {
   return (
     <div className="player" data-testid="player-page">
       <header className="pl-head">
-        {d.player.avatar ? <img className="pl-avatar" src={d.player.avatar} alt="" /> : <span className="pl-avatar ph" aria-hidden="true" />}
+        {d.player.avatar ? <img className="pl-avatar" src={d.player.avatar} alt="" /> : <img className="pl-avatar" src={unknownAvatar} alt="" />}
         <div>
           <h1>{d.player.name}</h1>
           <p className="muted">
-            {d.source.label}
-            {d.player.linked_account && <> · บัญชีในระบบ: {d.player.linked_account}</>}
+            {t("จาก {n} แมตช์ที่โหลดเข้าระบบ", { n: num(d.source.matches) })}
+            {d.player.linked_account && <> · {t("บัญชีในระบบ: {account}", { account: d.player.linked_account })}</>}
           </p>
         </div>
-        <span className="badge b-ct pl-mode">CS2 · 5v5</span>
       </header>
 
-      <section className="pl-grid" aria-label="ภาพรวม">
+      <section className="pl-grid" aria-label={t("ภาพรวม")}>
         <article className="card pl-card">
           <h2>K/D</h2>
-          <Gauge value={t.kd} max={2} label={t.kd.toFixed(2)} />
+          <Gauge value={tot.kd} max={2} label={tot.kd.toFixed(2)} />
           <p className="muted small">
-            {t.kills} คิล · {t.deaths} ตาย · {t.assists} ช่วย
+            {t("{k} คิล · {d} ตาย · {a} ช่วย", { k: tot.kills, d: tot.deaths, a: tot.assists })}
           </p>
         </article>
 
         <article className="card pl-card">
           <h2>Rating 1.0</h2>
-          <Gauge value={t.rating} max={2} label={t.rating.toFixed(2)} />
+          <Gauge value={tot.rating} max={2} label={tot.rating.toFixed(2)} />
           <p className="muted small">
-            Rating 2.0 (ประมาณการ): <b>{d.rating2_approx.toFixed(2)}</b>
+            {tn("Rating 2.0 (ประมาณการ): {v}", { v: <b>{d.rating2_approx.toFixed(2)}</b> })}
             <br />
-            HLTV ไม่เปิดสูตร 2.0 — ค่านี้เป็นสูตรประมาณของชุมชน
+            {t("HLTV ไม่เปิดสูตร 2.0 — ค่านี้เป็นสูตรประมาณของชุมชน")}
           </p>
         </article>
 
         <article className="card pl-card pl-wide">
           <h2>Clutch 1v1 – 1v5</h2>
           {d.clutches.length === 0 ? (
-            <p className="muted small">ยังไม่เจอสถานการณ์ clutch ในเดโมที่โหลดไว้</p>
+            <p className="muted small">{t("ยังไม่เจอสถานการณ์ clutch ในเดโมที่โหลดไว้")}</p>
           ) : (
             <div className="pl-clutches">
               {[1, 2, 3, 4, 5].map((vs) => {
@@ -82,15 +84,15 @@ export function PlayerPage() {
         </article>
 
         <article className="card pl-card">
-          <h2>ชนะรอบ (round win rate)</h2>
-          <Gauge value={t.win_rate} max={100} label={`${t.win_rate.toFixed(0)}%`} unit />
+          <h2>{t("ชนะรอบ (round win rate)")}</h2>
+          <Gauge value={tot.win_rate} max={100} label={`${tot.win_rate.toFixed(0)}%`} unit />
           <p className="muted small">
-            {t.rounds} รอบใน {t.matches} แมตช์
+            {t("{r} รอบใน {m} แมตช์", { r: tot.rounds, m: tot.matches })}
             {record && (
               <>
                 <br />
-                แมตช์: ชนะ {record.win} · แพ้ {record.loss}
-                {record.draw > 0 && <> · เสมอ {record.draw}</>}
+                {t("แมตช์: ชนะ {w} · แพ้ {l}", { w: record.win, l: record.loss })}
+                {record.draw > 0 && <> · {t("เสมอ {n}", { n: record.draw })}</>}
               </>
             )}
           </p>
@@ -100,47 +102,48 @@ export function PlayerPage() {
           <h2>HS% · ADR · KAST</h2>
           <ul className="pl-nums">
             <li>
-              <b>{t.hs_rate.toFixed(0)}%</b>
-              <span>หัว ({t.headshots} จาก {t.kills})</span>
+              <b>{tot.hs_rate.toFixed(0)}%</b>
+              <span>{t("หัว ({hs} จาก {k})", { hs: tot.headshots, k: tot.kills })}</span>
             </li>
             <li>
-              <b>{t.adr.toFixed(1)}</b>
+              <b>{tot.adr.toFixed(1)}</b>
               <span>ADR</span>
             </li>
             <li>
-              <b>{t.kast.toFixed(0)}%</b>
+              <b>{tot.kast.toFixed(0)}%</b>
               <span>KAST</span>
             </li>
             <li>
-              <b>{t.survival_rate.toFixed(0)}%</b>
-              <span>รอดจบรอบ</span>
+              <b>{tot.survival_rate.toFixed(0)}%</b>
+              <span>{t("รอดจบรอบ")}</span>
             </li>
           </ul>
         </article>
 
         <article className="card pl-card pl-wide">
-          <h2>Entry — คิลแรกของรอบ</h2>
+          <h2>{t("Entry — คิลแรกของรอบ")}</h2>
           <div className="pl-donuts">
-            <Donut label="รวม" value={entryRate(d.entry.both)} won={d.entry.both.kills} lost={d.entry.both.deaths} />
-            <Donut label="ฝั่ง T" value={entryRate(d.entry.t)} won={d.entry.t.kills} lost={d.entry.t.deaths} tone="t" />
-            <Donut label="ฝั่ง CT" value={entryRate(d.entry.ct)} won={d.entry.ct.kills} lost={d.entry.ct.deaths} tone="ct" />
+            <Donut label={t("รวม")} value={entryRate(d.entry.both)} won={d.entry.both.kills} lost={d.entry.both.deaths} />
+            <Donut label={t("ฝั่ง T")} value={entryRate(d.entry.t)} won={d.entry.t.kills} lost={d.entry.t.deaths} tone="t" />
+            <Donut label={t("ฝั่ง CT")} value={entryRate(d.entry.ct)} won={d.entry.ct.kills} lost={d.entry.ct.deaths} tone="ct" />
           </div>
-          <p className="muted small">นับเฉพาะรอบที่ผู้เล่นคนนี้เป็นคนเปิดรอบ (คิลแรก) หรือเป็นคนแรกที่ตาย</p>
+          <p className="muted small">{t("นับเฉพาะรอบที่ผู้เล่นคนนี้เป็นคนเปิดรอบ (คิลแรก) หรือเป็นคนแรกที่ตาย")}</p>
         </article>
       </section>
 
       <section className="pl-panels">
         <article className="card">
-          <h2>แมตช์ล่าสุด</h2>
+          <h2>{t("แมตช์ล่าสุด")}</h2>
           {matches.data?.length ? (
             <ul className="pl-matches">
               {matches.data.map((m) => (
                 <li key={m.match_id} className={`r-${m.result}`}>
                   <Link to={`/matches/${encodeURIComponent(m.demo_file)}/rounds/1`}>
-                    <span className="pl-res">{m.result === "win" ? "ชนะ" : m.result === "loss" ? "แพ้" : "เสมอ"}</span>
+                    <MapThumb map={m.map_name} className="pl-thumb" />
+                    <span className="pl-res">{m.result === "win" ? t("ชนะ") : m.result === "loss" ? t("แพ้") : t("เสมอ")}</span>
                     <span className="pl-mt">
                       {m.team_a && m.team_b ? `${m.team_a} vs ${m.team_b}` : m.demo_file}
-                      <span className="muted small"> · {m.map_name} · {m.rounds_won}/{m.rounds} รอบ</span>
+                      <span className="muted small"> · {m.map_name} · {t("{won}/{total} รอบ", { won: m.rounds_won, total: m.rounds })}</span>
                     </span>
                     <span className="pl-rt">{Number(m.rating).toFixed(2)}</span>
                   </Link>
@@ -148,35 +151,35 @@ export function PlayerPage() {
               ))}
             </ul>
           ) : (
-            <p className="muted small">{matches.isLoading ? "กำลังโหลด…" : "ยังไม่มีแมตช์"}</p>
+            <p className="muted small">{matches.isLoading ? t("กำลังโหลด…") : t("ยังไม่มีแมตช์")}</p>
           )}
         </article>
 
         <article className="card">
-          <h2>แมพที่เล่นบ่อย</h2>
+          <h2>{t("แมพที่เล่นบ่อย")}</h2>
           <Bars
             rows={(maps.data ?? []).map((m: PlayerMap) => ({
               key: m.map_name,
               label: m.map_name,
               value: m.matches,
-              note: `ชนะ ${m.wins}/${m.matches} · rating ${Number(m.rating).toFixed(2)}`,
+              note: t("ชนะ {w}/{n} · rating {r}", { w: m.wins, n: m.matches, r: Number(m.rating).toFixed(2) }),
               ratio: m.win_rate / 100,
             }))}
-            empty={maps.isLoading ? "กำลังโหลด…" : "ยังไม่มีข้อมูลแมพ"}
+            empty={maps.isLoading ? t("กำลังโหลด…") : t("ยังไม่มีข้อมูลแมพ")}
           />
         </article>
 
         <article className="card">
-          <h2>อาวุธที่ฆ่าบ่อย</h2>
+          <h2>{t("อาวุธที่ฆ่าบ่อย")}</h2>
           <Bars
             rows={(weapons.data ?? []).map((w: PlayerWeapon) => ({
               key: w.weapon,
               label: weaponLabel(w.weapon),
               value: w.kills,
-              note: `หัว ${w.hs_rate.toFixed(0)}% (${w.headshots})`,
+              note: t("หัว {pct}% ({n})", { pct: w.hs_rate.toFixed(0), n: w.headshots }),
               ratio: w.hs_rate / 100,
             }))}
-            empty={weapons.isLoading ? "กำลังโหลด…" : "ยังไม่มีข้อมูลอาวุธ"}
+            empty={weapons.isLoading ? t("กำลังโหลด…") : t("ยังไม่มีข้อมูลอาวุธ")}
           />
         </article>
       </section>
@@ -195,28 +198,28 @@ function PlayerEmpty({ status, message, mine }: { status: number; message: strin
   const guest = isGuest(me.data?.user);
   const needsSteam = status === 409;
   const { pathname } = useLocation();
+  const { t } = useT();
 
   return (
     <div className="pl-empty card" data-testid="player-empty" data-reason={needsSteam ? "no-steam" : "no-data"}>
-      <h1>{needsSteam ? "ยังไม่มีสถิติของตัวเอง" : "ยังไม่มีสถิติของคุณ"}</h1>
-      <p className="muted">{message}</p>
+      <h1>{needsSteam ? t("ยังไม่มีสถิติของตัวเอง") : t("ยังไม่มีสถิติของคุณ")}</h1>
+      <p className="muted">{t(message)}</p>
 
       {needsSteam && guest && (
         <>
           <p className="muted">
-            คุณกำลังใช้โหมดเยี่ยมชม ซึ่งไม่ผูกกับบัญชี Steam จึงยังไม่รู้ว่า "คุณ" คือผู้เล่นคนไหนในเดโม
-            — ล็อกอินด้วย Steam แล้วสถิติของตัวเองจะขึ้นเองถ้ามีเดโมที่คุณลงเล่นอยู่ในระบบ
+            {t("คุณกำลังใช้โหมดเยี่ยมชม ซึ่งไม่ผูกกับบัญชี Steam จึงยังไม่รู้ว่า \"คุณ\" คือผู้เล่นคนไหนในเดโม — ล็อกอินด้วย Steam แล้วสถิติของตัวเองจะขึ้นเองถ้ามีเดโมที่คุณลงเล่นอยู่ในระบบ")}
           </p>
           <a className="btn-primary" href={`/auth/steam/login?next=${encodeURIComponent(pathname)}`}>
-            ล็อกอินด้วย Steam เพื่อดูสถิติของตัวเอง
+            {t("ล็อกอินด้วย Steam เพื่อดูสถิติของตัวเอง")}
           </a>
-          <p className="muted small">ระหว่างนี้ยังเปิดดูสถิติของผู้เล่นคนอื่นได้จากสกอร์บอร์ดในหน้าสรุปแมตช์</p>
+          <p className="muted small">{t("ระหว่างนี้ยังเปิดดูสถิติของผู้เล่นคนอื่นได้จากสกอร์บอร์ดในหน้าสรุปแมตช์")}</p>
         </>
       )}
 
       {needsSteam && !guest && (
         <a className="btn-primary" href={`/auth/steam/login?next=${encodeURIComponent(pathname)}`}>
-          ล็อกอินด้วย Steam
+          {t("ล็อกอินด้วย Steam")}
         </a>
       )}
 
@@ -224,11 +227,11 @@ function PlayerEmpty({ status, message, mine }: { status: number; message: strin
         <>
           {mine && (
             <p className="muted">
-              สถิติจะขึ้นเมื่อมีเดโมที่คุณลงเล่นอยู่ในระบบ — อัปโหลดเดโมของทีมที่หน้าแมตช์ แล้วกลับมาที่หน้านี้
+              {t("สถิติจะขึ้นเมื่อมีเดโมที่คุณลงเล่นอยู่ในระบบ — อัปโหลดเดโมของทีมที่หน้าแมตช์ แล้วกลับมาที่หน้านี้")}
             </p>
           )}
           <Link className="btn-primary" to="/matches">
-            ไปหน้าแมตช์
+            {t("ไปหน้าแมตช์")}
           </Link>
         </>
       )}
@@ -243,8 +246,9 @@ const ARC = 2 * Math.PI * 52;
 function Gauge({ value, max, label, unit = false }: { value: number; max: number; label: string; unit?: boolean }) {
   const ratio = Math.max(0, Math.min(1, value / max));
   const hue = Math.round(8 + ratio * 122); // 8 = แดง, 130 = เขียว
+  const { t } = useT();
   return (
-    <svg className="pl-gauge" viewBox="0 0 120 120" role="img" aria-label={`${label}${unit ? "" : ` จาก ${max}`}`}>
+    <svg className="pl-gauge" viewBox="0 0 120 120" role="img" aria-label={unit ? label : t("{v} จาก {max}", { v: label, max })}>
       <circle cx="60" cy="60" r="52" className="pl-track" />
       <circle
         cx="60"
@@ -265,9 +269,10 @@ function Gauge({ value, max, label, unit = false }: { value: number; max: number
 /** โดนัท entry: ส่วนสีคือคิลแรกที่ชนะ ส่วนจางคือที่ตายก่อน */
 function Donut({ label, value, won, lost, tone = "" }: { label: string; value: number | null; won: number; lost: number; tone?: string }) {
   const ratio = value ?? 0;
+  const { t } = useT();
   return (
     <div className={`pl-donut ${tone}`}>
-      <svg viewBox="0 0 120 120" role="img" aria-label={`${label} ${won} ชนะ ${lost} แพ้`}>
+      <svg viewBox="0 0 120 120" role="img" aria-label={t("{label} {won} ชนะ {lost} แพ้", { label, won, lost })}>
         <circle cx="60" cy="60" r="52" className="pl-track" />
         <circle cx="60" cy="60" r="52" className="pl-arc" strokeDasharray={`${ratio * ARC} ${ARC}`} transform="rotate(-90 60 60)" />
         <text x="60" y="54" className="pl-gauge-v" textAnchor="middle" dominantBaseline="central">
@@ -285,9 +290,10 @@ function Donut({ label, value, won, lost, tone = "" }: { label: string; value: n
 /** พายเล็กของ clutch 1vN */
 function MiniPie({ label, wins, attempts }: { label: string; wins: number; attempts: number }) {
   const ratio = attempts > 0 ? wins / attempts : 0;
+  const { t } = useT();
   return (
     <div className={`pl-pie${attempts === 0 ? " none" : ""}`}>
-      <svg viewBox="0 0 120 120" role="img" aria-label={`${label} ชนะ ${wins} จาก ${attempts}`}>
+      <svg viewBox="0 0 120 120" role="img" aria-label={t("{label} ชนะ {wins} จาก {attempts}", { label, wins, attempts })}>
         <circle cx="60" cy="60" r="52" className="pl-track" />
         <circle cx="60" cy="60" r="52" className="pl-arc" strokeDasharray={`${ratio * ARC} ${ARC}`} transform="rotate(-90 60 60)" />
         <text x="60" y="60" className="pl-gauge-v" textAnchor="middle" dominantBaseline="central">
@@ -295,7 +301,7 @@ function MiniPie({ label, wins, attempts }: { label: string; wins: number; attem
         </text>
       </svg>
       <span>{label}</span>
-      <span className="muted small">{attempts === 0 ? "ไม่มี" : `${wins}/${attempts}`}</span>
+      <span className="muted small">{attempts === 0 ? t("ไม่มี") : `${wins}/${attempts}`}</span>
     </div>
   );
 }

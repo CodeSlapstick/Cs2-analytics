@@ -6,3 +6,4 @@
 pytest>=8
 pytest-asyncio>=0.23
 ruff>=0.5
+vpk>=1.4          # research/import_overviews.py อ่านค่าปรับเทียบเรดาร์จากไฟล์เกม CS2
