@@ -165,13 +165,13 @@ export interface ViewState {
   nades: NadeType[]; // g=smoke,flash  ชนิดระเบิดที่แสดง (ไม่มี g = แสดงครบ, g=none = ไม่แสดงเลย)
   zoom: number; // z=2.5     ซูมแผนที่ (1 = เต็มแมพ)
   center: [number, number] | null; // c=x,y  จุดกึ่งกลางที่มองอยู่ (หน่วยพิกเซลของภาพเรดาร์)
-  playback: boolean; // pb=1     โหมดเล่นย้อน (ดูตัวผู้เล่นเดินตามเวลา)
+  playback: boolean; // ไม่มี pb หรือ pb=1 = เล่นย้อน, pb=0 = ภาพสรุปทั้งรอบ
   time: number | null; // t=12.5   วินาทีในรอบที่ดูค้างไว้
   player: string | null; // p=<steamid> ไฮไลต์ผู้เล่น
   death: number | null; // d=<ลำดับ>  การตายที่เลือก
 }
 
-export const MAX_ZOOM = 6;
+export const MAX_ZOOM = 5;
 
 /** g=smoke,flash | g=none | ไม่มี g = ครบทุกชนิด (g=0 ของรุ่นก่อน = ไม่แสดงเลย) */
 function parseNades(raw: string | null): NadeType[] {
@@ -184,7 +184,10 @@ function parseNades(raw: string | null): NadeType[] {
 export const clampZoom = (z: number) => Math.min(MAX_ZOOM, Math.max(1, Number.isFinite(z) ? z : 1));
 
 function parseCenter(raw: string | null): [number, number] | null {
-  const [x, y] = (raw ?? "").split(",").map(Number);
+  if (!raw) return null;
+  const parts = raw.split(",");
+  if (parts.length !== 2 || parts.some((part) => part.trim() === "")) return null;
+  const [x, y] = parts.map(Number);
   return Number.isFinite(x) && Number.isFinite(y) ? [x, y] : null;
 }
 
@@ -195,7 +198,7 @@ export function useViewState() {
     nades: parseNades(params.get("g")),
     zoom: clampZoom(Number(params.get("z")) || 1),
     center: parseCenter(params.get("c")),
-    playback: params.get("pb") === "1",
+    playback: params.get("pb") !== "0",
     time: params.get("t") !== null && Number.isFinite(Number(params.get("t"))) ? Number(params.get("t")) : null,
     player: params.get("p"),
     death: params.get("d") && Number.isInteger(d) && d > 0 ? d : null,
@@ -212,9 +215,9 @@ export function useViewState() {
             const list = patch.nades ?? [];
             put("g", list.length === NADE_TYPES.length ? null : list.length === 0 ? "none" : list.join(","));
           }
-          if ("zoom" in patch) put("z", !patch.zoom || patch.zoom <= 1.01 ? null : patch.zoom.toFixed(2));
-          if ("center" in patch) put("c", patch.center ? patch.center.map(Math.round).join(",") : null);
-          if ("playback" in patch) put("pb", patch.playback ? "1" : null);
+          if ("zoom" in patch) put("z", !patch.zoom || patch.zoom <= 1.01 ? null : String(Number(patch.zoom.toFixed(4))));
+          if ("center" in patch) put("c", patch.center ? patch.center.map((v) => Number(v.toFixed(2))).join(",") : null);
+          if ("playback" in patch) put("pb", patch.playback ? null : "0");
           if ("time" in patch) put("t", patch.time == null ? null : patch.time.toFixed(1));
           if ("player" in patch) put("p", patch.player ?? null);
           if ("death" in patch) put("d", patch.death == null ? null : String(patch.death));
@@ -275,7 +278,7 @@ export function MatchTabs({ demo }: { demo: string }) {
   const { t } = useT();
   const base = `/matches/${encodeURIComponent(demo)}`;
   const tabs = [
-    { to: base, label: "ภาพรวม", end: true },
+    { to: base, label: "สกอร์บอร์ด", end: true },
     { to: `${base}/rounds/1`, label: "ดูทีละรอบ", end: false },
     { to: `${base}/heatmap`, label: "Heatmap", end: false },
     { to: `${base}/economy`, label: "เศรษฐกิจ", end: false },

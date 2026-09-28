@@ -316,7 +316,7 @@ a.badge:hover { text-decoration: none; filter: brightness(.96); }
 /* ---------------- หน้ารีวิวรอบ ---------------- */
 /* ความกว้างของคอลัมน์ดูจากความกว้างจริงของหน้า ไม่ใช่ขนาดจอ (container query) */
 .round-page { container: main / inline-size; }
-/* หัวหน้ารีวิวรอบบรรทัดเดียว: ย้อนกลับ · ชื่อแมตช์ที่เป็นตัวสลับแมตช์ · สกอร์บอร์ด */
+/* หัวหน้ารีวิวรอบบรรทัดเดียว: ย้อนกลับ · ชื่อแมตช์ที่เป็นตัวสลับแมตช์ */
 .rp-head { display: flex; align-items: center; gap: 6px 12px; margin-bottom: 12px; min-width: 0; }
 .back-link {
   display: inline-flex; align-items: center; gap: 2px; color: var(--muted); font-size: var(--fs-sm); font-weight: 600;
@@ -333,7 +333,6 @@ a.badge:hover { text-decoration: none; filter: brightness(.96); }
 .title-pick:hover, .title-pick:focus-within { border-color: var(--line); background: var(--card); }
 .title-pick:has(select:focus-visible) { outline: 2px solid var(--ct-ink); outline-offset: 2px; }
 .tp-caret { flex: none; color: var(--muted); pointer-events: none; }
-.rp-links { margin-left: auto; display: flex; gap: 6px; flex: none; }
 
 .round-strip { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; margin: 0 0 12px; }
 .round-strip .half-gap { width: 1px; height: 22px; background: #c3cddf; margin: 0 5px; flex: none; }
@@ -358,7 +357,6 @@ a.rbox:hover { outline: 2px solid var(--text); outline-offset: 1px; text-decorat
   .round-strip > * { flex: none; }
   .title-pick { font-size: var(--fs-md); }
   .rp-head { flex-wrap: wrap; }
-  .rp-links { margin-left: 0; }
 }
 
 .review { display: flex; flex-direction: column; }
@@ -389,8 +387,8 @@ a.rbox:hover { outline: 2px solid var(--text); outline-offset: 1px; text-decorat
 }
 .map-col .muted { color: #93a1b8; }
 .map-col a { color: #7fb0ff; }
-.map-stage { container-type: size; aspect-ratio: 1; max-height: 74dvh; display: grid; place-items: center; position: relative; }
-svg.radar { width: 100cqmin; height: 100cqmin; display: block; background: #0a0f1a; border-radius: 6px; touch-action: none; }
+.map-stage { width: min(100%, 74dvh); aspect-ratio: 1; margin-inline: auto; position: relative; }
+.map-stage svg.radar { width: 100%; height: 100%; display: block; background: #0a0f1a; border-radius: 6px; touch-action: none; }
 svg.radar.zoomed { cursor: grab; }
 svg.radar.zoomed:active { cursor: grabbing; }
 .map-col .legend { margin-top: 0; gap: 4px 14px; }
@@ -930,7 +928,12 @@ html:has(.login-shell) { color-scheme: dark; scrollbar-color: #2E3647 #0B0E14; }
 .heat-map-col { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .heat-map {
   background: #101826; border: 1px solid #23304a; border-radius: var(--r); padding: 9px; box-shadow: var(--shadow-2);
-  display: grid; place-items: center; min-height: 240px;
+  display: grid; place-items: center; min-height: 240px; position: relative;
+}
+.heat-empty {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 1; pointer-events: none;
+  width: max-content; max-width: calc(100% - 40px); padding: 10px 16px; border-radius: 8px;
+  background: rgba(10, 15, 26, .88); color: #e8eef8; text-align: center; font-weight: 700;
 }
 .heat-box {
   position: relative; width: min(100%, 78dvh); aspect-ratio: 1; overflow: hidden; border-radius: 6px;
@@ -959,9 +962,15 @@ html:has(.login-shell) { color-scheme: dark; scrollbar-color: #2E3647 #0B0E14; }
 .hp-slider-h { display: flex; justify-content: space-between; }
 .hp-slider input { width: 100%; accent-color: var(--ct-ink); }
 .hp-export { justify-content: center; }
+.hm-round-select { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; margin-top: 8px; font-size: var(--fs-sm); }
+.hm-round-select select { min-width: 140px; max-width: 100%; padding: 6px 10px; border: 1px solid var(--line); border-radius: 7px; background: var(--card); color: var(--text); font: inherit; }
 
 /* ---- แท็บมุมมองของแมตช์ (ภาพรวม / ทีละรอบ / heatmap / เศรษฐกิจ) — หน้าตาเดียวกับแท็บหน้าเครื่องมือวิเคราะห์ ---- */
-.match-tabs { margin: 0 0 16px; }
+.match-tabs { margin: 0 0 16px; gap: 6px; padding-bottom: 6px; }
+.match-tabs .an-tab { border: 1px solid transparent; border-radius: 8px; margin-bottom: 0; padding: 8px 14px; }
+.match-tabs .an-tab.on { color: #fff; background: var(--ct-ink); border-color: var(--ct-ink); }
+.match-tabs .an-tab:hover:not(.on) { color: var(--ct-ink); background: var(--card-2); border-color: var(--line); }
+.match-tabs .an-tab:focus-visible { outline: 2px solid var(--ct-ink); outline-offset: 2px; }
 a.an-tab { display: inline-block; text-decoration: none; }
 a.an-tab:hover { text-decoration: none; }
 .heat-page .heat-grid, .econ-page .card:first-of-type { margin-top: 0; }
@@ -970,6 +979,12 @@ a.an-tab:hover { text-decoration: none; }
    หน้าเศรษฐกิจ /matches/{demo}/economy — สีทีม ทอง/ม่วง (ฟ้า/ส้มสงวนไว้ให้ "ฝั่ง") · สีการซื้อไล่เขียวตามเงิน
    ================================================================================================ */
 .econ-page { max-width: 1180px; margin: 0 auto; }
+.econ-actions { display: flex; justify-content: flex-end; align-items: center; flex-wrap: wrap; gap: 8px 14px; }
+.econ-actions .btn-primary { white-space: nowrap; }
+.econ-report { padding: 12px 8px 20px; background: var(--bg); border-radius: var(--r); }
+.econ-report-title { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 4px 16px; margin-bottom: 10px; overflow-wrap: anywhere; }
+.econ-report-title strong { font-size: var(--fs-md); }
+.econ-report-title span { color: var(--muted); font-size: var(--fs-sm); }
 .econ-teams { display: flex; flex-wrap: wrap; gap: 6px 18px; font-size: var(--fs-sm); font-weight: 600; }
 .econ-teams i, .eo-team h3 i, .rb-share-team h3 i {
   display: inline-block; width: 12px; height: 12px; border-radius: 3px; margin-right: 6px; vertical-align: -1px;

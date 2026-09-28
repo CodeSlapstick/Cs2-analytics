@@ -14,10 +14,9 @@ import { Breadcrumb, MapThumb, MatchTabs, matchTitle, NADE_ICON, NotFound, num }
  * เป็นข้อเท็จจริงจากเดโมล้วน ไม่มีผลโมเดล — แค่นับว่ามีกี่จุดทับกันแล้วไล่สี น้ำเงิน (น้อย) -> แดง (มาก)
  * backend ส่งจุดเป็นพิกเซลบนภาพเรดาร์มาให้แล้ว หน้านี้ไม่มีสูตรแปลงพิกัดของตัวเอง
  *
- * สิ่งที่เลือกแล้วแชร์ลิงก์ได้ (event / ฝั่ง / ครึ่ง) อยู่บน URL · ผู้เล่นที่เลือกกับค่าการแสดงผลไม่อยู่
+ * สิ่งที่เลือกแล้วแชร์ลิงก์ได้ (event / ฝั่ง / รอบ) อยู่บน URL · ผู้เล่นที่เลือกกับค่าการแสดงผลไม่อยู่
  */
 type Side = "all" | "ct" | "t";
-type Half = "all" | "1" | "2" | "ot";
 
 const EVENTS: { key: HeatEvent; label: string; who: string; group: "คน" | "ระเบิด" }[] = [
   { key: "kills", label: "คิล", who: "ตำแหน่งคนยิงตอนยิงคู่แข่งตาย", group: "คน" },
@@ -33,19 +32,27 @@ const SIDES: { key: Side; label: string }[] = [
   { key: "ct", label: "CT" },
   { key: "t", label: "T" },
 ];
-const HALVES: { key: Half; label: string }[] = [
-  { key: "all", label: "ทุกรอบ" },
-  { key: "1", label: "ครึ่งแรก" },
-  { key: "2", label: "ครึ่งหลัง" },
-  { key: "ot", label: "ต่อเวลา" },
-];
-/** เลขรอบของครึ่งที่เลือก (MR12) — null = ไม่กรอง */
-function roundsOf(half: Half, total: number): number[] | null {
-  const range = (a: number, b: number) => Array.from({ length: Math.max(0, Math.min(b, total) - a + 1) }, (_, i) => a + i);
-  if (half === "1") return range(1, 12);
-  if (half === "2") return range(13, 24);
-  if (half === "ot") return range(25, total);
-  return null;
+const range = (from: number, to: number) => Array.from({ length: Math.max(0, to - from + 1) }, (_, i) => from + i);
+
+/** MR12 regulation, then one six-round block per overtime; the final block may be shorter. */
+function roundPresets(total: number) {
+  const presets: { key: string; label: string; rounds: number[] | null }[] = [
+    { key: "all", label: "ทุกรอบ", rounds: null },
+  ];
+  if (total > 0) presets.push({ key: "first_half", label: "ครึ่งแรก", rounds: range(1, Math.min(12, total)) });
+  if (total > 12) presets.push({ key: "second_half", label: "ครึ่งหลัง", rounds: range(13, Math.min(24, total)) });
+  if (total > 24) presets.push({ key: "ot_all", label: "ต่อเวลาทั้งหมด", rounds: range(25, total) });
+  for (let start = 25, n = 1; start <= total; start += 6, n += 1) {
+    presets.push({ key: `ot${n}`, label: `OT${n}`, rounds: range(start, Math.min(start + 5, total)) });
+  }
+  return presets;
+}
+
+function selectedRound(raw: string | null, legacyHalf: string | null, total: number, presets: ReturnType<typeof roundPresets>): string {
+  if (raw === null) raw = ({ "1": "first_half", "2": "second_half", ot: "ot_all" } as Record<string, string>)[legacyHalf ?? ""] ?? "all";
+  if (presets.some((preset) => preset.key === raw)) return raw;
+  const n = Number(raw);
+  return /^\d+$/.test(raw) && Number.isInteger(n) && n >= 1 && n <= total ? String(n) : "all";
 }
 
 export function HeatmapPage() {
@@ -67,7 +74,8 @@ function HeatmapBody({ demo, title, totalRounds }: { demo: string; title: string
   const [params, setParams] = useSearchParams();
   const ev = (EVENTS.find((e) => e.key === params.get("ev"))?.key ?? "kills") as HeatEvent;
   const side = (SIDES.find((s) => s.key === params.get("side"))?.key ?? "all") as Side;
-  const half = (HALVES.find((h) => h.key === params.get("half"))?.key ?? "all") as Half;
+  const presets = roundPresets(totalRounds);
+  const round = selectedRound(params.get("round"), params.get("half"), totalRounds, presets);
   const put = (key: string, value: string, fallback: string) =>
     setParams((prev) => {
       const next = new URLSearchParams(prev);
@@ -75,13 +83,19 @@ function HeatmapBody({ demo, title, totalRounds }: { demo: string; title: string
       else next.set(key, value);
       return next;
     }, { replace: true });
+  const putRound = (value: string) => setParams((prev) => {
+    const next = new URLSearchParams(prev);
+    next.set("round", value);
+    next.delete("half");
+    return next;
+  }, { replace: true });
 
   // null = ทุกคน · [] = ไม่เลือกใครเลย (ไม่ต้องถาม backend — ว่างแน่นอน)
   const [players, setPlayers] = useState<string[] | null>(null);
   const [radius, setRadius] = useState(22);
   const [blur, setBlur] = useState(18);
   const [opacity, setOpacity] = useState(0.85);
-  const rounds = roundsOf(half, totalRounds);
+  const rounds = presets.find((preset) => preset.key === round)?.rounds ?? (round === "all" ? null : [Number(round)]);
   const none = players !== null && players.length === 0;
 
   const q = useQuery({
@@ -115,6 +129,8 @@ function HeatmapBody({ demo, title, totalRounds }: { demo: string; title: string
 
   const meta = EVENTS.find((e) => e.key === ev)!;
   const data = q.data;
+  const currentData = q.isPlaceholderData && !none ? null : data;
+  const empty = none || (currentData?.count === 0);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   return (
@@ -132,11 +148,19 @@ function HeatmapBody({ demo, title, totalRounds }: { demo: string; title: string
       <div className="heat-grid">
         <section className="heat-map-col" aria-label={t("แผนที่ heatmap")}>
           <div className="heat-map">
-            {data ? (
-              <HeatCanvas data={data} points={none ? [] : data.points} radius={radius} blur={blur}
-                opacity={opacity} canvasRef={canvasRef} />
-            ) : q.error ? (
+            {q.error ? (
               <p className="err">{t("โหลดข้อมูลไม่ได้: {msg}", { msg: (q.error as Error).message })}</p>
+            ) : data ? (
+              <>
+                <HeatCanvas data={data} points={empty || q.isPlaceholderData ? [] : data.points} radius={radius} blur={blur}
+                  opacity={opacity} canvasRef={canvasRef} />
+                {empty && <div className="heat-empty" role="status">
+                  {t(none ? "ยังไม่ได้เลือกผู้เล่น" : "ไม่พบข้อมูลในรอบที่เลือก")}
+                </div>}
+                {q.isPlaceholderData && !none && <div className="heat-empty" role="status">{t("กำลังอัปเดต…")}</div>}
+              </>
+            ) : none ? (
+              <p className="muted">{t("ยังไม่ได้เลือกผู้เล่น")}</p>
             ) : (
               <p className="muted">{t("กำลังโหลด…")}</p>
             )}
@@ -146,7 +170,7 @@ function HeatmapBody({ demo, title, totalRounds }: { demo: string; title: string
               <span>{t("น้อย")}</span><i /><span>{t("มาก")}</span>
             </span>
             <span className="small">
-              {tn("{n} จุด · {who}", { n: <b>{none ? 0 : num(data?.count ?? 0)}</b>, who: t(meta.who) })}
+              {tn("{n} จุด · {who}", { n: <b>{none ? 0 : q.isPlaceholderData ? "…" : num(data?.count ?? 0)}</b>, who: t(meta.who) })}
               {q.isFetching && <span className="muted"> · {t("กำลังอัปเดต…")}</span>}
             </span>
           </div>
@@ -179,13 +203,20 @@ function HeatmapBody({ demo, title, totalRounds }: { demo: string; title: string
               ))}
             </div>
             <div className="seg" role="group" aria-label={t("ช่วงเกม")}>
-              {HALVES.filter((h) => h.key !== "ot" || totalRounds > 24).map((h) => (
-                <button key={h.key} type="button" className={`seg-btn${half === h.key ? " on" : ""}`}
-                  aria-pressed={half === h.key} onClick={() => put("half", h.key, "all")}>
-                  {t(h.label)}
+              {presets.map((preset) => (
+                <button key={preset.key} type="button" className={`seg-btn${round === preset.key ? " on" : ""}`}
+                  aria-pressed={round === preset.key} onClick={() => putRound(preset.key)}>
+                  {t(preset.label)}
                 </button>
               ))}
             </div>
+            <label className="hm-round-select">
+              <span>{t("เลือกรอบเดียว")}</span>
+              <select value={/^\d+$/.test(round) ? round : ""} onChange={(e) => e.target.value && putRound(e.target.value)}>
+                <option value="" disabled>{t("เลือกรอบ")}</option>
+                {range(1, totalRounds).map((n) => <option key={n} value={n}>{t("รอบ {n}", { n })}</option>)}
+              </select>
+            </label>
           </fieldset>
 
           <fieldset className="hp-field">
@@ -233,8 +264,8 @@ function HeatmapBody({ demo, title, totalRounds }: { demo: string; title: string
               format={(v) => `${Math.round(v * 100)}%`} />
           </fieldset>
 
-          <button type="button" className="btn-primary btn-icon hp-export" disabled={!data}
-            onClick={() => data && exportPng(data, canvasRef.current, opacity, `${title} · ${t(meta.label)}`, demo, ev)}>
+          <button type="button" className="btn-primary btn-icon hp-export" disabled={!currentData || none}
+            onClick={() => currentData && exportPng(currentData, canvasRef.current, opacity, `${title} · ${t(meta.label)}`, demo, ev)}>
             <IconDownload /> {t("ดาวน์โหลดรูป (PNG)")}
           </button>
         </aside>

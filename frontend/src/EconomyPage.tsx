@@ -1,6 +1,7 @@
 import { useLayoutEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Navigate, useParams } from "react-router-dom";
+import { toBlob } from "html-to-image";
 import { api, matchesQuery, type MatchEconomy, type TeamBuy } from "./api";
 import { useT } from "./i18n";
 import { Breadcrumb, endReasonLabel, MapThumb, MatchTabs, matchTitle, NotFound, num } from "./utils";
@@ -36,9 +37,14 @@ const TEAM_COLOR = ["#b98300", "#6a55e0"];
 type Side = "all" | "ct" | "t";
 
 const money = (v: number | null | undefined) => (v == null ? "—" : `$${num(v)}`);
+const filePart = (value: string) => value.normalize("NFC").replace(/[^\p{L}\p{N}._-]+/gu, "-").replace(/^-+|-+$/g, "") || "match";
 
 export function EconomyPage() {
   const { t } = useT();
+  const [side, setSide] = useState<Side>("all");
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState(false);
+  const reportRef = useRef<HTMLDivElement>(null);
   const { demo } = useParams();
   const matches = useQuery(matchesQuery);
   const entry = demo ? (matches.data ?? []).find((m) => m.demo_file === demo) : undefined;
@@ -56,6 +62,37 @@ export function EconomyPage() {
 
   const d = q.data;
   const ready = d && d.teams.length === 2 && d.rounds.length > 0;
+  const exportReport = async () => {
+    const node = reportRef.current;
+    if (!node || !entry || !ready || exporting) return;
+    setExporting(true);
+    setExportError(false);
+    try {
+      await document.fonts.ready;
+      const blob = await toBlob(node, {
+        backgroundColor: getComputedStyle(document.body).backgroundColor || "#fff",
+        width: node.scrollWidth,
+        height: node.scrollHeight,
+        pixelRatio: 2,
+        preferredFontFormat: "woff2",
+      });
+      if (!blob) throw new Error("PNG export returned no image");
+      const match = filePart(matchTitle(entry).replace(/\.dem$/i, ""));
+      const map = filePart(entry.map_name ?? d?.map ?? "unknown-map");
+      const stamp = new Date().toISOString().replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z");
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `${match}-${entry.id}_${map}_${side.toUpperCase()}_economy_summary_${stamp}.png`;
+      link.click();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (error) {
+      console.error("Economy PNG export failed", error);
+      setExportError(true);
+    } finally {
+      setExporting(false);
+    }
+  };
   return (
     <div className="econ-page" data-testid="economy-page">
       <Breadcrumb items={[{ label: t("แมตช์"), to: "/matches" }, { label: matchTitle(entry) }]} />
@@ -73,37 +110,57 @@ export function EconomyPage() {
       {d && !ready && <p className="muted card">{t("แมตช์นี้ไม่มีข้อมูลมูลค่าอุปกรณ์รายรอบ (เดโมรุ่นเก่า) — โหลดเดโมซ้ำเพื่อคำนวณ")}</p>}
       {ready && (
         <>
-          <div className="econ-teams" aria-label={t("สีของทีม")}>
-            {d.teams.map((team, i) => (
-              <span key={team}><i style={{ background: TEAM_COLOR[i] }} />{i === 0 ? t("{team} (เริ่มฝั่ง CT)", { team }) : t("{team} (เริ่มฝั่ง T)", { team })}</span>
-            ))}
+          <div className="econ-actions">
+            <button type="button" className="btn-primary btn-icon" onClick={exportReport} disabled={exporting}>
+              <IconDownload /> {t(exporting ? "กำลังส่งออกรูป…" : "ดาวน์โหลดรูป (PNG)")}
+            </button>
+            {exportError && <span className="err small" role="alert">{t("ส่งออกรูปไม่สำเร็จ ลองอีกครั้ง")}</span>}
           </div>
-          <OutcomeByBuy data={d} />
-          <section className="card">
-            <div className="card-head">
-              <h2>{t("มูลค่าอุปกรณ์ทั้งทีม")}</h2>
-              <span className="muted small">{t("ตอนหมดเวลาซื้อของ · แถบล่างคือทีมที่ชนะรอบนั้น")}</span>
+          <div ref={reportRef} className="econ-report">
+            <div className="econ-report-title">
+              <strong>{matchTitle(entry)}</strong>
+              <span>{entry.map_name ?? d.map ?? "—"} · {t("ผลการซื้อ: {side}", { side: side === "all" ? t("ทั้งสองฝั่ง") : side.toUpperCase() })}</span>
             </div>
-            <EquipLines data={d} />
-          </section>
-          <section className="card">
-            <div className="card-head">
-              <h2>{t("ใครมีของมากกว่า")}</h2>
-              <span className="muted small">{t("ส่วนต่างมูลค่าอุปกรณ์ · แท่งขึ้น = {a} มากกว่า · แท่งลง = {b} มากกว่า", { a: d.teams[0], b: d.teams[1] })}</span>
+            <div className="econ-teams" aria-label={t("สีของทีม")}>
+              {d.teams.map((team, i) => (
+                <span key={team}><i style={{ background: TEAM_COLOR[i] }} />{i === 0 ? t("{team} (เริ่มฝั่ง CT)", { team }) : t("{team} (เริ่มฝั่ง T)", { team })}</span>
+              ))}
             </div>
-            <AdvantageBars data={d} />
-          </section>
-          <RoundBreakdown data={d} />
+            <OutcomeByBuy data={d} side={side} onSideChange={setSide} />
+            <section className="card">
+              <div className="card-head">
+                <h2>{t("มูลค่าอุปกรณ์ทั้งทีม")}</h2>
+                <span className="muted small">{t("ตอนหมดเวลาซื้อของ · แถบล่างคือทีมที่ชนะรอบนั้น")}</span>
+              </div>
+              <EquipLines data={d} />
+            </section>
+            <section className="card">
+              <div className="card-head">
+                <h2>{t("ใครมีของมากกว่า")}</h2>
+                <span className="muted small">{t("ส่วนต่างมูลค่าอุปกรณ์ · แท่งขึ้น = {a} มากกว่า · แท่งลง = {b} มากกว่า", { a: d.teams[0], b: d.teams[1] })}</span>
+              </div>
+              <AdvantageBars data={d} />
+            </section>
+            <RoundBreakdown data={d} />
+          </div>
         </>
       )}
     </div>
   );
 }
 
+function IconDownload() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+      strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
+      <path d="M12 4v11M7 10l5 5 5-5M5 19h14" />
+    </svg>
+  );
+}
+
 // ------------------------------------------------------------------ 1. ผลรอบตามประเภทการซื้อ
-function OutcomeByBuy({ data }: { data: MatchEconomy }) {
+function OutcomeByBuy({ data, side, onSideChange }: { data: MatchEconomy; side: Side; onSideChange: (side: Side) => void }) {
   const { t } = useT();
-  const [side, setSide] = useState<Side>("all");
   return (
     <section className="card" data-testid="econ-outcomes">
       <div className="card-head">
@@ -111,7 +168,7 @@ function OutcomeByBuy({ data }: { data: MatchEconomy }) {
         <div className="seg" role="group" aria-label={t("ฝั่ง")}>
           {(["all", "ct", "t"] as const).map((s) => (
             <button key={s} type="button" className={`seg-btn${side === s ? " on" : ""}`} aria-pressed={side === s}
-              onClick={() => setSide(s)}>
+              onClick={() => onSideChange(s)}>
               {t(s === "all" ? "ทั้งสองฝั่ง" : s === "ct" ? "ตอนเป็น CT" : "ตอนเป็น T")}
             </button>
           ))}

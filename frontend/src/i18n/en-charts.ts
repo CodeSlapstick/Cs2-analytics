@@ -32,6 +32,10 @@ export const EN_CHARTS: Record<string, string> = {
   "ครึ่งแรก": "First half",
   "ครึ่งหลัง": "Second half",
   "ต่อเวลา": "Overtime",
+  "ต่อเวลาทั้งหมด": "All overtime rounds",
+  "เลือกรอบเดียว": "Single round",
+  "ยังไม่ได้เลือกผู้เล่น": "No players selected",
+  "ไม่พบข้อมูลในรอบที่เลือก": "No events recorded for the selected rounds",
   "แผนที่ heatmap": "Heatmap",
   "น้อย": "Low",
   "มาก": "High",
@@ -54,6 +58,8 @@ export const EN_CHARTS: Record<string, string> = {
   "ความเบลอ": "Blur",
   "ความทึบ": "Opacity",
   "ดาวน์โหลดรูป (PNG)": "Download image (PNG)",
+  "กำลังส่งออกรูป…": "Exporting image…",
+  "ส่งออกรูปไม่สำเร็จ ลองอีกครั้ง": "Could not export image. Please try again.",
   "{caption} · {n} จุด": "{caption} · {n} points",
   "ภาพเรดาร์ {map}": "Radar image of {map}",
   "ซูมแผนที่": "Map zoom",
@@ -67,6 +73,7 @@ export const EN_CHARTS: Record<string, string> = {
   "ทั้งทีมรวมกัน ≤ $5,000 = Eco · ≤ $10,000 = Semi-eco · ≤ $20,000 = Semi-buy · มากกว่านั้น = Full buy · รอบ 1 และ 13 = ปืนสั้นเสมอ":
     "Whole team combined ≤ $5,000 = Eco · ≤ $10,000 = Semi-eco · ≤ $20,000 = Semi-buy · above that = Full buy · rounds 1 and 13 are always Pistol",
   "กำลังโหลดเศรษฐกิจ…": "Loading economy…",
+  "ผลการซื้อ: {side}": "Buy outcomes: {side}",
   "แมตช์นี้ไม่มีข้อมูลมูลค่าอุปกรณ์รายรอบ (เดโมรุ่นเก่า) — โหลดเดโมซ้ำเพื่อคำนวณ":
     "This match has no per-round equipment value (older demo) — re-upload the demo to calculate it",
   "สีของทีม": "Team colours",

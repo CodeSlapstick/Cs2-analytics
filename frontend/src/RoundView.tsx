@@ -69,7 +69,7 @@ export function RoundView({ demo, roundNum, view, setView }: RoundViewProps) {
     placeholderData: (prev: RoundDetail | undefined) => (prev && prev.match.demo_file === demo ? prev : undefined),
     retry: (count, err) => !(err instanceof ApiError && err.status === 404) && count < 1,
   });
-  // ตำแหน่งผู้เล่นโหลดเฉพาะตอนเปิดโหมดเล่นย้อน (ราว 9 KB ต่อรอบ) — หน้าปกติไม่ต้องจ่ายค่านี้
+  // ตำแหน่งผู้เล่นโหลดเมื่ออยู่ในโหมดเล่นย้อน (ราว 9 KB ต่อรอบ)
   const positions = useQuery({
     queryKey: ["review-positions", demo, roundNum],
     queryFn: () => api.reviewPositions(demo, roundNum),
@@ -81,11 +81,12 @@ export function RoundView({ demo, roundNum, view, setView }: RoundViewProps) {
   // เปลี่ยนรอบ = เริ่มดูใหม่ตั้งแต่ต้นรอบ
   const roundKey = `${demo}/${roundNum}`;
   const seen = useRef(roundKey);
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (seen.current === roundKey) return;
     seen.current = roundKey;
     setPlaying(false);
     setTime(0);
+    setView({ zoom: 1, center: null });
   }, [roundKey]);
 
   // นาฬิกาเดินด้วย requestAnimationFrame (ตามเวลาจริง ไม่ใช่จำนวนเฟรม) · หยุดเองเมื่อถึงท้ายรอบ
@@ -152,10 +153,10 @@ export function RoundView({ demo, roundNum, view, setView }: RoundViewProps) {
   // บางรอบในเดโมมีการตายที่บันทึกไว้ก่อนรอบเริ่ม (t_round ติดลบ — ส่วนใหญ่คือตกที่สูงตอนสลับรอบ)
   // โหมดเล่นย้อนนับเฉพาะการตายที่อยู่ในช่วงเวลาของรอบจริง ไม่งั้นคนคนเดียวจะโผล่ทั้งแบบยังไม่ตายและตายแล้วพร้อมกัน
   // (การตายเหล่านั้นยังอยู่ครบในแผนที่ปกติและในไทม์ไลน์ ไม่ได้ถูกซ่อนจากผู้ใช้)
-  const shownDeaths = live ? d.deaths.filter((x) => x.t_round != null && x.t_round >= 0 && x.t_round <= time) : d.deaths;
-  const liveNades = live ? shownNades.filter((n) => nadeActiveAt(n, time)) : shownNades;
+  const shownDeaths = view.playback ? d.deaths.filter((x) => time > 0 && x.t_round != null && x.t_round >= 0 && x.t_round <= time) : d.deaths;
+  const liveNades = view.playback ? shownNades.filter((n) => time > 0 && nadeActiveAt(n, time)) : shownNades;
   const plantT = d.round.bomb_planted_t;
-  const shownBomb = live && plantT != null && time < plantT ? null : d.round.bomb;
+  const shownBomb = view.playback && (time === 0 || (plantT != null && time < plantT)) ? null : d.round.bomb;
   // ชี้เมาส์อยู่ให้ชนะการกดค้าง — ปล่อยเมาส์แล้วกลับไปที่ตัวที่กดค้างไว้เหมือนเดิม
   const focusPlayer = hover ?? view.player;
 
@@ -241,11 +242,16 @@ export function RoundView({ demo, roundNum, view, setView }: RoundViewProps) {
             )}
             {/* ซูมลอยอยู่มุมแผนที่ — ไม่กินบรรทัดใต้แผนที่อีกแถว (ล้อเมาส์บนแผนที่ก็ซูมได้) */}
             <div className="map-zoom" role="group" aria-label={t("ซูมแผนที่")}>
-              <button type="button" onClick={() => setView({ zoom: clampZoom(view.zoom * 1.4), center: view.center })}
+              <button type="button" onClick={() => {
+                const next = clampZoom(view.zoom * 1.4);
+                setView({ zoom: next, center: d.radar ? clampRadarCenter(view.center, d.radar.size, next) : null });
+              }}
                 disabled={view.zoom >= MAX_ZOOM} aria-label={t("ซูมเข้า")} title={t("ซูมเข้า (หรือเลื่อนล้อเมาส์บนแผนที่)")}>+</button>
               <button type="button" onClick={() => {
                 const next = clampZoom(view.zoom / 1.4);
-                setView(next <= 1.01 ? { zoom: 1, center: null } : { zoom: next, center: view.center });
+                setView(next <= 1.01 ? { zoom: 1, center: null } : {
+                  zoom: next, center: d.radar ? clampRadarCenter(view.center, d.radar.size, next) : null,
+                });
               }} disabled={view.zoom <= 1} aria-label={t("ซูมออก")} title={t("ซูมออก")}>−</button>
               {view.zoom > 1 && (
                 <button type="button" className="mz-reset" onClick={() => setView({ zoom: 1, center: null })}
@@ -456,6 +462,12 @@ interface MapProps {
   onSelect: (order: number | null) => void;
 }
 
+function clampRadarCenter(center: [number, number] | null, size: number, zoom: number): [number, number] {
+  const half = size / (2 * zoom);
+  const clamp = (v: number) => Math.min(size - half, Math.max(half, v));
+  return [clamp(center?.[0] ?? size / 2), clamp(center?.[1] ?? size / 2)];
+}
+
 /**
  * แผนที่ของรอบ — วาดเป็น SVG ในพิกัด "พิกเซลของภาพเรดาร์" ที่ backend แปลงมาให้แล้ว (backend/review.py)
  * frontend ไม่มีสูตรแปลงพิกัดของตัวเอง
@@ -467,9 +479,7 @@ export function MapView({ radar, deaths, bomb, grenades, live, zoom, center, onV
   const s = radar.size;
   // ---- ซูม/เลื่อนดู: viewBox คือกรอบที่มองอยู่ · เก็บบน URL เพื่อให้รีเฟรช/แชร์ลิงก์แล้วเห็นกรอบเดิม
   const span = s / zoom;
-  const clampC = (v: number) => Math.min(s - span / 2, Math.max(span / 2, v));
-  const cx = clampC(center?.[0] ?? s / 2);
-  const cy = clampC(center?.[1] ?? s / 2);
+  const [cx, cy] = clampRadarCenter(center, s, zoom);
   const x0 = cx - span / 2;
   const y0 = cy - span / 2;
   const drag = useRef<{ x: number; y: number; cx: number; cy: number; moved: number } | null>(null);
@@ -484,14 +494,27 @@ export function MapView({ radar, deaths, bomb, grenades, live, zoom, center, onV
     const next = clampZoom(zoom * factor);
     if (next === zoom) return;
     if (next === 1) return onView(1, null);
-    if (clientX === undefined || clientY === undefined) return onView(next, [cx, cy]);
+    if (clientX === undefined || clientY === undefined) return onView(next, clampRadarCenter([cx, cy], s, next));
     const [mx, my] = toMap(clientX, clientY);            // จุดใต้เมาส์ต้องอยู่ที่เดิมหลังซูม
     const k = 1 - zoom / next;
-    onView(next, [cx + (mx - cx) * k, cy + (my - cy) * k]);
+    onView(next, clampRadarCenter([cx + (mx - cx) * k, cy + (my - cy) * k], s, next));
   };
   // วง / ป้าย / เส้น กำหนดเป็น "พิกเซลบนจอ" ไม่ใช่หน่วยของภาพ — แผนที่เล็กบน laptop ป้ายไม่หดจนอ่านไม่ออก
   // แผนที่ใหญ่บน projector ขยายตามอีกนิด (สูงสุด 1.35 เท่า) ให้อ่านได้จากระยะไกล
   const svgRef = useRef<SVGSVGElement>(null);
+  const zoomAtRef = useRef(zoomAt);
+  zoomAtRef.current = zoomAt;
+  useEffect(() => {
+    const el = svgRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const pixels = e.deltaY * (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? el.clientHeight : 1);
+      zoomAtRef.current(Math.exp(-Math.max(-240, Math.min(240, pixels)) * 0.002), e.clientX, e.clientY);
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, []);
   const [shown, setShown] = useState(0); // ความกว้างที่แสดงจริง (px)
   useLayoutEffect(() => {
     const el = svgRef.current;
@@ -542,7 +565,6 @@ export function MapView({ radar, deaths, bomb, grenades, live, zoom, center, onV
       onClick={() => {
         if ((drag.current?.moved ?? 0) < 4) onSelect(null);   // ลากแล้วไม่นับเป็นคลิกล้างการเลือก
       }}
-      onWheel={(e) => zoomAt(e.deltaY < 0 ? 1.2 : 1 / 1.2, e.clientX, e.clientY)}
       onPointerDown={(e) => {
         if (zoom <= 1 || e.button !== 0) return;
         drag.current = { x: e.clientX, y: e.clientY, cx, cy, moved: 0 };
@@ -555,12 +577,13 @@ export function MapView({ radar, deaths, bomb, grenades, live, zoom, center, onV
         const dx = ((e.clientX - dr.x) / r.width) * span;
         const dy = ((e.clientY - dr.y) / r.height) * span;
         dr.moved = Math.max(dr.moved, Math.abs(e.clientX - dr.x) + Math.abs(e.clientY - dr.y));
-        onView(zoom, [dr.cx - dx, dr.cy - dy]);
+        onView(zoom, clampRadarCenter([dr.cx - dx, dr.cy - dy], s, zoom));
       }}
       onPointerUp={(e) => {
         e.currentTarget.releasePointerCapture(e.pointerId);
         window.setTimeout(() => (drag.current = null), 0);
       }}
+      onPointerCancel={() => { drag.current = null; }}
     >
       <image href={radar.image} x={0} y={0} width={s} height={s} />
 
@@ -944,4 +967,3 @@ function IconPause() {
     </svg>
   );
 }
-

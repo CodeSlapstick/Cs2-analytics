@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link, Navigate, useNavigate, useParams } from "react-router-dom";
 import { api, matchesQuery, type Match, type RoundListItem } from "./api";
 import { RoundView } from "./RoundView";
-import { endReasonLabel, matchTitle, NotFound, roundUrl, sideLabel, useViewState } from "./utils";
+import { endReasonLabel, MatchTabs, matchTitle, NotFound, roundUrl, sideLabel, useViewState } from "./utils";
 import { useT } from "./i18n";
 
 // ================================================================================================
@@ -38,13 +38,14 @@ export function RoundPage() {
   return (
     <div className="round-page" data-testid="round-page">
       <MatchHeader current={entry} all={list} params={params} />
+      <MatchTabs demo={entry.demo_file} />
       <RoundBody entry={entry} roundNum={roundNum} view={view} setView={setView} params={params} />
     </div>
   );
 }
 
 /**
- * หัวหน้ารีวิวรอบบรรทัดเดียว: ย้อนกลับ · ชื่อแมตช์ (ซึ่งเป็นตัวสลับแมตช์ในตัว) · สกอร์บอร์ด
+ * หัวหน้ารีวิวรอบบรรทัดเดียว: ย้อนกลับ · ชื่อแมตช์ (ซึ่งเป็นตัวสลับแมตช์ในตัว)
  * เดิมเป็นสามบรรทัด (breadcrumb / ป้าย+dropdown+ชื่อแมพลอย ๆ / ปุ่ม) ที่บอกเรื่องเดียวกันซ้ำ
  * เปลี่ยนแมตช์แล้วเริ่มที่รอบ 1 และทิ้ง d (การตายที่เลือก) กับ p (ผู้เล่นที่ไฮไลต์) เพราะเป็นคนละชุดผู้เล่น
  */
@@ -68,7 +69,7 @@ function MatchHeader({ current, all, params }: { current: Match; all: Match[]; p
         <span className="tp-text" aria-hidden="true">{label(current)}</span>
         <select
           value={current.demo_file}
-          onChange={(e) => navigate(roundUrl(e.target.value, 1, params, ["d", "p"]))}
+          onChange={(e) => navigate(roundUrl(e.target.value, 1, params, ["d", "p", "z", "c"]))}
           data-testid="match-switcher"
           aria-label={t("แมตช์ที่กำลังดู (เลือกเพื่อสลับแมตช์)")}
         >
@@ -81,17 +82,6 @@ function MatchHeader({ current, all, params }: { current: Match; all: Match[]; p
           <path d="m6 9 6 6 6-6" />
         </svg>
       </h1>
-      <span className="rp-links">
-        <Link className="btn-ghost" to={`/matches/${encodeURIComponent(current.demo_file)}/heatmap`}>
-          Heatmap
-        </Link>
-        <Link className="btn-ghost" to={`/matches/${encodeURIComponent(current.demo_file)}/economy`}>
-          {t("เศรษฐกิจ")}
-        </Link>
-        <Link className="btn-ghost" to={`/matches/${encodeURIComponent(current.demo_file)}`}>
-          {t("สกอร์บอร์ด")}
-        </Link>
-      </span>
     </header>
   );
 }
@@ -110,7 +100,7 @@ function RoundBody({ entry, roundNum, view, setView, params }: BodyProps) {
   const rounds = useQuery({ queryKey: ["review-rounds", entry.demo_file], queryFn: () => api.reviewRounds(entry.demo_file) });
   const list = rounds.data ?? [];
   const idx = list.findIndex((r) => r.round_num === roundNum);
-  const go = (to: number) => navigate(roundUrl(entry.demo_file, to, params, ["d"]));
+  const go = (to: number) => navigate(roundUrl(entry.demo_file, to, params, ["d", "z", "c"]));
   const { t } = useT();
 
   useEffect(() => {
@@ -171,7 +161,7 @@ function RoundStrip({ demo, rounds, current, idx, go, params }: StripProps) {
       {rounds.map((r) => (
         <Fragment key={r.round_num}>
           <Link
-            to={roundUrl(demo, r.round_num, params, ["d"])}
+            to={roundUrl(demo, r.round_num, params, ["d", "z", "c"])}
             className={`rbox ${r.winner_side ?? "none"} ${r.round_num === current ? "active" : ""}`}
             title={t("รอบ {n} · {side} ชนะ · {reason} · ตาย {deaths}", { n: r.round_num, side: sideLabel(r.winner_side), reason: endReasonLabel(r.end_reason), deaths: r.deaths_count })}
             aria-current={r.round_num === current ? "page" : undefined}
