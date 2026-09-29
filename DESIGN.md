@@ -12,6 +12,10 @@ colors:
   action-orange-busy: "#C9580A"
   bracket-orange-hi: "#FFB27A"
   reticle-cyan: "#00E5FF"
+  ct-blue: "#4F8CFF"
+  ct-blue-ink: "#8FB4FF"
+  t-orange: "#FF8A1E"
+  t-orange-ink: "#FFB067"
   signal-white: "#F2F5F9"
   soft-steel-text: "#C8CFDA"
   muted-steel-text: "#9AA4B5"
@@ -136,13 +140,14 @@ components:
 
 Before the team reviews a round, they are already looking at the map. The system is a dark operations board: a near-black charcoal ground, a faint plotting grid that fades out from the map rather than papering the whole panel, the real de_mirage radar drawn as a cyan wireframe with range rings and a slow sweep, and a slate plate framed by orange corner brackets where the work happens. It is dense but calm; everything that can be touched glows cyan when it has focus, and exactly one thing per view is orange and solid: the action.
 
-The world is recorded from its first shipped surface, `/login` (`frontend/src/LoginPage.tsx`, the `.login-shell` block of `frontend/src/styles.css`). Tokens are scoped on `.login-shell` as `--l-*` custom properties, not on `:root`. Imagery is only ever real: the radar raster is derived from the game's own file (`frontend/src/assets/brief-mirage-lines.png`, provenance embedded) and the numbers on the board come live from `/api/health`, hidden when unavailable. Thai UI with Counter-Strike terms in English.
+The world began on `/login` and is now the approved app-wide system, including authenticated match, round, analysis, upload, and review surfaces. Shared tokens live at `:root`; login-specific composition may retain local `--l-*` aliases. Authenticated pages use the same charcoal, slate, steel, typography, and interaction grammar in a denser Operate mode while preserving their existing information architecture and behavior. Thai UI keeps Counter-Strike terms in English.
 
-**Open decision (drift, not repaired).** The rest of the app (`MatchPage.tsx`, `RoundView.tsx`, the `:root` block at the top of `styles.css`) still runs the older incumbent system: navy `--bg #0b1220`, card `#111a2c`, line `#1f2b44`, accent/T orange `#ff8a1e`, CT blue `#4f8cff`, `system-ui` at 14px, 12px card radius. The user has not approved rolling the briefing-board world out app-wide. Until they do, this document describes the login world as the system of record for new briefing-board surfaces; the incumbent pages are not to be restyled by inference.
+Imagery and evidence are only ever real: radar assets come from game files, and displayed counts come from live product data and disappear when unavailable. CT blue and T orange remain reserved semantic data colors; they do not compete with Action Orange, whose role is primary action rather than team identity.
 
 **Key Characteristics:**
 - Charcoal ground, slate plate, steel hairlines; depth by tone first, then by glow.
 - Orange means "act"; cyan means "interactive / in focus"; red means "something is wrong".
+- CT blue and T orange identify side-based data only.
 - Chakra Petch speaks (display, labels, action); Anuphan explains (body, inputs).
 - Orange corner brackets are the reusable signature: on the plate, in the logo, and around the action on hover/focus.
 - Drawn line icons at one stroke weight (1.75 on a 24 grid, 20px).
@@ -159,6 +164,7 @@ A cold, low-light palette of charcoal and steel with two signal colors that neve
 
 ### Secondary
 - **Reticle Cyan** (reticle-cyan): focus and interactivity. The global focus-visible outline (2px, 3px offset), the focused field's border and glow, the focused field's leading icon, text links, the inline help note's tint, and at low alpha the radar wireframe, grid, range rings and sweep.
+- **CT Blue** (ct-blue) and **T Orange** (t-orange): side identity in maps, charts, timelines, badges, and comparison data. Their lighter ink variants support readable side labels on dark surfaces. They are data semantics, never general interface accents.
 
 ### Tertiary
 - **Alert Red** (alert-red) with **Alert Red Ink** (alert-red-ink): the error state. Red border on invalid fields, a red-tinted alert block (12% fill, 60% border) whose text is the pale ink, never red body text on charcoal.
@@ -174,6 +180,8 @@ A cold, low-light palette of charcoal and steel with two signal colors that neve
 
 ### Named Rules
 **The Two Signals Rule.** Orange is for acting, cyan is for focus and interactivity. A cyan button or an orange focus ring breaks the grammar.
+
+**The Team Color Reservation Rule.** CT blue and T orange encode sides and side-derived data only. Action Orange remains visually and semantically distinct from T Orange.
 
 **The One Solid Orange Rule.** At most one solid orange fill per view: the primary action. Brackets, caret, and a single accented slogan line are the only other orange.
 
@@ -211,6 +219,8 @@ On short laptops (≥1024px wide, ≤720px tall) the plate tightens (gap 16px, p
 
 Spacing rhythm: 8 / 10 between tightly coupled items, 20 between plate rows, 28 between blocks.
 
+Authenticated pages use **Operate mode**: compact toolbars, dense tables, restrained card padding, and information-first grids on the same dark ground. Preserve established page structure, workflow order, chart/map sizing logic, and responsive behavior; the app-wide rollout changes visual language and density, not product behavior. At narrow widths, controls wrap or stack without hiding analysis-critical data.
+
 ## Elevation & Depth
 
 Depth is tonal first: charcoal ground, darker field wells, lighter slate plate, with 1px steel borders defining edges. Two soft radial washes add atmosphere: 8% cyan behind the radar, 9% orange behind the plate. Shadows are soft and ambient, never offset slabs; glow is reserved for state.
@@ -242,6 +252,7 @@ Solid, weighty, one per view.
 ### Cards / Containers
 - **Form plate:** Slate Plate, 1px Steel Rule border, 6px corners, plate-lift shadow, orange corner brackets. One per view.
 - **Stat chip:** 78% Slate Plate over the briefing, 1px steel border, 4px corners, a tabular numeral over a muted caption, min 132px wide.
+- **Operate panel:** Field Well or Slate Plate with a 1px Steel Rule border and 6px corners. Use compact internal spacing and tonal separation; reserve decorative brackets and strong lift for a view's primary plate.
 
 ### Inputs / Fields
 - **Style:** 54px Field Well box, 1px steel border, 4px corners, leading 20px line icon in muted steel, Chakra Petch label above (8px gap). Autofill is painted back to the well color.
@@ -260,12 +271,13 @@ The real de_mirage radar as a cyan wireframe raster at 80% opacity, masked to a 
 
 ### Do:
 - **Do** keep orange for the one primary action and cyan for focus and interactivity (The Two Signals Rule).
+- **Do** use CT blue and T orange only for side identity and side-derived data.
 - **Do** give every interactive element the cyan focus-visible outline (2px, 3px offset) or a cyan glow equivalent.
 - **Do** frame the single primary plate with the 20px orange corner brackets; reuse the bracket language rather than inventing new ornaments.
 - **Do** draw icons inline at 20px on a 24 grid with a 1.75 stroke.
 - **Do** use only real imagery and real numbers; hide a figure when its source is unavailable.
 - **Do** keep field and action heights at 54px and 56px (50px and 52px on short laptops).
-- **Do** keep the briefing-board tokens scoped to their surface (`--l-*` on `.login-shell`) until the user approves an app-wide rollout.
+- **Do** apply the shared briefing-board tokens across public and authenticated surfaces, using compact Operate-mode density after login.
 
 ### Don't:
 - **Don't** fall back to the category default of a centred card floating on a gradient with a stock hero.
@@ -273,4 +285,4 @@ The real de_mirage radar as a cyan wireframe raster at 80% opacity, masked to a 
 - **Don't** set body copy or input text in Chakra Petch.
 - **Don't** use hard offset shadows; depth here is tonal plus soft ambient shadow and state glow.
 - **Don't** add eyebrow or kicker labels above headings. The incumbent app's `.eyebrow` class is a pre-existing defect, not part of this system.
-- **Don't** restyle the match or round pages into this world, or mix its tokens with the incumbent `:root` palette, without the user's decision.
+- **Don't** rework page structure or behavior as part of visual-system rollout; preserve workflows while changing presentation.
