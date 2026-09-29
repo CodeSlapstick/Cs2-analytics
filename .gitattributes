@@ -1,0 +1,17 @@
+* text=auto eol=lf
+
+# Windows command files require Windows line endings.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Keep generated and media files byte-for-byte.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.pdf binary
+*.pptx binary
+*.woff binary
+*.woff2 binary

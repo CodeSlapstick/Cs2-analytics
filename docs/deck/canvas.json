@@ -1,0 +1,151 @@
+{
+  "artboards": [
+    {
+      "file": "Main.dc.html",
+      "x": 0,
+      "y": 0,
+      "w": 1280,
+      "h": 720,
+      "title": "1 · ฮุก",
+      "print": "fixed"
+    },
+    {
+      "file": "Problem.dc.html",
+      "x": 1400,
+      "y": 0,
+      "w": 1280,
+      "h": 720,
+      "title": "2 · ปัญหา",
+      "print": "fixed"
+    },
+    {
+      "file": "Solution.dc.html",
+      "x": 2800,
+      "y": 0,
+      "w": 1280,
+      "h": 720,
+      "title": "3 · ทางออก",
+      "print": "fixed"
+    },
+    {
+      "file": "Built.dc.html",
+      "x": 4200,
+      "y": 0,
+      "w": 1280,
+      "h": 720,
+      "title": "4 · สิ่งที่ทำมาแล้ว",
+      "print": "fixed"
+    },
+    {
+      "file": "ScreenMatches.dc.html",
+      "x": 0,
+      "y": 880,
+      "w": 1280,
+      "h": 720,
+      "title": "5 · หน้าจอจริง — รายการแมตช์",
+      "print": "fixed"
+    },
+    {
+      "file": "ScreenMatch.dc.html",
+      "x": 1400,
+      "y": 880,
+      "w": 1280,
+      "h": 720,
+      "title": "6 · หน้าจอจริง — สรุปแมตช์",
+      "print": "fixed"
+    },
+    {
+      "file": "ScreenRound.dc.html",
+      "x": 2800,
+      "y": 880,
+      "w": 1280,
+      "h": 720,
+      "title": "7 · หน้าจอจริง — รีวิวรายรอบ",
+      "print": "fixed"
+    },
+    {
+      "file": "UseCase.dc.html",
+      "x": 4200,
+      "y": 880,
+      "w": 1280,
+      "h": 720,
+      "title": "8 · Use case",
+      "print": "fixed"
+    },
+    {
+      "file": "HowItWorks.dc.html",
+      "x": 0,
+      "y": 1760,
+      "w": 1280,
+      "h": 720,
+      "title": "9 · ทำงานอย่างไร",
+      "print": "fixed"
+    },
+    {
+      "file": "Scenario.dc.html",
+      "x": 1400,
+      "y": 1760,
+      "w": 1280,
+      "h": 720,
+      "title": "10 · User scenario",
+      "print": "fixed"
+    },
+    {
+      "file": "Architecture.dc.html",
+      "x": 2800,
+      "y": 1760,
+      "w": 1280,
+      "h": 720,
+      "title": "11 · สถาปัตยกรรม",
+      "print": "fixed"
+    },
+    {
+      "file": "Challenges.dc.html",
+      "x": 4200,
+      "y": 1760,
+      "w": 1280,
+      "h": 720,
+      "title": "12 · ปัญหาที่เจอ",
+      "print": "fixed"
+    },
+    {
+      "file": "Adoption.dc.html",
+      "x": 0,
+      "y": 2640,
+      "w": 1280,
+      "h": 720,
+      "title": "13 · นำไปใช้จริง",
+      "print": "fixed"
+    },
+    {
+      "file": "Roadmap.dc.html",
+      "x": 1400,
+      "y": 2640,
+      "w": 1280,
+      "h": 720,
+      "title": "14 · แผนต่อไป",
+      "print": "fixed"
+    },
+    {
+      "file": "Team.dc.html",
+      "x": 2800,
+      "y": 2640,
+      "w": 1280,
+      "h": 720,
+      "title": "15 · แบ่งงาน",
+      "print": "fixed"
+    }
+  ],
+  "annotations": [
+    {
+      "id": "order-note",
+      "x": 0,
+      "y": -150,
+      "w": 740,
+      "text": "ลำดับการเล่า: อ่านซ้ายไปขวาทีละแถว (1→4, 5→8, 9→12, 13→15)\nสามแผ่นแรกคือ ฮุก → ปัญหา → เฉลย · แผ่น 5–7 คือหน้าจอจริง · แผ่น 15 คือการแบ่งงาน\nExport PDF จะได้ 15 หน้าเรียงตามลำดับนี้"
+    }
+  ],
+  "launch": {
+    "view": "canvas"
+  }
+}
