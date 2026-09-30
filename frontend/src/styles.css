@@ -63,9 +63,22 @@ h2 { font-size: var(--fs-lg); line-height: 1.3; margin: 0 0 10px; }
   border-bottom: 1px solid var(--line); background: var(--card);
   position: sticky; top: 0; z-index: 20; flex-wrap: wrap; box-shadow: 0 12px 30px -26px #000;
 }
-.brand { font-family: "Chakra Petch", "Anuphan", sans-serif; font-weight: 700; letter-spacing: .08em; color: var(--text); display: flex; align-items: center; gap: 10px; }
-.brand:hover { text-decoration: none; }
-.dot { width: 14px; height: 14px; background: #00e5ff; border: 3px solid var(--accent); border-radius: 2px; display: inline-block; box-shadow: 0 0 14px rgba(0,229,255,.2); }
+
+/* ลบ .dot ออก แล้วใช้สไตล์ของ .home-brand สำหรับโลโก้เป้าเล็ง */
+.home-brand {
+  font-family: "Chakra Petch", "Anuphan", sans-serif;
+  font-weight: 700;
+  letter-spacing: .08em;
+  color: #ff6b00; /* สีส้มกรอบเป้าเล็ง */
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-decoration: none;
+}
+.home-brand:hover { text-decoration: none; }
+.home-brand span { color: var(--text); } /* ข้อความ CS2 SCOUTING เป็นสีตามธีมหลัก */
+.home-brand svg { display: block; flex-shrink: 0; }
+
 .topbar nav { display: flex; gap: 4px; }
 .topbar nav a {
   color: var(--muted); padding: 6px 12px; border-radius: 7px; font-weight: 600;

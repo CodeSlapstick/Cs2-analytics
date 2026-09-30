@@ -186,6 +186,17 @@ function useViewerIsGuest() {
   return isGuest(me.data?.user);
 }
 
+// เพิ่มรูปไอคอนเป้าเล็ง SVG (ใส่สีส้ม #FF6B00 ตรงๆ ไม่ให้โดน CSS อื่นทับ)
+function Mark() {
+  return (
+    <svg width="30" height="30" viewBox="0 0 32 32" fill="none" aria-hidden="true">
+      <path d="M3 10V3h7M22 3h7v7M29 22v7h-7M10 29H3v-7" stroke="#FF6B00" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx="16" cy="16" r="6.5" stroke="#00E5FF" strokeWidth="2" />
+      <path d="M16 6.5v5M16 20.5v5M6.5 16h5M20.5 16h5" stroke="#00E5FF" strokeWidth="2" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 /** แถบบนของแอป — หน้า /login เต็มจอของตัวเอง ไม่มีแถบนี้ */
 function TopBar() {
   const { pathname } = useLocation();
@@ -194,8 +205,9 @@ function TopBar() {
   if (pathname === "/" || pathname === "/login") return null;
   return (
     <header className="topbar">
-      <Link to="/" className="brand">
-        <span className="dot" aria-hidden="true" /> CS2 SCOUTING
+      <Link className="home-brand" to="/" aria-label="CS2 SCOUTING home">
+        <Mark />
+        <span>CS2 SCOUTING</span>
       </Link>
       <nav aria-label={t("เมนูหลัก")}>
         {NAV.filter((n) => !(guest && n.steamOnly)).map((n) => (
