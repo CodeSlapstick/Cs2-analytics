@@ -21,6 +21,7 @@ import re
 import secrets
 import urllib.parse
 import urllib.request
+import xml.etree.ElementTree as ET
 from datetime import UTC, datetime, timedelta
 
 import jwt
@@ -186,23 +187,46 @@ def verify_steam_openid(params: dict, *, url: str = STEAM_OPENID_URL) -> str | N
     return steamid if ok else None
 
 
-def steam_persona(steamid: str) -> dict:
-    """ชื่อ + รูปจาก Steam Web API — ไม่มีกุญแจหรือเรียกไม่ติด คืนชื่อสำรองที่ไม่ได้แต่งขึ้นเอง"""
-    fallback = {"name": f"steam_{steamid}", "avatar": None}
-    if not STEAM_API_KEY:
-        return fallback
-    q = urllib.parse.urlencode({"key": STEAM_API_KEY, "steamids": steamid})
+def _steam_community_persona(steamid: str, fallback: dict) -> dict:
+    """ดึงโปรไฟล์สาธารณะจาก Steam Community เมื่อไม่ได้ตั้ง Web API key.
+
+    endpoint นี้ไม่ต้องใช้กุญแจและคืน XML ขนาดเล็ก เราจำกัดขนาดก่อน parse เพื่อไม่รับ
+    response ผิดปกติเข้าหน่วยความจำโดยไม่จำกัด
+    """
     try:
         with urllib.request.urlopen(
-            f"https://api.steampowered.com/ISteamUser/GetPlayerSummaries/v2/?{q}", timeout=HTTP_TIMEOUT
-        ) as r:                                                            # noqa: S310 — URL คงที่ของ Steam
-            players = json.loads(r.read()).get("response", {}).get("players", [])
-    except (OSError, ValueError):
+            f"https://steamcommunity.com/profiles/{steamid}?xml=1", timeout=HTTP_TIMEOUT
+        ) as r:                                                            # noqa: S310 — host คงที่, steamid ผ่าน regex
+            body = r.read(1_000_001)
+        if len(body) > 1_000_000:
+            return fallback
+        root = ET.fromstring(body)
+    except (OSError, ValueError, ET.ParseError):
         return fallback
-    if not players:
+    return {
+        "name": (root.findtext("steamID") or fallback["name"]).strip(),
+        "avatar": (root.findtext("avatarFull") or "").strip() or None,
+    }
+
+
+def steam_persona(steamid: str) -> dict:
+    """ชื่อ + รูปจาก Steam — ใช้ Web API ก่อน และ fallback เป็น Steam Community XML โดยไม่ต้องมี API key."""
+    fallback = {"name": f"steam_{steamid}", "avatar": None}
+    if not STEAM_ID_RE.fullmatch(steamid):
         return fallback
-    p = players[0]
-    return {"name": p.get("personaname") or fallback["name"], "avatar": p.get("avatarfull") or None}
+    if STEAM_API_KEY:
+        q = urllib.parse.urlencode({"key": STEAM_API_KEY, "steamids": steamid})
+        try:
+            with urllib.request.urlopen(
+                f"https://api.steampowered.com/ISteamUser/GetPlayerSummaries/v2/?{q}", timeout=HTTP_TIMEOUT
+            ) as r:                                                        # noqa: S310 — URL คงที่ของ Steam
+                players = json.loads(r.read()).get("response", {}).get("players", [])
+        except (OSError, ValueError):
+            players = []
+        if players:
+            p = players[0]
+            return {"name": p.get("personaname") or fallback["name"], "avatar": p.get("avatarfull") or None}
+    return _steam_community_persona(steamid, fallback)
 
 
 def username_for_steam(persona: str, steamid: str) -> str:

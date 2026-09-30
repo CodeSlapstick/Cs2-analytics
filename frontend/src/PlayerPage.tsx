@@ -40,7 +40,7 @@ export function PlayerPage() {
   return (
     <div className="player" data-testid="player-page">
       <header className="pl-head">
-        {d.player.avatar ? <img className="pl-avatar" src={d.player.avatar} alt="" /> : <img className="pl-avatar" src={unknownAvatar} alt="" />}
+        {d.player.avatar ? <img className="pl-avatar" src={d.player.avatar} alt="" referrerPolicy="no-referrer" /> : <img className="pl-avatar" src={unknownAvatar} alt="" />}
         <div>
           <h1>{d.player.name}</h1>
           <p className="muted">
