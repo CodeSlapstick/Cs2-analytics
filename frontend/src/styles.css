@@ -6,24 +6,24 @@
    ================================================================================================ */
 :root {
   /* --- พื้นและเส้น: เทาอมฟ้าจาง ๆ ให้เข้าชุดกับสีทีม ไม่ใช่เทากลางที่ดูไม่ได้ตั้งใจเลือก --- */
-  --bg: #f4f6fa;
-  --card: #ffffff;
-  --card-2: #f8fafc;
-  --line: #dfe4ec;
-  --line-2: #eef1f6;
-  --text: #151a23;
-  --muted: #5d6879;
+  --bg: #0b0e14;
+  --card: #151a23;
+  --card-2: #1e232d;
+  --line: #2e3647;
+  --line-2: #242b38;
+  --text: #f2f5f9;
+  --muted: #9aa4b5;
 
   /* --- สีทีม: ค่าเดิมทุกตัว ห้ามเปลี่ยน --- */
   --ct: #4f8cff;
   --t: #ff8a1e;
-  --accent: #ff8a1e;
+  --accent: #ff6b00;
   /* คู่สีเข้มของสีทีม สำหรับ "ตัวอักษร" บนพื้นขาว — สีทีมตัวจริงสว่างเกินกว่าจะอ่านเป็นข้อความได้
      ใช้เฉพาะกับ text/link ส่วนพื้นป้ายและจุดบนแผนที่ยังใช้ --ct / --t เดิม */
-  --ct-ink: #1f5fce;
-  --t-ink: #a35200;
-  --ok: #0e7a47;
-  --err: #c92a3a;
+  --ct-ink: #8fb4ff;
+  --t-ink: #ffb067;
+  --ok: #55d69a;
+  --err: #ff7180;
 
   /* --- ขนาดตัวอักษร: คุมที่เดียวทั้งเว็บ (โปรเจกต์นี้ไม่มี Tailwind config) --- */
   --fs-xs: 12px;    /* ป้ายเล็กสุด หัวตาราง */
@@ -33,45 +33,46 @@
   --fs-lg: 19px;    /* h2 (เดิม 17) */
   --fs-xl: 28px;    /* h1 (เดิม 26) */
 
-  --shadow-1: 0 1px 2px rgba(21, 26, 35, .05), 0 1px 3px rgba(21, 26, 35, .04);
-  --shadow-2: 0 4px 16px -6px rgba(21, 26, 35, .16), 0 1px 3px rgba(21, 26, 35, .06);
-  --r: 10px;
+  --shadow-1: 0 8px 24px -20px rgba(0, 0, 0, .9);
+  --shadow-2: 0 22px 52px -30px rgba(0, 0, 0, .95);
+  --r: 6px;
 }
 
 * { box-sizing: border-box; }
-html { scrollbar-color: #c3cddf var(--bg); }
+html { color-scheme: dark; scrollbar-color: #46516a var(--bg); }
 body {
-  margin: 0; background: var(--bg); color: var(--text); caret-color: var(--ct-ink);
-  font: var(--fs-base)/1.55 system-ui, "Segoe UI", sans-serif;
+  margin: 0; background: var(--bg); color: var(--text); caret-color: #00e5ff;
+  font: var(--fs-base)/1.55 "Anuphan", system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
 }
-::selection { background: rgba(79, 140, 255, .24); color: var(--text); }
+::selection { background: rgba(255, 107, 0, .38); color: #fff; }
 .sr-only {
   position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden;
   clip: rect(0 0 0 0); white-space: nowrap; border: 0;
 }
-a { color: var(--ct-ink); text-decoration: none; }
+a { color: #00e5ff; text-decoration: none; }
 a:hover { text-decoration: underline; }
+h1, h2, h3 { font-family: "Chakra Petch", "Anuphan", system-ui, sans-serif; }
 h1 { font-size: var(--fs-xl); line-height: 1.2; margin: 4px 0 10px; letter-spacing: -.01em; text-wrap: balance; }
 h2 { font-size: var(--fs-lg); line-height: 1.3; margin: 0 0 10px; }
-:is(a, button, input, select, [role="button"]):focus-visible { outline: 2px solid var(--ct-ink); outline-offset: 2px; }
+:is(a, button, input, select, [role="button"]):focus-visible { outline: 2px solid #00e5ff; outline-offset: 3px; }
 
 /* ---------------- แถบบน ---------------- */
 .topbar {
   display: flex; align-items: center; gap: 8px 22px; padding: 10px 24px;
-  border-bottom: 1px solid var(--line); background: var(--card); box-shadow: var(--shadow-1);
-  position: sticky; top: 0; z-index: 20; flex-wrap: wrap;
+  border-bottom: 1px solid var(--line); background: var(--card);
+  position: sticky; top: 0; z-index: 20; flex-wrap: wrap; box-shadow: 0 12px 30px -26px #000;
 }
-.brand { font-weight: 800; letter-spacing: .5px; color: var(--text); display: flex; align-items: center; gap: 8px; }
+.brand { font-family: "Chakra Petch", "Anuphan", sans-serif; font-weight: 700; letter-spacing: .08em; color: var(--text); display: flex; align-items: center; gap: 10px; }
 .brand:hover { text-decoration: none; }
-.dot { width: 12px; height: 12px; background: var(--accent); border-radius: 3px; display: inline-block; }
+.dot { width: 14px; height: 14px; background: #00e5ff; border: 3px solid var(--accent); border-radius: 2px; display: inline-block; box-shadow: 0 0 14px rgba(0,229,255,.2); }
 .topbar nav { display: flex; gap: 4px; }
 .topbar nav a {
   color: var(--muted); padding: 6px 12px; border-radius: 7px; font-weight: 600;
   border-bottom: 2px solid transparent;
 }
 .topbar nav a:hover { background: var(--line-2); color: var(--text); text-decoration: none; }
-.topbar nav a.active { color: var(--ct-ink); background: rgba(79, 140, 255, .10); border-bottom-color: var(--ct); }
+.topbar nav a.active { color: #00e5ff; background: rgba(0, 229, 255, .07); border-bottom-color: #00e5ff; }
 
 /* ---- มุมขวาบน: ปุ่มเดียวที่กางเป็นเมนู ไม่ใช่ป้าย+ลิงก์+ปุ่มเรียงกันตรง ๆ (เคยแน่นและล้นเวลาชื่อยาว) ---- */
 /* ปุ่มสลับภาษา TH | EN — อยู่ก่อนเมนูผู้ใช้ ดันทั้งคู่ไปชิดขวา */
@@ -81,7 +82,7 @@ h2 { font-size: var(--fs-lg); line-height: 1.3; margin: 0 0 10px; }
   color: var(--muted); padding: 4px 9px; border-radius: 999px; cursor: pointer;
 }
 .lang-toggle button:hover:not(.on) { color: var(--text); }
-.lang-toggle button.on { background: var(--text); color: var(--card); }
+.lang-toggle button.on { background: #00e5ff; color: #06232a; }
 .usermenu { position: relative; font-size: var(--fs-sm); }
 .btn-ghost {
   background: var(--card); border: 1px solid var(--line); color: var(--text); border-radius: 8px;
@@ -90,7 +91,7 @@ h2 { font-size: var(--fs-lg); line-height: 1.3; margin: 0 0 10px; }
 .btn-ghost:hover { border-color: var(--ct); background: var(--card-2); text-decoration: none; }
 a.btn-ghost { display: inline-block; font-weight: 600; }
 .pill { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: var(--fs-xs); font-weight: 700; }
-.pill-guest { background: rgba(255, 138, 30, .16); color: var(--t-ink); border: 1px solid rgba(255, 138, 30, .45); }
+.pill-guest { background: rgba(0, 229, 255, .07); color: #00e5ff; border: 1px solid rgba(0, 229, 255, .3); }
 
 .um-trigger {
   display: inline-flex; align-items: center; gap: 8px; max-width: 220px;
@@ -158,7 +159,7 @@ a.btn-ghost { display: inline-block; font-weight: 600; }
 .link-more { font-size: var(--fs-sm); font-weight: 700; }
 
 .btn-primary {
-  display: inline-block; background: var(--accent); color: #291200; border: 0; border-radius: 8px;
+  display: inline-flex; min-height: 44px; align-items: center; justify-content: center; background: var(--accent); color: #291200; border: 0; border-radius: 6px;
   padding: 9px 15px; font: inherit; font-weight: 800; cursor: pointer; box-shadow: var(--shadow-1);
 }
 .btn-primary:hover { background: #f07d0c; text-decoration: none; }
@@ -232,9 +233,9 @@ a.badge:hover { text-decoration: none; filter: brightness(.96); }
   padding: 8px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--card);
 }
 .uplist .q-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 600; }
-.uplist li.up-failed { border-color: rgba(201, 42, 58, .45); background: #fdf5f6; }
-.uplist li.up-duplicate { border-color: rgba(255, 138, 30, .55); background: #fff8f1; }
-.uplist li.up-queued { border-color: rgba(18, 138, 82, .45); background: #f3faf6; }
+.uplist li.up-failed { border-color: rgba(255, 113, 128, .45); background: rgba(255, 77, 94, .08); }
+.uplist li.up-duplicate { border-color: rgba(255, 138, 30, .55); background: rgba(255, 138, 30, .08); }
+.uplist li.up-queued { border-color: rgba(85, 214, 154, .45); background: rgba(85, 214, 154, .07); }
 .uplist button.btn-sm { background: var(--card); cursor: pointer; font: inherit; font-size: var(--fs-sm); font-weight: 700; }
 @media (max-width: 640px) {
   .uplist li { grid-template-columns: minmax(0, 1fr) auto; }
@@ -250,8 +251,8 @@ a.badge:hover { text-decoration: none; filter: brightness(.96); }
   background: var(--card); color: var(--text); min-width: 0; width: 100%;
 }
 .filters input[type="search"] { padding-left: 34px; }
-.filters :is(input, select):hover { border-color: #c3cddf; }
-.filters input::placeholder { color: #6b7686; }
+.filters :is(input, select):hover { border-color: #46516a; }
+.filters input::placeholder { color: #7f8999; }
 
 /* รายการแมตช์ — ทั้งแถวเป็นลิงก์เดียว ไม่มีปุ่มซ้อนในแถว */
 .mcard { padding-bottom: 8px; }
@@ -291,7 +292,7 @@ a.badge:hover { text-decoration: none; filter: brightness(.96); }
 .score-big .sep { margin: 0 6px; }
 .page-head .mono { font-size: var(--fs-xs); }
 @media (max-width: 640px) { .page-head .mono { display: none; } }
-.nf-code { margin: 0; font-size: 48px; font-weight: 800; line-height: 1; color: #c3cddf; font-variant-numeric: tabular-nums; }
+.nf-code { margin: 0; font-size: 48px; font-weight: 800; line-height: 1; color: #46516a; font-variant-numeric: tabular-nums; }
 
 /* ผลรายรอบเป็นช่องตามครึ่งเกม — แทนตาราง 24 แถว */
 .halves { display: grid; gap: 14px; }
@@ -335,7 +336,7 @@ a.badge:hover { text-decoration: none; filter: brightness(.96); }
 .tp-caret { flex: none; color: var(--muted); pointer-events: none; }
 
 .round-strip { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; margin: 0 0 12px; }
-.round-strip .half-gap { width: 1px; height: 22px; background: #c3cddf; margin: 0 5px; flex: none; }
+.round-strip .half-gap { width: 1px; height: 22px; background: #46516a; margin: 0 5px; flex: none; }
 .rbox { width: 32px; height: 32px; border-radius: 7px; display: grid; place-items: center; font-weight: 700; font-size: var(--fs-sm); }
 /* พื้นใช้คู่สีเข้มของ CT ไม่ใช่ --ct ตัวจริง — เลขสีขาวบน #4f8cff ได้ contrast แค่ 3:1 อ่านไม่ออก */
 .rbox.ct { background: var(--ct-ink); color: #fff; }
@@ -370,7 +371,7 @@ a.rbox:hover { outline: 2px solid var(--text); outline-offset: 1px; text-decorat
   display: inline-flex; align-items: center; gap: 5px; padding: 2px 9px 2px 7px; border: 1px solid var(--line);
   border-radius: 999px; cursor: pointer; opacity: .55; transition: opacity .15s, border-color .15s; background: var(--card);
 }
-.nade-toggle.on { opacity: 1; border-color: #b9c6de; }
+.nade-toggle.on { opacity: 1; border-color: #46516a; }
 .nade-toggle:has(input:disabled) { opacity: .3; cursor: default; }
 .nade-toggle:has(input:focus-visible) { outline: 2px solid var(--ct-ink); outline-offset: 2px; }
 .nade-toggle i { width: 9px; height: 9px; border-radius: 50%; box-shadow: 0 0 0 1px rgba(0, 0, 0, .18); }
@@ -531,7 +532,7 @@ svg.radar.zoomed:active { cursor: grabbing; }
   .roster-col .team-box ul { padding: 4px 11px 8px; }
   .roster-col .pstat { display: block; }
 }
-.roster-col, .breakdown { scrollbar-width: thin; scrollbar-color: #c3cddf transparent; }
+.roster-col, .breakdown { scrollbar-width: thin; scrollbar-color: #46516a transparent; }
 
 /* ---------------- หน้าสถิติรายคน /player ---------------- */
 .player { max-width: 1280px; margin: 0 auto; }
@@ -539,7 +540,7 @@ svg.radar.zoomed:active { cursor: grabbing; }
 .pl-head h1 { margin: 0; }
 .pl-head p { margin: 2px 0 0; font-size: var(--fs-sm); }
 .pl-avatar { width: 64px; height: 64px; border-radius: 10px; border: 1px solid var(--line); object-fit: cover; flex: none; }
-.pl-avatar.ph { background: linear-gradient(160deg, #dbe6fb, #eef2f8); display: block; }
+.pl-avatar.ph { background: #1e232d; display: block; }
 .pl-mode { margin-left: auto; }
 .pl-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 14px; margin-top: 14px; }
 .pl-card { margin: 0; display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; }
@@ -581,6 +582,7 @@ svg.radar.zoomed:active { cursor: grabbing; }
 .pl-bar i { display: block; height: 100%; background: var(--accent); border-radius: 999px; }
 .pl-bars .small { grid-column: 1 / -1; }
 .pl-empty { text-align: center; padding: 70px 20px; }
+.pl-empty p { max-width: 72ch; margin-left: auto; margin-right: auto; }
 .pl-empty .btn-primary { display: inline-block; margin-top: 14px; text-decoration: none; }
 
 
@@ -882,7 +884,7 @@ html:has(.login-shell) { color-scheme: dark; scrollbar-color: #2E3647 #0B0E14; }
 .rr-stat.pro .rr-bar i { background: var(--line); }
 .rr-verdict { margin: 14px 0 4px; max-width: 78ch; font-size: var(--fs-md); }
 .rr-tbl { margin-top: 4px; }
-.rr-tbl tr.rr-early td { background: #fdeef0; }
+.rr-tbl tr.rr-early td { background: rgba(255, 77, 94, .08); }
 .rr-site { font: 700 var(--fs-xs)/1.6 inherit; padding: 1px 9px; border-radius: 999px; background: var(--line-2); font-variant-numeric: tabular-nums; }
 .rr-note { margin-top: 8px; }
 
@@ -1063,8 +1065,8 @@ a.an-tab:hover { text-decoration: none; }
 /* ================================================================================================
    ภาพจากเกม: หน้าปกแมพ (assets/thumbs) + ไอคอนระเบิด (src/assets/grenades)
    ================================================================================================ */
-.map-thumb { display: block; object-fit: cover; background: #dfe4ec; flex: none; }
-.map-thumb.ph { background: linear-gradient(135deg, #e3e8f0, #cfd7e3); }
+.map-thumb { display: block; object-fit: cover; background: #1e232d; flex: none; }
+.map-thumb.ph { background: #242b38; }
 /* แถวรายการแมตช์: ภาพเล็กหน้าชื่อ */
 .m-thumb { width: 64px; height: 36px; border-radius: 5px; }
 .mrow { grid-template-columns: 64px minmax(0, 1fr) minmax(0, 190px) 76px 16px; }
@@ -1089,3 +1091,72 @@ a.an-tab:hover { text-decoration: none; }
 .legend .nade-ico { margin-right: 3px; }
 .seg-btn .nade-ico { margin-right: 4px; width: 15px; height: 15px; }
 img.nade-dot { width: 16px; height: 16px; border-radius: 0; }
+
+/* Public home — tactical debrief room. */
+.page:has(.home-page) { max-width: none; padding: 0; }
+body:has(.home-page) { background: #0b0e14; }
+html:has(.home-page) { color-scheme: dark; scrollbar-color: #46516a #0b0e14; scroll-behavior: smooth; }
+.home-page { --h-bg:#0b0e14; --h-panel:#151a23; --h-panel-2:#1e232d; --h-line:#2e3647; --h-line-hi:#46516a; --h-text:#f2f5f9; --h-soft:#c8cfda; --h-muted:#9aa4b5; --h-orange:#ff6b00; --h-orange-hi:#ff8a38; --h-cyan:#00e5ff; --h-blue:#4f8cff; min-height:100vh; overflow:hidden; background:var(--h-bg); color:var(--h-text); font:400 16px/1.6 "Anuphan",system-ui,sans-serif; }
+.home-page ::selection { background:rgba(255,107,0,.38); color:#fff; }
+.home-page :focus-visible { outline:2px solid var(--h-cyan); outline-offset:4px; }
+.home-page h1,.home-page h2,.home-page h3 { font-family:"Chakra Petch","Anuphan",sans-serif; }
+.home-page h1,.home-page h2,.home-page h3,.home-page p { margin-top:0; }
+.home-page a:hover { text-decoration:none; }
+.home-content { display:block; }
+.home-nav,.home-footer { width:min(1400px,calc(100% - 48px)); margin:0 auto; display:flex; align-items:center; }
+.home-nav { height:76px; gap:42px; border-bottom:1px solid var(--h-line); }
+.home-brand { display:inline-flex; align-items:center; gap:11px; color:var(--h-text); font:700 18px/1 "Chakra Petch",sans-serif; letter-spacing:.08em; }
+.home-brand svg { color:var(--h-orange); flex:none; }
+.home-nav nav { display:flex; gap:28px; }
+.home-nav nav a,.home-signin { color:var(--h-soft); font-weight:500; font-size:14px; }
+.home-nav nav a:hover,.home-signin:hover { color:var(--h-cyan); }
+.home-actions { margin-left:auto; display:flex; align-items:center; gap:18px; }
+.home-lang { display:inline-flex; padding:2px; border:1px solid var(--h-line); border-radius:4px; background:var(--h-panel); }
+.home-lang button { border:0; background:none; color:var(--h-muted); padding:4px 8px; cursor:pointer; font:600 11px/1.2 "Chakra Petch",sans-serif; }
+.home-lang button.on { background:var(--h-cyan); color:#06232a; }
+.home-hero { position:relative; width:min(1400px,calc(100% - 48px)); min-height:720px; margin:0 auto; display:grid; grid-template-columns:minmax(390px,.86fr) minmax(600px,1.14fr); align-items:center; gap:clamp(42px,6vw,100px); }
+.home-hero::before { content:""; position:absolute; width:720px; height:720px; right:-190px; top:0; pointer-events:none; background:radial-gradient(circle,rgba(0,229,255,.09),transparent 66%); }
+.home-hero-copy { position:relative; z-index:2; padding:70px 0 84px; }
+.home-hero h1 { margin:0 0 26px; font-size:clamp(46px,5.4vw,82px); line-height:.98; letter-spacing:-.025em; max-width:11ch; text-wrap:balance; }
+.home-hero h1 span,.home-proof h2 span,.home-workflow h2 span { display:block; }
+.home-hero-copy>p { max-width:60ch; color:var(--h-soft); font-size:18px; line-height:1.75; margin-bottom:34px; }
+.home-hero-actions { display:flex; align-items:center; gap:22px; flex-wrap:wrap; }
+.home-hero-actions>span { max-width:31ch; color:var(--h-muted); font-size:13px; line-height:1.55; }
+.home-primary { display:inline-flex; min-height:54px; align-items:center; justify-content:center; gap:12px; padding:0 22px; color:#17100a; background:var(--h-orange); border-radius:4px; font:700 16px/1 "Chakra Petch","Anuphan",sans-serif; box-shadow:0 12px 28px -16px rgba(255,107,0,.8); transition:background-color .2s ease,transform .2s ease,box-shadow .2s ease; }
+.home-primary svg { width:20px; height:20px; fill:none; stroke:currentColor; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; }
+.home-primary:hover { color:#17100a; background:var(--h-orange-hi); transform:translateY(-2px); box-shadow:0 18px 34px -17px rgba(255,107,0,.9); }
+.home-stage { position:relative; z-index:2; background:var(--h-panel-2); border:1px solid var(--h-line-hi); border-radius:6px; box-shadow:0 34px 70px -30px rgba(0,0,0,.9); }
+.home-stage::before,.home-stage::after { content:""; position:absolute; width:22px; height:22px; pointer-events:none; }
+.home-stage::before { left:-7px; top:-7px; border-left:2px solid var(--h-orange); border-top:2px solid var(--h-orange); }
+.home-stage::after { right:-7px; bottom:-7px; border-right:2px solid var(--h-orange); border-bottom:2px solid var(--h-orange); }
+.stage-head { height:52px; display:flex; align-items:center; justify-content:space-between; padding:0 18px; border-bottom:1px solid var(--h-line); font:600 13px/1 "Chakra Petch",sans-serif; }
+.stage-live { display:inline-flex; align-items:center; gap:7px; color:var(--h-muted); font-size:10px; letter-spacing:.08em; }
+.stage-live i { width:6px; height:6px; border-radius:50%; background:var(--h-orange); box-shadow:0 0 12px rgba(255,107,0,.8); }
+.stage-body { display:grid; grid-template-columns:minmax(0,1fr) 190px; min-height:420px; }
+.stage-map { position:relative; overflow:hidden; background:#080d15; border-right:1px solid var(--h-line); }
+.stage-map::before { content:""; position:absolute; inset:0; opacity:.28; background-image:linear-gradient(rgba(0,229,255,.09) 1px,transparent 1px),linear-gradient(90deg,rgba(0,229,255,.09) 1px,transparent 1px); background-size:34px 34px; }
+.stage-map img { position:absolute; width:84%; height:84%; object-fit:contain; left:8%; top:8%; opacity:.72; filter:saturate(.65) brightness(1.15); }
+.stage-path { position:absolute; inset:0; width:100%; height:100%; }
+.stage-path path { fill:none; stroke:rgba(0,229,255,.55); stroke-width:.55; stroke-dasharray:2 2; }
+.stage-player { position:absolute; z-index:3; width:28px; height:28px; transform:translate(-50%,-50%); border-radius:50%; display:grid; place-items:center; color:#fff; border:2px solid #08101c; font:700 12px/1 "Chakra Petch",sans-serif; box-shadow:0 5px 12px rgba(0,0,0,.55); }
+.stage-player.ct { background:#4f8cff; }.stage-player.t { background:#ff8a1e; color:#231000; }
+.stage-smoke { position:absolute; z-index:2; width:68px; height:68px; transform:translate(-50%,-50%); border-radius:50%; background:radial-gradient(circle,rgba(210,220,228,.5),rgba(117,130,142,.2) 52%,transparent 70%); border:1px solid rgba(230,238,244,.28); }
+.stage-bomb { position:absolute; z-index:4; transform:translate(-50%,-50%); color:#130b05; background:var(--h-orange); width:22px; height:22px; display:grid; place-items:center; border-radius:3px; font:700 12px/1 "Chakra Petch",sans-serif; }
+.stage-timeline { list-style:none; margin:0; padding:12px; display:flex; flex-direction:column; background:#111720; }
+.stage-timeline li { display:grid; grid-template-columns:42px 8px 1fr; align-items:center; gap:7px; min-height:56px; padding:8px 6px; border-bottom:1px solid var(--h-line); color:var(--h-muted); font-size:11px; line-height:1.35; }
+.stage-timeline li.active { color:var(--h-text); background:rgba(255,107,0,.09); }
+.stage-timeline time { font-variant-numeric:tabular-nums; color:var(--h-soft); }
+.stage-timeline i { width:7px; height:7px; border-radius:50%; }.stage-timeline i.ct{background:#4f8cff}.stage-timeline i.t{background:#ff8a1e}.stage-timeline i.bomb{background:var(--h-orange);box-shadow:0 0 0 3px rgba(255,107,0,.17)}
+.stage-controls { height:56px; display:grid; grid-template-columns:30px 1fr auto; align-items:center; gap:12px; padding:0 16px; border-top:1px solid var(--h-line); }
+.stage-play { width:30px; height:30px; border-radius:50%; background:var(--h-orange); display:grid; place-items:center; }.stage-play span{margin-left:2px;border-left:8px solid #17100a;border-top:5px solid transparent;border-bottom:5px solid transparent}
+.stage-controls>div { height:3px; background:var(--h-line-hi); position:relative; }.stage-controls>div i{position:absolute;left:63%;top:-3px;width:9px;height:9px;border-radius:50%;background:var(--h-cyan)}.stage-controls b{color:var(--h-soft);font:600 11px/1 "Chakra Petch",sans-serif;font-variant-numeric:tabular-nums}
+.home-proof { width:min(1220px,calc(100% - 48px)); margin:0 auto; padding:130px 0; display:grid; grid-template-columns:.8fr 1.2fr; gap:clamp(70px,10vw,150px); border-top:1px solid var(--h-line); }
+.proof-copy { position:sticky; top:110px; align-self:start; }.home-proof h2,.home-workflow h2,.home-close h2{font-size:clamp(34px,4vw,56px);line-height:1.05;letter-spacing:-.02em;margin-bottom:28px}.proof-copy p{max-width:54ch;color:var(--h-soft);line-height:1.8}
+.proof-list article { display:grid; grid-template-columns:54px 1fr; gap:22px; padding:32px 0 38px; border-top:1px solid var(--h-line); }.proof-list article:last-child{border-bottom:1px solid var(--h-line)}
+.proof-glyph { position:relative; width:38px; height:38px; border:1px solid var(--h-line-hi); }.proof-glyph::before,.proof-glyph::after{content:"";position:absolute;background:var(--h-cyan)}.glyph-1::before{width:8px;height:8px;border-radius:50%;left:14px;top:14px;box-shadow:-9px -8px 0 -2px var(--h-blue),10px 7px 0 -2px var(--h-orange)}.glyph-1::after{width:24px;height:1px;left:6px;top:18px;transform:rotate(34deg);opacity:.65}.glyph-2::before{width:5px;height:22px;left:8px;bottom:7px;box-shadow:8px -6px 0 var(--h-orange),16px 4px 0 var(--h-blue)}.glyph-3::before{width:22px;height:1px;left:7px;top:11px;box-shadow:0 7px 0 var(--h-cyan),0 14px 0 var(--h-cyan);opacity:.8}.glyph-3::after{width:4px;height:4px;border-radius:50%;left:27px;top:9px;box-shadow:-15px 7px 0 var(--h-orange),-8px 14px 0 var(--h-blue)}
+.proof-list h3 { font-size:23px; line-height:1.2; margin-bottom:10px; }.proof-list p{color:var(--h-muted);margin:0;max-width:58ch}
+.home-workflow { position:relative; padding:120px max(24px,calc((100vw - 1220px)/2)); background:var(--h-panel); border-block:1px solid var(--h-line); }.home-workflow::after{content:"";position:absolute;right:2vw;top:0;width:480px;height:100%;background:url("./assets/brief-mirage-lines.png") center/contain no-repeat;opacity:.055;pointer-events:none}.home-workflow h2{position:relative;z-index:1;max-width:13ch;margin-bottom:72px}.home-workflow ol{position:relative;z-index:1;list-style:none;padding:0;margin:0;display:grid;grid-template-columns:repeat(3,1fr)}.home-workflow li{min-height:230px;padding:0 38px;border-left:1px solid var(--h-line-hi)}.home-workflow li:first-child{padding-left:0;border-left:0}.home-workflow li>b{display:grid;place-items:center;width:38px;height:38px;border:1px solid var(--h-cyan);color:var(--h-cyan);border-radius:50%;margin-bottom:42px;font:600 14px/1 "Chakra Petch",sans-serif}.home-workflow h3{font-size:22px;margin-bottom:12px}.home-workflow p{max-width:34ch;color:var(--h-muted);margin-bottom:0}
+.home-close { width:min(1220px,calc(100% - 48px)); margin:0 auto; padding:130px 0; display:flex; align-items:flex-end; justify-content:space-between; gap:56px; }.home-close>div{max-width:760px}.home-close h2{margin-bottom:18px}.home-close p{color:var(--h-soft);max-width:62ch;margin-bottom:0}.home-close .home-primary{flex:none}.home-footer{justify-content:space-between;gap:30px;min-height:96px;border-top:1px solid var(--h-line);color:var(--h-muted);font-size:13px}.home-footer .home-brand{font-size:14px}.home-footer .home-brand svg{width:24px}
+@media(max-width:1050px){.home-hero{grid-template-columns:1fr;padding-bottom:90px}.home-hero-copy{padding-bottom:0;max-width:760px}.home-hero h1{max-width:13ch}.home-stage{width:min(780px,100%)}.home-proof{grid-template-columns:1fr;gap:54px}.proof-copy{position:static}}
+@media(max-width:760px){.home-nav,.home-footer,.home-hero,.home-proof,.home-close{width:min(100% - 32px,1400px)}.home-nav{height:68px}.home-nav nav{display:none}.home-brand{font-size:15px}.home-signin{display:none}.home-actions{gap:0}.home-hero{min-height:0;gap:42px;padding-bottom:72px}.home-hero-copy{min-width:0;padding:64px 0 0}.home-hero h1{font-size:clamp(40px,12vw,58px)}.home-hero-copy>p{font-size:16px;overflow-wrap:anywhere}.home-hero-actions{display:grid;justify-items:start}.stage-body{grid-template-columns:1fr;min-height:360px}.stage-timeline{display:none}.stage-map{border-right:0}.stage-controls{height:50px}.home-proof{padding:88px 0}.home-proof h2,.home-workflow h2,.home-close h2{font-size:36px}.proof-list article{grid-template-columns:38px 1fr;gap:12px}.proof-list h3{font-size:20px}.home-workflow{padding:86px 16px}.home-workflow h2{margin-bottom:50px}.home-workflow ol{grid-template-columns:1fr}.home-workflow li{min-height:0;display:grid;grid-template-columns:48px 1fr;gap:18px;padding:28px 0;border-left:0;border-top:1px solid var(--h-line-hi)}.home-workflow li:first-child{border-top:0}.home-workflow li>b{margin:0;width:36px;height:36px}.home-close{padding:88px 0;display:grid;gap:30px}.home-close .home-primary{justify-self:start}.home-footer{padding:22px 0;align-items:flex-start;flex-direction:column;justify-content:center}}
+@media(prefers-reduced-motion:reduce){html:has(.home-page){scroll-behavior:auto}.home-primary{transition:none}}

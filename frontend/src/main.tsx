@@ -11,6 +11,7 @@ import { PlayerPage } from "./PlayerPage";
 import { AnalysisPage } from "./AnalysisPage";
 import { HeatmapPage } from "./HeatmapPage";
 import { EconomyPage } from "./EconomyPage";
+import { HomePage } from "./HomePage";
 import { NotFound } from "./utils";
 import { LangProvider, LangToggle, tr, useT } from "./i18n";
 import "./styles.css";
@@ -185,16 +186,12 @@ function useViewerIsGuest() {
   return isGuest(me.data?.user);
 }
 
-function HomeRedirect() {
-  return <Navigate to={useViewerIsGuest() ? "/matches" : "/player"} replace />;
-}
-
 /** แถบบนของแอป — หน้า /login เต็มจอของตัวเอง ไม่มีแถบนี้ */
 function TopBar() {
   const { pathname } = useLocation();
   const guest = useViewerIsGuest();
   const { t } = useT();
-  if (pathname === "/login") return null;
+  if (pathname === "/" || pathname === "/login") return null;
   return (
     <header className="topbar">
       <Link to="/" className="brand">
@@ -219,11 +216,11 @@ function App() {
       <TopBar />
       <main className="page">
         <Routes>
+          <Route path="/" element={<HomePage />} />
           <Route path="/login" element={<LoginPage />} />
           {/* ทุกหน้าที่ดึงข้อมูลต้องมี session ก่อน — ยังไม่มีเด้งไป /login?next=<ที่เดิม> */}
           <Route element={<ProtectedRoute />}>
             {/* หน้าแรก: ผู้ใช้ Steam = สถิติของฉัน · โหมดเยี่ยมชม = แมตช์ (ไม่มี "ฉัน" ให้ดู) */}
-            <Route path="/" element={<HomeRedirect />} />
             <Route path="/matches" element={<MatchesPage />} />
             <Route path="/matches/:demo" element={<MatchPage />} />
             {/* URL เดิมของหน้ารีวิวรอบ — ลิงก์ที่เคยแชร์ไว้พร้อม query string ต้องเปิดได้เหมือนเดิม */}
