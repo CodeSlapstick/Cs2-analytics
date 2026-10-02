@@ -979,8 +979,8 @@ html:has(.login-shell) { color-scheme: dark; scrollbar-color: #2E3647 #0B0E14; }
 .hp-slider-h { display: flex; justify-content: space-between; }
 .hp-slider input { width: 100%; accent-color: var(--ct-ink); }
 .hp-export { justify-content: center; }
-.hm-round-select { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; margin-top: 8px; font-size: var(--fs-sm); }
-.hm-round-select select { min-width: 140px; max-width: 100%; padding: 6px 10px; border: 1px solid var(--line); border-radius: 7px; background: var(--card); color: var(--text); font: inherit; }
+.hm-round-grid { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; min-width: 0; }
+.hm-round-btn { min-width: 34px; height: 32px; padding: 0 6px; display: inline-flex; align-items: center; justify-content: center; font-size: var(--fs-xs); transition: background-color .15s, border-color .15s, color .15s; }
 
 /* ---- แท็บมุมมองของแมตช์ (ภาพรวม / ทีละรอบ / heatmap / เศรษฐกิจ) — หน้าตาเดียวกับแท็บหน้าเครื่องมือวิเคราะห์ ---- */
 .match-tabs { margin: 0 0 16px; gap: 6px; padding-bottom: 6px; }

@@ -41,15 +41,13 @@ function roundPresets(total: number) {
   ];
   if (total > 0) presets.push({ key: "first_half", label: "ครึ่งแรก", rounds: range(1, Math.min(12, total)) });
   if (total > 12) presets.push({ key: "second_half", label: "ครึ่งหลัง", rounds: range(13, Math.min(24, total)) });
-  if (total > 24) presets.push({ key: "ot_all", label: "ต่อเวลาทั้งหมด", rounds: range(25, total) });
-  for (let start = 25, n = 1; start <= total; start += 6, n += 1) {
-    presets.push({ key: `ot${n}`, label: `OT${n}`, rounds: range(start, Math.min(start + 5, total)) });
-  }
+  if (total > 24) presets.push({ key: "ot", label: "OT", rounds: range(25, total) });
   return presets;
 }
 
 function selectedRound(raw: string | null, legacyHalf: string | null, total: number, presets: ReturnType<typeof roundPresets>): string {
-  if (raw === null) raw = ({ "1": "first_half", "2": "second_half", ot: "ot_all" } as Record<string, string>)[legacyHalf ?? ""] ?? "all";
+  if (raw === null) raw = ({ "1": "first_half", "2": "second_half", ot: "ot" } as Record<string, string>)[legacyHalf ?? ""] ?? "all";
+  if (raw === "ot_all") raw = "ot";
   if (presets.some((preset) => preset.key === raw)) return raw;
   const n = Number(raw);
   return /^\d+$/.test(raw) && Number.isInteger(n) && n >= 1 && n <= total ? String(n) : "all";
@@ -210,13 +208,14 @@ function HeatmapBody({ demo, title, totalRounds }: { demo: string; title: string
                 </button>
               ))}
             </div>
-            <label className="hm-round-select">
-              <span>{t("เลือกรอบเดียว")}</span>
-              <select value={/^\d+$/.test(round) ? round : ""} onChange={(e) => e.target.value && putRound(e.target.value)}>
-                <option value="" disabled>{t("เลือกรอบ")}</option>
-                {range(1, totalRounds).map((n) => <option key={n} value={n}>{t("รอบ {n}", { n })}</option>)}
-              </select>
-            </label>
+            <div className="hm-round-grid" role="group" aria-label={t("เลือกรอบเดียว")}>
+              {range(1, totalRounds).map((n) => (
+                <button key={n} type="button" className={`seg-btn hm-round-btn${round === String(n) ? " on" : ""}`}
+                  aria-label={t("รอบ {n}", { n })} aria-pressed={round === String(n)} onClick={() => putRound(String(n))}>
+                  {n}
+                </button>
+              ))}
+            </div>
           </fieldset>
 
           <fieldset className="hp-field">
