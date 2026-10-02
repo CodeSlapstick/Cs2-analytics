@@ -55,6 +55,7 @@ skills-lock.json
 
 # ของที่ skill impeccable สร้างระหว่างออกแบบ (สรุปที่ใช้จริงอยู่ใน DESIGN.md แล้ว)
 .impeccable/
+.codex/
 
 # แคชของเครื่องมือ dev — สร้างใหม่ทุกครั้งที่รัน
 .pytest_cache/

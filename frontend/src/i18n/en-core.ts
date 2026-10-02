@@ -121,5 +121,6 @@ export const EN_CORE: Record<string, string> = {
   "ยังไม่มีข้อมูลของผู้เล่นคนนี้ในเดโมที่โหลดไว้": "No data for this player in the loaded demos yet",
   "เดโมทีมอาชีพ": "Pro demos",
   "แมตช์ของทีม": "Team matches",
-  "ตำแหน่งถูกเก็บวินาทีละครั้ง · ช่วงระหว่างวินาทีเป็นการวาดให้ต่อเนื่อง ไม่ใช่ข้อมูลจากเดโม": "Positions are recorded once per second · movement between seconds is interpolated, not demo data",
+  "ตำแหน่งถูกเก็บ 8 ครั้งต่อวินาที · การเคลื่อนที่ระหว่าง snapshot เป็นการ interpolate": "Positions are sampled eight times per second · movement between snapshots is interpolated",
+  "ข้อมูลเดิมเก็บตำแหน่งประมาณวินาทีละครั้ง · การเคลื่อนที่ระหว่าง snapshot เป็นการ interpolate": "Legacy data samples positions about once per second · movement between snapshots is interpolated",
 };

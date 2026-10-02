@@ -1,7 +1,7 @@
 // ตัวช่วยที่ทุกหน้าใช้ร่วมกัน: จัดรูปแบบข้อความ · state บน URL · หน้า 404
 import { useCallback, useState } from "react";
 import { Link, NavLink, useSearchParams } from "react-router-dom";
-import type { ReviewGrenade, ReviewTeam, Side } from "./api";
+import type { ReviewTeam, Side } from "./api";
 import { tr, useT } from "./i18n";
 import heIcon from "./assets/grenades/he.png";
 import flashIcon from "./assets/grenades/flash.png";
@@ -134,16 +134,9 @@ export function MapThumb({ map, className = "" }: { map: string | null | undefin
   );
 }
 export const nadeLabel = (t: string) => tr(NADE_LABEL[t] ?? t);
-/** ชนิดที่วาดบนแผนที่ได้จริง — decoy ไม่มีในนี้เพราะเดโมไม่บันทึกว่ามันไปตกที่ไหน */
-export const NADE_TYPES = ["smoke", "flash", "he", "molotov"] as const;
+/** ชนิด utility ที่ parser อ่านได้จากเดโม; decoy อาจมีเพียงเวลา/จุดขว้างในข้อมูลเก่า */
+export const NADE_TYPES = ["smoke", "flash", "he", "molotov", "decoy"] as const;
 export type NadeType = (typeof NADE_TYPES)[number];
-
-/** ระเบิดลูกนี้มีผลอยู่ ณ วินาที t ไหม — ควัน/ไฟ: ตั้งแต่ตกจนหมด · แฟลช/HE: แตกภายใน 3 วินาทีก่อนหน้า */
-export function nadeActiveAt(n: ReviewGrenade, t: number): boolean {
-  if (n.t_land == null) return false;
-  if (n.type === "smoke" || n.type === "molotov") return n.t_land <= t && t <= (n.t_end ?? n.t_land);
-  return n.t_land <= t && t - n.t_land <= 3;
-}
 
 /** ชื่อแมตช์ที่คนอ่านรู้เรื่อง — ไม่มีชื่อทีมในเดโมก็ใช้ชื่อไฟล์ */
 export const matchTitle = (m: { team_a: string | null; team_b: string | null; demo_file: string }) =>

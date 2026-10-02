@@ -218,18 +218,24 @@ export interface ReviewGrenade {
   t_end: number | null;
   throw_px: Px | null;
   land_px: Px | null;
-  r_px: number; // รัศมีควัน/ไฟเป็นพิกเซล (0 = วาดเป็นจุด)
+  trajectory?: { tick: number; t: number; px: Px }[];
+  trajectory_source?: "demo" | "endpoints" | "none";
+  r_px: number; // รัศมีเพื่อการแสดงผล ไม่ใช่รัศมีจริงจากเกม
+  radius_is_estimate?: boolean;
 }
 
 /**
- * โหมดเล่นย้อน: ตำแหน่งผู้เล่นรายวินาที เป็นพิกเซลบนภาพเรดาร์ (backend แปลงมาให้แล้ว)
- * คนที่ตายแล้วจะไม่มีในเฟรมถัด ๆ ไป · ช่วงระหว่างสองเฟรมหน้าเว็บวาดประมาณให้ต่อเนื่องเอง
+ * โหมดเล่นย้อน: snapshot ตำแหน่งเป็นพิกเซลบนภาพเรดาร์ (ข้อมูลใหม่ 8 Hz, เก่า 1 Hz)
  */
 export interface RoundPositions {
-  step: number; // วินาทีระหว่างสองเฟรม (1.0)
+  step: number; // ค่ากลางของวินาทีระหว่าง snapshot; ห้ามใช้เป็น index เพราะข้อมูลเก่า/ช่วงหายอาจไม่สม่ำเสมอ
+  sample_hz?: number;
   t_end: number;
   note: string; // ข้อความกำกับว่าอะไรคือข้อมูลจริง — ต้องแสดงให้ผู้ใช้เห็น
-  frames: { t: number; players: { steamid: string; px: Px; hp: number; side: Side | null; place: string | null }[] }[];
+  frames: { tick?: number; t: number; players: {
+    steamid: string; px: Px; hp: number; side: Side | null; place: string | null;
+    active_weapon?: string | null; armor?: number | null; has_helmet?: boolean | null; has_defuser?: boolean | null;
+  }[] }[];
 }
 
 export interface RoundDetail {
@@ -314,6 +320,38 @@ export interface Readability {
   note?: string;
 }
 
+export interface PlayerBehaviorSignal {
+  feature: string;
+  direction: "higher" | "lower";
+  z: number;
+  value: number;
+}
+export interface PlayerBehaviorProfile {
+  steamid: string;
+  name: string;
+  side: Side;
+  rounds: number;
+  available: boolean;
+  reason?: string;
+  minimum_rounds?: number;
+  role?: string;
+  distance?: number;
+  margin?: number;
+  signals?: PlayerBehaviorSignal[];
+}
+export interface PlayerBehavior {
+  available: boolean;
+  reason?: string;
+  demo?: string;
+  map?: string;
+  supported_map?: string;
+  unit?: string;
+  minimum_rounds?: number;
+  players?: PlayerBehaviorProfile[];
+  source?: { kind: "reference_only"; matches: number; version: number; model: string };
+  note?: string;
+}
+
 /** heatmap ของแมตช์เดียว — จุดเป็นพิกเซลบนภาพเรดาร์ (backend แปลงพิกัดให้แล้ว) */
 /** เศรษฐกิจของแมตช์ — ประเภทการซื้อทั้งทีมมาจาก view round_economy (views.sql) */
 export type TeamBuy = "pistol" | "eco" | "semi_eco" | "semi_buy" | "full";
@@ -365,6 +403,9 @@ export const api = {
     ),
   // --- หน้าเครื่องมือวิเคราะห์ ---
   readability: (demo: string) => request<Readability>(`/api/analysis/readability?demo=${enc(demo)}`),
+  playerBehavior: (demo: string, players?: string[] | null) => request<PlayerBehavior>(
+    `/api/analysis/player-behavior?demo=${enc(demo)}${players?.length ? `&players=${players.join(",")}` : ""}`,
+  ),
   analysisDeaths: (
     map: string, scope: MatchSource, side: string, demo?: string | null,
     rounds?: number[] | null, players?: string[] | null,

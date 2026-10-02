@@ -278,14 +278,15 @@ def test_bomb_icon_position_when_planted(sample_doc, model, frame):
 
 
 def test_grenades_in_round_payload(sample_doc, model, frame):
-    """ระเบิด: จุดตก/จุดขว้างเป็นพิกเซลบนเรดาร์ ชื่อ+สีคนขว้างตรงกับคนตาย ควันไม่มี event หมดใช้ค่าในเกม"""
+    """ส่งเฉพาะเวลา/ตำแหน่งจริง รวม trajectory และไม่เดา end time ที่ไม่มีในเดโม"""
     match, rnd, roster, in_round, kills = as_db_rows(sample_doc, 1)
     k = next(k for k in kills if k.get("victim_x") is not None)
     x, y = k["victim_x"], k["victim_y"]
     t0, tr = rnd["start_tick"], match["tickrate"]
     base = {"thrower_id": k["victim_id"], "thrower_name": k["victim_name"], "side": k["victim_side"], "throw_x": x, "throw_y": y}
     nades = [
-        {**base, "type": "smoke", "tick": t0 + 5 * tr, "land_x": x, "land_y": y, "land_tick": t0 + 7 * tr, "end_tick": None},
+        {**base, "type": "smoke", "tick": t0 + 5 * tr, "land_x": x, "land_y": y, "land_tick": t0 + 7 * tr, "end_tick": None,
+         "trajectory": [[t0 + 5 * tr, x, y, 12], [t0 + 6 * tr, x + 10, y + 5, 20]]},
         {**base, "type": "flash", "tick": t0 + 8 * tr, "land_x": x, "land_y": y, "land_tick": t0 + 9 * tr, "end_tick": t0 + 9 * tr},
         {**base, "type": "decoy", "tick": t0 + 10 * tr, "land_x": None, "land_y": None, "land_tick": None, "end_tick": None},
     ]
@@ -295,11 +296,28 @@ def test_grenades_in_round_payload(sample_doc, model, frame):
     death = next(x for x in d["deaths"] if x["victim"]["steamid"] == str(k["victim_id"]))
     assert smoke["land_px"] == death["victim_px"] and smoke["throw_px"] == death["victim_px"]
     assert smoke["thrower"]["name"] == death["victim"]["name"] and smoke["thrower"]["color"] == death["victim"]["color"]
-    assert (smoke["t_throw"], smoke["t_land"], smoke["t_end"]) == (5.0, 7.0, 27.0)   # ไม่มี end_tick -> 20 วินาที
+    assert (smoke["t_throw"], smoke["t_land"], smoke["t_end"]) == (5.0, 7.0, None)
+    assert [p["tick"] for p in smoke["trajectory"]] == [t0 + 5 * tr, t0 + 6 * tr]
+    assert smoke["trajectory_source"] == "demo"
     assert smoke["r_px"] == round(144 / frame.scale, 1) and flash["r_px"] == 0
+    assert smoke["radius_is_estimate"] is True and flash["radius_is_estimate"] is False
     assert flash["t_land"] == flash["t_end"] == 9.0
-    assert decoy["land_px"] is None and decoy["t_land"] is None
+    assert flash["trajectory_source"] == "endpoints"
+    assert decoy["land_px"] is None and decoy["t_land"] is None and decoy["trajectory_source"] == "none"
     assert detail(sample_doc, 1, model, frame)["grenades"] == []      # ไม่ส่งระเบิดมา = รายการว่าง ไม่พัง
+
+
+def test_legacy_grenade_without_trajectory_remains_compatible(sample_doc, model, frame):
+    match, rnd, roster, in_round, kills = as_db_rows(sample_doc, 1)
+    grenade = {"type": "he", "tick": rnd["start_tick"] + match["tickrate"],
+               "thrower_id": None, "thrower_name": None, "side": None,
+               "throw_x": None, "throw_y": None, "land_x": None, "land_y": None,
+               "land_tick": None, "end_tick": None}
+    result = build_round_detail(match=match, rnd=rnd, roster=roster, in_round=in_round,
+                                kills=kills, grenades=[grenade], frame=frame, model=model)["grenades"][0]
+    assert result["trajectory"] == []
+    assert result["trajectory_source"] == "none"
+    assert result["t_land"] is None and result["t_end"] is None
 
 
 def test_round_list(sample_doc):
@@ -335,7 +353,7 @@ def test_review_ui_text_follows_the_rules():
 
 
 # ---- โหมดเล่นย้อน: เฟรมตำแหน่งรายวินาที ----------------------------------------------------------
-def test_round_positions_are_one_frame_per_second_in_radar_pixels(frame):
+def test_round_positions_keep_real_ticks_and_support_legacy_one_hz(frame):
     """คนที่ตายแล้วหายไปจากเฟรมเอง · พิกัดถูกแปลงเป็นพิกเซลให้แล้ว · เวลาเริ่มที่ 0 = freeze จบ"""
     from backend.review import build_round_positions
     start, tickrate = 1000, 128
@@ -346,14 +364,40 @@ def test_round_positions_are_one_frame_per_second_in_radar_pixels(frame):
         # steam_id 2 ตายไปแล้ว -> ไม่มีแถวในวินาทีที่ 1
     ]
     out = build_round_positions(rows, start_tick=start, tickrate=tickrate, frame=frame)
-    assert out["step"] == 1.0 and out["t_end"] == 1.0
+    assert out["step"] == 1.0 and out["sample_hz"] == 1.0 and out["t_end"] == 1.0
     assert [f["t"] for f in out["frames"]] == [0.0, 1.0]
+    assert [f["tick"] for f in out["frames"]] == [1000, 1128]
     assert [len(f["players"]) for f in out["frames"]] == [2, 1]
     p = out["frames"][0]["players"][0]
     assert p["steamid"] == "1" and p["hp"] == 100 and p["side"] == "ct"
+    assert "active_weapon" not in p and "armor" not in p  # legacy payload stays compact
     assert all(0 <= v <= frame.size for v in p["px"])          # อยู่ในกรอบภาพเรดาร์
     assert out["frames"][1]["players"][0]["hp"] == 72
-    assert "วินาทีละครั้ง" in out["note"]                        # ต้องบอกผู้ใช้เสมอว่าอะไรคือข้อมูลจริง
+    assert "ข้อมูลเดิม" in out["note"]
+
+
+def test_round_positions_include_only_real_equipment_fields(frame):
+    from backend.review import build_round_positions
+    row = {"tick": 1000, "steam_id": 1, "side": "ct", "x": -1000.0, "y": 500.0,
+           "health": 100, "place": "A", "active_weapon": "M4A1-S", "armor": 87,
+           "has_helmet": True, "has_defuser": False}
+    player = build_round_positions([row], start_tick=1000, tickrate=128, frame=frame)["frames"][0]["players"][0]
+    assert player["active_weapon"] == "M4A1-S" and player["armor"] == 87
+    assert player["has_helmet"] is True and player["has_defuser"] is False
+
+
+def test_round_positions_deduplicate_same_player_tick(frame):
+    from backend.review import build_round_positions
+    row = {"tick": 1000, "steam_id": 1, "side": "ct", "x": -1000.0, "y": 500.0, "health": 100, "place": "A"}
+    out = build_round_positions([row, row], start_tick=1000, tickrate=128, frame=frame)
+    assert len(out["frames"]) == 1
+    assert len(out["frames"][0]["players"]) == 1
+
+
+def test_event_time_keeps_sub_sample_tick_precision():
+    """event ยังอิง tick จริง ไม่ถูกปัดเข้ากับ cadence 8 Hz ของ positions"""
+    from backend.review import _t
+    assert _t(1001, 1000, 128) == 0.007812
 
 
 def test_round_positions_without_radar_or_coords_are_dropped_not_guessed(frame):

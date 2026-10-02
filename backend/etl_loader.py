@@ -78,12 +78,14 @@ SQL_MATCH_PLAYERS = """
 """
 SQL_GRENADES = """
     INSERT INTO grenades (round_id, tick, thrower_id, side, type,
-                          throw_x, throw_y, land_x, land_y, land_tick, end_tick)
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11);
+                          throw_x, throw_y, land_x, land_y, land_tick, end_tick, trajectory)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb);
 """
 SQL_POSITIONS = """
-    INSERT INTO player_positions (match_id, round_num, tick, steam_id, side, x, y, z, health, place)
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10);
+    INSERT INTO player_positions (match_id, round_num, tick, steam_id, side, x, y, z, health, place,
+                                  active_weapon, armor, has_helmet, has_defuser)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+    ON CONFLICT (match_id, round_num, tick, steam_id) DO NOTHING;
 """
 
 
@@ -159,17 +161,22 @@ def _grenade_rows(grenades: list[dict], rid_of) -> list[tuple]:
     return [
         (rid_of(g), int(g["tick"]), _int(g.get("thrower_id")), g.get("side"), g["type"],
          _float(g.get("throw_x")), _float(g.get("throw_y")), _float(g.get("land_x")), _float(g.get("land_y")),
-         _int(g.get("land_tick")), _int(g.get("end_tick")))
+         _int(g.get("land_tick")), _int(g.get("end_tick")),
+         json.dumps(g["trajectory"], separators=(",", ":")) if g.get("trajectory") else None)
         for g in grenades if rid_of(g)
     ]
 
 
 def _position_rows(positions: list[dict], match_id: int, round_id_map: dict[int, int]) -> list[tuple]:
-    return [
+    rows = [
         (match_id, int(p["round_num"]), int(p["tick"]), int(p["steam_id"]), p.get("side"),
-         float(p["x"]), float(p["y"]), _float(p.get("z")), _int(p.get("health")), p.get("place"))
+         float(p["x"]), float(p["y"]), _float(p.get("z")), _int(p.get("health")), p.get("place"),
+         p.get("active_weapon"), _int(p.get("armor")),
+         bool(p["has_helmet"]) if p.get("has_helmet") is not None else None,
+         bool(p["has_defuser"]) if p.get("has_defuser") is not None else None)
         for p in positions if int(p.get("round_num", 0)) in round_id_map
     ]
+    return list(dict.fromkeys(rows))
 
 
 async def _replace_children(conn, match_id: int, doc: dict) -> dict:

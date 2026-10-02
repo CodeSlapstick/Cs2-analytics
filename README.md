@@ -64,7 +64,7 @@ session เป็น JWT ในคุกกี้ httpOnly อายุ 7 วั
   ทุกคนใช้ **สีฝั่ง + เลข 1–5** (ฟ้า CT · ส้ม T) เลขเดียวกันทั้งรายชื่อ แผนที่ และไทม์ไลน์ — วงทึบ = ตัวผู้เล่น (เล่นย้อน) · วงกลวง = จุดที่ตาย · จุดเล็ก + เส้น = คนยิง · ชื่อขึ้นบนแผนที่เฉพาะคนที่เลือก/ไฮไลต์
   **หน้ารอบไม่มีตัวเลขจากโมเดลเลย** — เป็นข้อเท็จจริงจากเดโมล้วน ๆ (ใครตายที่ไหน เมื่อไหร่ โดนใคร ระเบิดอะไรอยู่)
   กดจุดตาย = แผนที่เหลือเฉพาะระเบิดที่มีผลอยู่ ณ วินาทีนั้น (ควัน/ไฟที่ยังไม่หมด แฟลช/HE ที่เพิ่งแตก) และขึ้นชื่อคนยิง · กด ▶ = โหมดเล่นย้อน (โหลดตำแหน่งแล้วเล่นทันที)
-  ซูมแผนที่ด้วยล้อเมาส์หรือปุ่ม + / − (ลากเพื่อเลื่อนดู · ปุ่ม "เต็มแมพ" กลับมุมมองเดิม) · เปิด/ปิดระเบิดแยกทีละชนิด (สโมค · แฟลช · HE · โมโลตอฟ — decoy ไม่มีเพราะเดโมไม่บันทึกจุดตก)
+  ซูมแผนที่ด้วยล้อเมาส์หรือปุ่ม + / − (ลากเพื่อเลื่อนดู · ปุ่ม "เต็มแมพ" กลับมุมมองเดิม) · เปิด/ปิด utility แยกทีละชนิด (สโมค · แฟลช · HE · โมโลตอฟ/อินเซนดิอารี · decoy) · projectile ใช้ตำแหน่ง entity ราย tick จากเดโมเมื่อมี; ข้อมูลเก่าที่มีแค่จุดขว้าง/จุดตกใช้เส้นประแบบประมาณ และไม่สร้างจุดตกหรือเวลาที่ไม่มีในเดโม
 
 ### เครื่องมือวิเคราะห์ `/analysis`
 
@@ -150,7 +150,7 @@ cd frontend && npm install && npm run dev      # หน้าเว็บที�
 | GET | `/api/matches/{id}/status` | `queued / parsing / done / error` + `error_message` + สถานะงานในคิว |
 | GET | `/api/review/{demo_file}/rounds` | รายรอบ (ผู้ชนะ / จบด้วยอะไร / ตายกี่คน / คนแรกตายวินาทีที่เท่าไหร่) |
 | GET | `/api/review/{demo_file}/rounds/{n}` | ทีม / การตายทุกครั้งพร้อมพิกเซลบนเรดาร์ / ระเบิด / สรุปรอบ (payload ยังแนบบริบทต่อการตายจาก grid_ml1 มาด้วย แต่หน้าเว็บไม่แสดงแล้ว) |
-| GET | `/api/review/{demo_file}/rounds/{n}/positions` | ตำแหน่งผู้เล่นรายวินาทีของรอบ (โหมดเล่นย้อน) ~9 KB |
+| GET | `/api/review/{demo_file}/rounds/{n}/positions` | snapshot ตำแหน่งผู้เล่น 8 Hz ของรอบ (รองรับข้อมูลเก่า 1 Hz, ตอบแบบ gzip) |
 | GET | `/api/analysis/deaths?map=&scope=reference\|upload&side=&demo=` | จุดที่ผู้เล่นตาย นับลงกริด 32×32 เดียวกับโมเดล คืนสัดส่วนต่อช่อง (หน้า `/analysis` เอาสองชุดมาเทียบกัน) |
 | GET | `/api/players/{me\|steamid64}/summary` | สถิติรายคน: ภาพรวม + entry แยกฝั่ง + clutch 1v1–1v5 + Rating 2.0 (ประมาณการ) |
 | GET | `/api/players/{…}/matches` · `/maps` · `/weapons` | แมตช์ล่าสุด (แพ้/ชนะ + rating) · รวมรายแมพ · อาวุธที่ฆ่าบ่อย |
@@ -185,8 +185,8 @@ cd frontend && npm install && npm run dev      # หน้าเว็บที�
 | `match_players` | ใครเล่นในแมตช์ไหน | `match_id` `steam_id` `team_clan` (ชื่อทีมคงที่ทั้งแมตช์) `start_side` `rounds` |
 | `player_rounds` (= player_round_stats) | คนหนึ่งในรอบหนึ่ง | `side` `equip_value` `survived` + ฟีเจอร์: `buy_type` `kills` `deaths` `assists` `damage` `opening_kill/death` `trade_kills` `was_traded` `clutch_vs` `clutch_won` `kast` |
 | `kills` | การฆ่าหนึ่งครั้ง | `round_id` `tick` `attacker_id` `victim_id` `assister_id` ฝั่ง อาวุธ headshot พิกัดและ callout ของทั้งคู่ |
-| `player_positions` | คนหนึ่ง ณ วินาทีหนึ่ง (1 Hz) | `match_id` `round_num` `tick` `steam_id` `side` `x y z` `health` `place` — เฉพาะช่วงที่รอบเล่นและคนยังมีชีวิต |
-| `grenades` | ระเบิดหนึ่งลูก | `thrower_id` `type` (smoke/flash/he/molotov/decoy) `tick` · `throw_x/y` จุดขว้าง · `land_x/y` `land_tick` จุดตก · `end_tick` ควัน/ไฟหมด |
+| `player_positions` | snapshot ของผู้เล่นหนึ่งคน (ข้อมูลใหม่ 8 Hz) | `match_id` `round_num` `tick` `steam_id` `side` `x y z` `health` `place` `active_weapon` `armor` `has_helmet` `has_defuser` — tick จริง, ไม่ซ้ำต่อผู้เล่น, เฉพาะช่วงที่รอบเล่นและคนยังมีชีวิต; อุปกรณ์เป็น nullable เพื่อรองรับข้อมูลเก่า |
+| `grenades` | utility หนึ่งลูก | `thrower_id` `type` (smoke/flash/he/molotov/decoy) `tick` · `throw_x/y` จุดขว้าง · `land_x/y` `land_tick` จุดตก · `end_tick` เวลาหมดจริงเมื่อ parser อ่านได้ · `trajectory` จุด projectile `[tick,x,y,z]` จาก entity stream จริง (nullable เพื่อรองรับข้อมูลเก่า) |
 | `damages` | ดาเมจแต่ละครั้ง | (จาก Sprint 1) |
 | `users` | ผู้ใช้จาก Steam login เดิม | เลิกใช้แล้ว เก็บตารางไว้ไม่ลบ |
 
@@ -198,7 +198,13 @@ alembic downgrade -1        # ถอยหนึ่งรุ่น
 alembic history
 ```
 
-`player_positions` เก็บที่ 1 Hz เท่านั้น — เดโมบันทึก 64–128 tick/วินาที ถ้าเก็บทุก tick จะได้ ~2.7 ล้านแถวต่อแมตช์ (`backend/parser.py`)
+`player_positions` เก็บที่ 8 Hz โดยคำนวณ tick จาก tickrate ของเดโม (`POSITION_SAMPLE_HZ` ใน `backend/parser.py`) — ประมาณ 8 เท่าของข้อมูลเดิม 1 Hz หรือราว 168,000 แถวต่อแมตช์จากฐานเดิม ~21,000 แถว แต่ยังเล็กกว่าการเก็บทุก tick มาก ข้อมูลที่ parse ไว้เดิมยังเล่นที่ 1 Hz ได้ ส่วน positions API group ตาม tick, ไม่ส่ง field อุปกรณ์ที่เป็น `null` ของข้อมูลเก่า และเปิด gzip เพื่อลด response โดยไม่ทิ้งความถูกต้อง ตัวอย่างรอบ legacy 54 วินาทีมี 427 แถว: JSON 41,013 bytes เหลือ 4,422 bytes เมื่อ gzip; รอบใหม่ 8 Hz จะมีจำนวน snapshot และ raw payload ใกล้เคียง 8 เท่าตามความยาวรอบและจำนวนผู้เล่นที่ยังมีชีวิต
+
+Projectile trajectory ไม่เพิ่มจำนวนแถว `grenades` (ยังหนึ่งแถวต่อลูก) แต่เพิ่ม JSONB ในแถวนั้นตามจำนวน tick จริง จาก demo ทดสอบ 6 รอบ/135 ลูกมี 20,545 จุด เพิ่ม JSON ดิบประมาณ 0.78 MB ต่อแมตช์; round API เฉลี่ยประมาณ 168 KB ก่อน gzip หรือ 36 KB หลัง gzip (รอบสูงสุดที่วัด 247 KB/52 KB) จึงคง field ที่อ่านง่ายและใช้ HTTP gzip แทนการลดจุดหรือความแม่นยำ
+
+ระหว่าง playback ผู้เล่นที่ยังมีชีวิตแสดงชื่อ roster ตลอดเวลา ป้ายชื่อวางหลบ marker แบบ deterministic และมี leader line เมื่อจำเป็น ชื่อยาวตัดด้วย `…` แต่ชื่อเต็มยังอยู่ใน tooltip/accessible label ส่วน active weapon, armor, helmet และ defuse kit แสดงเฉพาะเมื่อ parser อ่านค่าจริงได้ คอลัมน์เหล่านี้ nullable จึงไม่ทำให้ข้อมูลเก่าแตก
+
+Player Behavior บน `/analysis` โหลด `output/player_role.json` เข้า cache และทำ inference จากข้อมูลแมตช์ในฐานข้อมูลเท่านั้น ไม่ train ระหว่าง request และไม่ป้อนแมตช์ upload กลับเข้า reference model หน่วยวิเคราะห์คือผู้เล่นหนึ่งคน × หนึ่งแมตช์ × หนึ่งฝั่ง โดยต้องมีจำนวนรอบขั้นต่ำตาม artifact ชื่อ role เป็นเพียงการตีความ centroid ของ KMeans ไม่ใช่คะแนนฝีมือ บทบาทถาวร หรือ probability; ถ้า artifact หาย แมพไม่รองรับ หรือรอบไม่พอ API จะคืนสถานะ unavailable อย่างชัดเจน Endpoint คือ `GET /api/analysis/player-behavior?demo=...&players=...`
 
 ## ทดสอบและ CI
 

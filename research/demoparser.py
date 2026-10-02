@@ -121,6 +121,176 @@ def add_round_review_columns(kills: pl.DataFrame) -> pl.DataFrame:
     ).drop(raw_clan)
 
 
+ROLE_EVENT_COLUMNS = [
+    "round_time_seconds",
+    "is_enemy_kill",
+    "is_live_round_kill",
+    "round_kill_order",
+    "is_opening_kill",
+    "is_opening_death",
+    "is_early_engagement",
+    "is_postplant_kill",
+    "round_phase",
+    "trade_kill_count",
+    "is_trade_kill",
+    "victim_was_traded",
+    "is_site_engagement",
+    "is_flash_assisted_kill",
+    "attacker_won_round",
+]
+
+# ลำดับคอลัมน์สำหรับคนอ่าน: บริบทก่อน ตามด้วยสัญญาณ role และผู้เล่นแต่ละฝ่าย
+# สคริปต์ปลายทางเลือกคอลัมน์ด้วยชื่ออยู่แล้ว การจัดลำดับจึงไม่เปลี่ยนความหมายของ schema
+ALL_KILLS_COLUMN_GROUPS = {
+    "Match & Round": [
+        "demo_file", "map_name", "tickrate", "round_num", "tick", "round_start_tick",
+        "round_time_seconds", "bomb_plant_tick", "round_phase", "round_winner_side",
+        "round_winner", "round_end_reason", "ct_side", "t_side",
+    ],
+    "Role Signals": [
+        "is_enemy_kill", "is_live_round_kill", "round_kill_order", "is_opening_kill",
+        "is_opening_death", "is_early_engagement", "is_postplant_kill",
+        "is_site_engagement", "is_flash_assisted_kill", "attacker_won_round",
+        "trade_kill_count", "victim_was_traded", "is_trade_kill",
+    ],
+    "Attacker": [
+        "attacker_name", "attacker_steamid", "attacker_side", "attacker_team_clan",
+        "attacker_place", "attacker_X", "attacker_Y", "attacker_Z", "attacker_health",
+        "attackerblind", "attacker_blind", "attackerinair",
+    ],
+    "Victim": [
+        "victim_name", "victim_steamid", "victim_side", "victim_team_clan", "victim_place",
+        "victim_X", "victim_Y", "victim_Z", "victim_health",
+    ],
+    "Assister / Support": [
+        "assister_name", "assister_steamid", "assister_side", "assister_team_clan",
+        "assister_place", "assister_X", "assister_Y", "assister_Z", "assister_health",
+        "assistedflash",
+    ],
+    "Combat": [
+        "weapon", "headshot", "hitgroup", "distance", "dmg_health", "dmg_armor",
+        "penetrated", "thrusmoke", "noscope", "dominated", "revenge", "wipe",
+    ],
+    "Technical": [
+        "weapon_fauxitemid", "weapon_itemid", "weapon_originalowner_xuid", "noreplay",
+    ],
+}
+
+
+def order_all_kills_columns(kills: pl.DataFrame) -> pl.DataFrame:
+    """เรียง schema เป็นหมวด และเก็บคอลัมน์จาก parser รุ่นใหม่ที่ยังไม่รู้จักไว้ท้ายไฟล์"""
+    grouped = [column for columns in ALL_KILLS_COLUMN_GROUPS.values() for column in columns]
+    known = [column for column in grouped if column in kills.columns]
+    extra = [column for column in kills.columns if column not in grouped]
+    return kills.select(known + extra)
+
+
+def add_role_event_columns(kills: pl.DataFrame) -> pl.DataFrame:
+    """เพิ่มฟีเจอร์ต่อคิลที่ใช้รวมเป็น player-role profile ได้โดยไม่แก้นิยามภายหลัง
+
+    คอลัมน์เหล่านี้ยังเป็นข้อเท็จจริงระดับ event ไม่ใช่ role label:
+    - opening = enemy kill แรกของรอบ
+    - early = เกิดภายใน 25 วินาทีหลัง freeze time จบ
+    - trade = ฆ่าคนที่เพิ่งฆ่าเพื่อนร่วมทีมภายใน 5 วินาที (นิยามเดียวกับ backend/features.py)
+    - postplant = tick ของคิลอยู่หลัง bomb_plant_tick
+
+    all_kills ไม่มี grenade throws, player positions หรือ planter id จึงไม่สร้างค่าปลอมสำหรับ
+    utility, movement และ bomb carrier; โมเดลต้องอ่านตารางเหล่านั้นจาก DB เมื่อพร้อม
+    """
+    if kills.is_empty():
+        return kills
+
+    required = {
+        "demo_file", "round_num", "tick", "tickrate", "round_start_tick", "bomb_plant_tick",
+        "attacker_steamid", "victim_steamid", "attacker_side", "victim_side",
+        "attacker_place", "victim_place", "assistedflash", "round_winner_side",
+    }
+    missing = sorted(required - set(kills.columns))
+    if missing:
+        raise ValueError(f"all_kills ขาดคอลัมน์ต้นทางสำหรับ role features: {', '.join(missing)}")
+
+    # ลบ derived columns รุ่นเดิมก่อนเพื่อให้รันซ้ำกับ CSV/cache ที่เคย enrich แล้วได้ผลเดิม
+    existing = [column for column in ROLE_EVENT_COLUMNS if column in kills.columns]
+    if existing:
+        kills = kills.drop(existing)
+
+    ordered = (kills.sort(["demo_file", "round_num", "tick"])
+               .with_row_index("_role_row"))
+    rate = pl.col("tickrate").fill_null(128).clip(lower_bound=1)
+    enemy = (
+        pl.col("attacker_steamid").is_not_null()
+        & pl.col("attacker_side").is_in(["ct", "t"])
+        & pl.col("victim_side").is_in(["ct", "t"])
+        & (pl.col("attacker_side") != pl.col("victim_side"))
+    )
+    ordered = ordered.with_columns(
+        enemy.alias("is_enemy_kill"),
+        (enemy & pl.col("round_start_tick").is_not_null() & (pl.col("tick") >= pl.col("round_start_tick")))
+        .alias("is_live_round_kill"),
+        pl.when(pl.col("round_start_tick").is_not_null() & (pl.col("tick") >= pl.col("round_start_tick")))
+        .then((pl.col("tick") - pl.col("round_start_tick")) / rate)
+        .otherwise(None)
+        .alias("round_time_seconds"),
+    ).with_columns(
+        pl.when(pl.col("is_live_round_kill"))
+        .then(pl.col("is_live_round_kill").cast(pl.Int64).cum_sum().over(["demo_file", "round_num"]))
+        .otherwise(None)
+        .cast(pl.Int64)
+        .alias("round_kill_order"),
+        (pl.col("is_live_round_kill") & pl.col("round_time_seconds").is_between(0, 25))
+        .alias("is_early_engagement"),
+        (
+            pl.col("is_live_round_kill")
+            & pl.col("bomb_plant_tick").is_not_null()
+            & (pl.col("tick") >= pl.col("bomb_plant_tick"))
+        ).alias("is_postplant_kill"),
+    ).with_columns(
+        pl.when(pl.col("is_postplant_kill")).then(pl.lit("postplant")).otherwise(pl.lit("preplant"))
+        .alias("round_phase"),
+        (
+            pl.col("attacker_place").fill_null("").str.starts_with("Bombsite")
+            | pl.col("victim_place").fill_null("").str.starts_with("Bombsite")
+        ).alias("is_site_engagement"),
+        pl.col("assistedflash").fill_null(False).cast(pl.Boolean).alias("is_flash_assisted_kill"),
+        (
+            pl.col("is_enemy_kill")
+            & (pl.col("attacker_side") == pl.col("round_winner_side"))
+        ).alias("attacker_won_round"),
+    ).with_columns(
+        (pl.col("round_kill_order") == 1).fill_null(False).alias("is_opening_kill"),
+        (pl.col("round_kill_order") == 1).fill_null(False).alias("is_opening_death"),
+    )
+
+    # Trade ต้องมองย้อนหลายแถวและหนึ่งคิลอาจ trade ได้มากกว่าหนึ่ง death จึงคำนวณ
+    # เป็นลำดับ event โดยตรงแทน window expression ที่จะทำข้อมูลกรณีนี้หาย
+    trade_count = [0] * len(ordered)
+    victim_traded = [False] * len(ordered)
+    for round_rows in ordered.partition_by(["demo_file", "round_num"], maintain_order=True):
+        prior: list[dict] = []
+        for row in round_rows.iter_rows(named=True):
+            if not row["is_live_round_kill"]:
+                continue
+            tickrate = row["tickrate"] or 128
+            matched = [
+                death for death in prior
+                if row["tick"] > death["tick"]
+                and row["tick"] <= death["tick"] + 5 * tickrate
+                and row["victim_steamid"] == death["attacker_steamid"]
+                and row["attacker_side"] == death["victim_side"]
+            ]
+            trade_count[row["_role_row"]] = len(matched)
+            for death in matched:
+                victim_traded[death["_role_row"]] = True
+            prior.append(row)
+
+    return ordered.with_columns(
+        pl.Series("trade_kill_count", trade_count, dtype=pl.Int64),
+        pl.Series("victim_was_traded", victim_traded, dtype=pl.Boolean),
+    ).with_columns(
+        (pl.col("trade_kill_count") > 0).alias("is_trade_kill"),
+    ).drop("_role_row")
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description="รวม kills จากเดโมทั้งโฟลเดอร์เป็น csv เดียว")
     ap.add_argument("--limit", type=int, help="อ่านแค่กี่ไฟล์ (ไว้ทดสอบ)")
@@ -162,7 +332,7 @@ def main() -> None:
         sys.exit("ไม่มีไฟล์ไหนอ่านสำเร็จเลย")
 
     # how="diagonal_relaxed" กันกรณีเดโมบางไฟล์มีคอลัมน์ไม่ครบ (คนละเวอร์ชันเกม) ให้เติม null แทนที่จะ error
-    final = pl.concat(frames, how="diagonal_relaxed")
+    final = order_all_kills_columns(add_role_event_columns(pl.concat(frames, how="diagonal_relaxed")))
     args.out.parent.mkdir(parents=True, exist_ok=True)
     final.write_csv(args.out)
 

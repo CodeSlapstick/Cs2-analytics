@@ -8,6 +8,8 @@ import {
   matchesQuery,
   type Match,
   type MatchSource,
+  type PlayerBehavior,
+  type PlayerBehaviorProfile,
   type ReadRound,
   type Readability,
   type ScoreRow,
@@ -24,6 +26,8 @@ import {
   sideLabel,
 } from "./utils";
 import { useT } from "./i18n";
+import { PlayerIcon } from "./icons/player-icon";
+import { DatabaseSearchIcon } from "./icons/database-search-icon";
 
 /**
  * หน้าเครื่องมือวิเคราะห์ — สามคำถามเกี่ยวกับแมตช์ของทีมตัวเอง
@@ -32,8 +36,8 @@ import { useT } from "./i18n";
  *   เทียบกับทีมอาชีพ    ช่องไหนเราตายบ่อยกว่าชุดอ้างอิง (คิดเป็นสัดส่วน)
  *   อ่านทางเราออกไหม   ทายไซต์ที่ทีมจะเข้าจากตำแหน่งที่ยืน แล้วดูว่าอ่านออกเร็วแค่ไหน
  *
- * โมเดล (research/grid_ml1.py, site_ml.py) อยู่หลังบ้านเท่านั้น — หน้าเว็บไม่มีที่ไหนให้ดูผลโมเดลตรง ๆ
- * และไม่มีศัพท์ ML บนหน้าจอ ผู้ใช้เห็นแค่ข้อเท็จจริงจากเดโมกับตัวเลขเทียบ (ตัดสินใจ 2026-09-18)
+ * ผลจากโมเดลอยู่เฉพาะหน้า Analysis และต้องบอกแหล่งที่มา/ข้อจำกัดชัดเจน
+ * หน้า Round Review ยังคงแสดงข้อเท็จจริงจากเดโมเท่านั้น
  *
  * ประเด็นสำคัญ: เดโมที่ผู้ใช้อัปโหลดไม่เคยถูกใช้เทรนโมเดล (คนละโฟลเดอร์ คนละ source ในฐานข้อมูล)
  * หน้านี้จึงเป็นการ "วัดของเราเทียบกับชุดอ้างอิง" ไม่ใช่การเอาข้อมูลตัวเองไปสอนแล้ววัดกับตัวเอง
@@ -136,6 +140,13 @@ export function AnalysisPage() {
     queryKey: ["readability", target],
     queryFn: () => api.readability(target),
     enabled: mode === "read" && !!target,
+    staleTime: 5 * 60_000,
+    placeholderData: keepPreviousData,
+  });
+  const behaviorQ = useQuery({
+    queryKey: ["player-behavior", target, selPlayers],
+    queryFn: () => api.playerBehavior(target, selPlayers),
+    enabled: !!target && !noPlayersPicked,
     staleTime: 5 * 60_000,
     placeholderData: keepPreviousData,
   });
@@ -255,8 +266,80 @@ export function AnalysisPage() {
           )}
         </div>
       )}
+      <PlayerBehaviorSection data={behaviorQ.data} loading={behaviorQ.isLoading} error={behaviorQ.error as Error | null} />
     </div>
   );
+}
+
+const FEATURE_LABELS: Record<string, string> = {
+  assists_per_round: "การช่วยต่อรอบ",
+  flash_assists_per_round: "การช่วยด้วยแฟลชต่อรอบ",
+  opening_attempt_rate: "การมีส่วนร่วมในจังหวะแรก",
+  opening_kill_rate: "การคิลแรก",
+  early_engagement_rate: "การปะทะช่วงต้นรอบ",
+  trade_kills_per_round: "การเทรดคิลต่อรอบ",
+  traded_death_rate: "การตายที่เพื่อนเทรดคืน",
+  postplant_kills_per_round: "คิลหลังวางบอมบ์ต่อรอบ",
+  site_engagement_rate: "การปะทะบริเวณไซต์",
+  avg_kill_time: "เวลาคิลเฉลี่ย",
+  place_diversity: "จำนวนพื้นที่ที่มีเหตุการณ์",
+  place_concentration: "ความถี่ในพื้นที่หลัก",
+};
+
+function roleLabel(role: string): string {
+  const names: Record<string, string> = {
+    Entry: "Entry", Support: "Support", Lurker: "Lurker", Trader: "Trader",
+    "Bomb carrier / Site executor": "Bomb carrier / Site executor",
+    "Site Anchor": "Site Anchor", Rotator: "Rotator", "Aggressive Defender": "Aggressive Defender",
+    "Retake Player": "Retake Player", "Hybrid / Unresolved": "Hybrid / Unresolved",
+  };
+  return names[role] ?? role;
+}
+
+export function PlayerBehaviorSection({ data, loading, error }: { data?: PlayerBehavior; loading: boolean; error: Error | null }) {
+  const { t } = useT();
+  return <section className="behavior" aria-labelledby="behavior-title" data-testid="player-behavior">
+    <header className="behavior-head">
+      <div className="behavior-title-icon"><PlayerIcon /></div>
+      <div>
+        <h2 id="behavior-title">{t("รูปแบบการเล่นของผู้เล่น")}</h2>
+        <p className="muted">{t("จัดกลุ่มพฤติกรรมแยกฝั่ง T และ CT ของแมตช์ที่เลือก โดยเทียบกับรูปแบบจากชุดอ้างอิง")}</p>
+      </div>
+    </header>
+    {loading && <p className="muted behavior-state">{t("กำลังคำนวณรูปแบบการเล่น…")}</p>}
+    {error && <p className="err behavior-state">{t("โหลดรูปแบบการเล่นไม่ได้: {msg}", { msg: error.message })}</p>}
+    {!loading && !error && data && !data.available && <div className="behavior-state behavior-empty">
+      <DatabaseSearchIcon /><div><b>{t("ยังแสดงรูปแบบการเล่นไม่ได้")}</b><p className="muted">{t(`player_behavior_${data.reason ?? "unavailable"}`)}</p></div>
+    </div>}
+    {!loading && !error && data?.available && <>
+      <div className="behavior-grid">
+        {(["t", "ct"] as const).map((side) => <BehaviorSide key={side} side={side} profiles={(data.players ?? []).filter((p) => p.side === side)} />)}
+      </div>
+      <footer className="behavior-note muted">
+        {t("ชื่อบทบาทเป็นคำอธิบาย centroid ของโมเดล unsupervised ไม่ใช่ระดับฝีมือหรือบทบาทถาวร คะแนนระยะและ margin ไม่ใช่ความน่าจะเป็น")}
+        {data.source && <> · {t("ชุดอ้างอิง {n} แมตช์ · โมเดล v{v}", { n: data.source.matches, v: data.source.version })}</>}
+      </footer>
+    </>}
+  </section>;
+}
+
+function BehaviorSide({ side, profiles }: { side: "ct" | "t"; profiles: PlayerBehaviorProfile[] }) {
+  const { t } = useT();
+  return <div className={`behavior-side side-${side}`}>
+    <h3><span className={`badge b-${side}`}>{sideLabel(side)}</span> {t("พฤติกรรมตามฝั่ง")}</h3>
+    {profiles.length === 0 ? <p className="muted">{t("ไม่มีผู้เล่นจากฝั่งนี้ในตัวกรอง")}</p> : profiles.map((p) =>
+      <article className="behavior-card" key={`${p.steamid}-${p.side}`} data-available={p.available}>
+        <div className="behavior-player"><b title={p.name}>{p.name}</b><span className="muted">{t("{n} รอบ", { n: p.rounds })}</span></div>
+        {!p.available ? <p className="muted">{t("ข้อมูลยังไม่พอ ต้องมีอย่างน้อย {n} รอบในฝั่งนี้", { n: p.minimum_rounds ?? 5 })}</p> : <>
+          <strong className="behavior-role">{roleLabel(p.role ?? "Hybrid / Unresolved")}</strong>
+          <ul className="behavior-signals">{(p.signals ?? []).map((signal) => <li key={signal.feature}>
+            <span>{t(FEATURE_LABELS[signal.feature] ?? signal.feature)}</span>
+            <small>{signal.direction === "higher" ? t("พบมากกว่าค่ากลางอ้างอิง") : t("พบน้อยกว่าค่ากลางอ้างอิง")}</small>
+          </li>)}</ul>
+          <p className="behavior-margin muted">{t("ระยะ {d} · ส่วนต่างจากกลุ่มถัดไป {m}", { d: p.distance ?? 0, m: p.margin ?? 0 })}</p>
+        </>}
+      </article>)}
+  </div>;
 }
 
 // ================================================================================================

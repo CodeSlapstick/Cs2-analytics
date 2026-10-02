@@ -71,8 +71,8 @@ def test_every_event_belongs_to_a_round_and_a_known_player(doc):
     assert all(n == 10 for n in per_round.values())
 
 
-def test_positions_are_one_hz_and_alive_only(doc):
-    """ตำแหน่งต้องเป็นวินาทีละครั้ง (ห่างกัน = tickrate) ไม่เกิน 10 คนต่อ tick และไม่มีคนตายปนมา"""
+def test_positions_are_eight_hz_and_alive_only(doc):
+    """ตำแหน่งใกล้ 8 Hz ไม่เกิน 10 คนต่อ tick และไม่มีคนตายปนมา"""
     pos = doc["positions"]
     assert pos and doc["counts"]["positions"] == len(pos)
     tickrate = doc["match"]["tickrate"]
@@ -82,7 +82,9 @@ def test_positions_are_one_hz_and_alive_only(doc):
         assert p["side"] in ("ct", "t") and p["health"] > 0
     for n, ticks in by_round.items():
         ts = sorted(ticks)
-        assert all(b - a == tickrate for a, b in zip(ts, ts[1:], strict=False)), f"รอบ {n} ไม่ใช่ 1 Hz"
+        gaps = [b - a for a, b in zip(ts, ts[1:], strict=False)]
+        assert gaps and all(abs(g - tickrate / 8) <= 1 for g in gaps), f"รอบ {n} ไม่ใกล้ 8 Hz"
+        assert len(ts) == len(set(ts))
         per_tick = {}
         for p in pos:
             if p["round_num"] == n:
@@ -91,6 +93,16 @@ def test_positions_are_one_hz_and_alive_only(doc):
     # ไม่มี tick ก่อน freeze จบ หรือหลังรอบจบ
     rounds = {r["round_num"]: r for r in doc["rounds"]}
     assert all(rounds[p["round_num"]]["start_tick"] <= p["tick"] < rounds[p["round_num"]]["end_tick"] for p in pos)
+
+
+@pytest.mark.parametrize("tickrate", [64, 100, 128])
+def test_position_sample_ticks_are_unique_and_near_eight_hz(tickrate):
+    from backend.parser import position_sample_ticks
+    ticks = position_sample_ticks(1000, 1000 + tickrate * 10, tickrate)
+    assert len(ticks) == 80
+    assert len(ticks) == len(set(ticks))
+    assert ticks[0] == 1000
+    assert all(abs((b - a) - tickrate / 8) <= 1 for a, b in zip(ticks, ticks[1:], strict=False))
 
 
 def test_team_clan_and_bomb_position(doc):
@@ -114,6 +126,14 @@ def test_grenades_have_throw_and_landing_positions(doc):
     assert len(landed) / len(nades) >= 0.8
     assert all(g["throw_x"] is not None for g in nades)
     assert all(g["tick"] <= g["land_tick"] for g in landed)
+
+    # awpy/demoparser2 คืน entity position จริงราย tick; parser ต้องแนบโดยไม่สร้าง tick ซ้ำ
+    tracked = [g for g in nades if g.get("trajectory")]
+    assert tracked
+    for g in tracked:
+        ticks = [point[0] for point in g["trajectory"]]
+        assert ticks == sorted(set(ticks))
+        assert all(g["tick"] <= tick <= (g["land_tick"] or tick) for tick in ticks)
 
     # end_tick ว่างได้เฉพาะควัน/โมโลตอฟ และต้องเป็นเพราะรอบจบก่อนมันหมดอายุ
     # เดโมไม่มี event ปิดให้ parser จึงบันทึก None ตามความจริงแทนการเดาเวลาดับ
@@ -159,4 +179,24 @@ def test_grenade_throw_is_matched_to_its_own_landing():
     assert by[(1, 120)]["land_tick"] == by[(1, 120)]["end_tick"] == 140   # แฟลชหมดทันทีที่แตก
     assert by[(1, 130)]["land_x"] is None              # decoy ไม่มี event ตอนตก แต่ยังนับเป็นหนึ่งลูก
     assert len(by) == len(throws)
+
+
+def test_projectile_trajectory_uses_real_points_once_and_never_fabricates():
+    from backend.parser import attach_trajectories
+
+    grenades = [
+        {"tick": 100, "thrower_id": 1, "type": "smoke", "throw_x": 0.0, "throw_y": 0.0, "land_tick": 103},
+        {"tick": 200, "thrower_id": 1, "type": "smoke", "throw_x": 50.0, "throw_y": 50.0, "land_tick": 202},
+        {"tick": 300, "thrower_id": 2, "type": "flash", "throw_x": 0.0, "throw_y": 0.0, "land_tick": None},
+    ]
+    points = [
+        {"thrower_id": 1, "type": "smoke", "entity_id": 9, "tick": tick, "x": x, "y": y, "z": z}
+        for tick, x, y, z in [(100, 0, 0, 4), (101, 5, 2, 8), (102, 10, 3, 5),
+                              (200, 50, 50, 4), (201, 55, 52, 7), (202, 60, 53, 3)]
+    ]
+
+    first, second, missing = attach_trajectories(grenades, points, 64)
+    assert [p[0] for p in first["trajectory"]] == [100, 101, 102]
+    assert [p[0] for p in second["trajectory"]] == [200, 201, 202]
+    assert missing["trajectory"] is None
 

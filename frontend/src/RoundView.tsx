@@ -1,4 +1,4 @@
-import { type KeyboardEvent, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { type KeyboardEvent, type MouseEvent as ReactMouseEvent, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   api,
@@ -7,7 +7,6 @@ import {
   type ReviewGrenade,
   type ReviewTeam,
   type RoundDetail,
-  type RoundPositions,
 } from "./api";
 import {
   clampZoom,
@@ -15,8 +14,6 @@ import {
   fmtT,
   MAX_ZOOM,
   NADE_COLOR,
-  NADE_ICON,
-  nadeActiveAt,
   nadeLabel,
   NADE_TYPES,
   type NadeType,
@@ -28,6 +25,9 @@ import {
   weaponLabel,
 } from "./utils";
 import { useT } from "./i18n";
+import { playersAt, type LivePlayer } from "./playback";
+import { effectAt, nadeVisibleAt, projectileAt, projectileTrailAt } from "./grenadePlayback";
+import { EquipmentIcon, UtilityIcon, WeaponIcon } from "./gameIcons";
 
 /** แถวที่กดได้ (li ในไทม์ไลน์ / บริบท) — คลิก หรือ Enter / Space จากคีย์บอร์ด */
 const pressable = (fn: () => void) => ({
@@ -62,6 +62,7 @@ export function RoundView({ demo, roundNum, view, setView }: RoundViewProps) {
   // ต่างจาก view.player ที่เป็นการ "กดค้างไว้" และติดไปกับลิงก์ที่แชร์ได้
   const [hover, setHover] = useState<string | null>(null);
   const { t } = useT();
+  const reducedMotion = useReducedMotion();
   const q = useQuery({
     queryKey: ["review-round", demo, roundNum],
     queryFn: () => api.reviewRound(demo, roundNum),
@@ -154,7 +155,6 @@ export function RoundView({ demo, roundNum, view, setView }: RoundViewProps) {
   // โหมดเล่นย้อนนับเฉพาะการตายที่อยู่ในช่วงเวลาของรอบจริง ไม่งั้นคนคนเดียวจะโผล่ทั้งแบบยังไม่ตายและตายแล้วพร้อมกัน
   // (การตายเหล่านั้นยังอยู่ครบในแผนที่ปกติและในไทม์ไลน์ ไม่ได้ถูกซ่อนจากผู้ใช้)
   const shownDeaths = view.playback ? d.deaths.filter((x) => time > 0 && x.t_round != null && x.t_round >= 0 && x.t_round <= time) : d.deaths;
-  const liveNades = view.playback ? shownNades.filter((n) => time > 0 && nadeActiveAt(n, time)) : shownNades;
   const plantT = d.round.bomb_planted_t;
   const shownBomb = view.playback && (time === 0 || (plantT != null && time < plantT)) ? null : d.round.bomb;
   // ชี้เมาส์อยู่ให้ชนะการกดค้าง — ปล่อยเมาส์แล้วกลับไปที่ตัวที่กดค้างไว้เหมือนเดิม
@@ -185,7 +185,7 @@ export function RoundView({ demo, roundNum, view, setView }: RoundViewProps) {
                     disabled={n === 0}
                     onChange={(e) => setView({ nades: e.target.checked ? [...view.nades, k] : view.nades.filter((x) => x !== k) })}
                   />
-                  <img className="nade-ico" src={NADE_ICON[k]} alt="" />
+                  <NadeMiniIcon type={k} />
                   {nadeLabel(k)} {n}
                 </label>
               );
@@ -212,6 +212,7 @@ export function RoundView({ demo, roundNum, view, setView }: RoundViewProps) {
             onHighlight={(p) => setView({ player: p })}
             onHover={setHover}
             playback={view.playback}
+            live={live}
           />
           {view.player && (
             <button type="button" className="link-btn" onClick={() => setView({ player: null })}>
@@ -227,8 +228,10 @@ export function RoundView({ demo, roundNum, view, setView }: RoundViewProps) {
                 radar={d.radar}
                 deaths={shownDeaths}
                 bomb={shownBomb}
-                grenades={liveNades}
+                grenades={shownNades}
                 live={live}
+                playbackTime={view.playback ? time : null}
+                reducedMotion={reducedMotion}
                 zoom={view.zoom}
                 center={view.center}
                 onView={(zoom, center) => setView({ zoom, center })}
@@ -333,12 +336,12 @@ export function RoundView({ demo, roundNum, view, setView }: RoundViewProps) {
           {view.playback && pos && pos.frames.length > 0 && <p className="muted small pb-note">{t(pos.note)}</p>}
           {anyNadeOn && (
             <div className="legend">
-              {(["smoke", "flash", "he", "molotov"] as const).map((t) => (
+              {NADE_TYPES.map((t) => (
                 <span key={t}>
-                  <img className="nade-ico" src={NADE_ICON[t]} alt="" /> {nadeLabel(t)}
+                  <NadeMiniIcon type={t} /> {nadeLabel(t)}
                 </span>
               ))}
-              <span className="muted">{t("ชื่อข้างวง = คนขว้าง · เส้นประ = ทางที่ขว้างมา")}</span>
+              <span className="muted">{t("เส้นทึบ = ตำแหน่ง projectile จากเดโม · เส้นประ = เส้นประมาณจากจุดขว้างถึงจุดตก · วง utility เป็นขนาดเพื่อการแสดงผล")}</span>
             </div>
           )}
         </section>
@@ -363,16 +366,16 @@ export function RoundView({ demo, roundNum, view, setView }: RoundViewProps) {
 /** ความเร็วที่เลือกได้ในโหมดเล่นย้อน */
 const SPEEDS = [1, 2, 4] as const;
 
-/** ผู้เล่นหนึ่งคนบนแผนที่ ณ วินาทีที่กำลังดู */
-export interface LivePlayer {
-  steamid: string;
-  px: [number, number];
-  hp: number;
-  side: string | null;
-  place: string | null;
-  name: string;
-  color: string;
-  slot: number | null;   // หมายเลข 1-5 ที่แสดงบนตัวผู้เล่น — คงที่ทั้งแมตช์ (backend/review.py player_slots)
+function useReducedMotion(): boolean {
+  const [reduced, setReduced] = useState(false);
+  useEffect(() => {
+    const media = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const update = () => setReduced(media.matches);
+    update();
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, []);
+  return reduced;
 }
 
 // ------------------------------------------------------------------ สีของทีมบนแผนที่ (โหมดเล่นย้อน)
@@ -382,33 +385,6 @@ export interface LivePlayer {
 /** เส้นทาง ✕ สองขีดไขว้กัน รัศมี r รอบจุด (0,0) — ใช้วาดคนที่ตายแล้วในโหมดเล่นย้อน */
 const crossPath = (r: number) => `M${-r},${-r} L${r},${r} M${r},${-r} L${-r},${r}`;
 
-/**
- * ตำแหน่งของทุกคน ณ วินาที t — เลื่อนระหว่างสองเฟรมที่บันทึกไว้ให้เดินลื่น
- * (ช่วงระหว่างวินาทีเป็นการวาดประมาณ ไม่ใช่ข้อมูลจากเดโม — มีหมายเหตุกำกับใต้แผนที่)
- */
-function playersAt(pos: RoundPositions, t: number,
-                   roster: Map<string, { name: string; color: string; slot: number | null }>): LivePlayer[] {
-  if (pos.frames.length === 0) return [];
-  const i = Math.max(0, Math.min(pos.frames.length - 1, Math.floor(t / pos.step)));
-  const cur = pos.frames[i];
-  const next = pos.frames[i + 1];
-  const frac = next ? Math.max(0, Math.min(1, (t - cur.t) / (next.t - cur.t))) : 0;
-  return cur.players.map((p) => {
-    const to = next?.players.find((n) => n.steamid === p.steamid);   // ไม่มีในเฟรมถัดไป = ตายแล้ว ไม่ต้องเลื่อน
-    const info = roster.get(p.steamid);
-    return {
-      steamid: p.steamid,
-      px: to ? ([p.px[0] + (to.px[0] - p.px[0]) * frac, p.px[1] + (to.px[1] - p.px[1]) * frac] as [number, number]) : p.px,
-      hp: p.hp,
-      side: p.side,
-      place: p.place,
-      name: info?.name ?? p.steamid,
-      color: info?.color ?? "#9aa4b2",
-      slot: info?.slot ?? null,
-    };
-  });
-}
-
 // ================================================================================================
 // แผนที่เรดาร์ (SVG)
 // ================================================================================================
@@ -417,19 +393,26 @@ interface LabelPos {
   x: number;
   y: number;
   anchor: Anchor;
+  leader?: [number, number];
+}
+
+export function truncatePlayerName(name: string, max = 16): string {
+  const chars = Array.from(name);
+  return chars.length <= max ? name : `${chars.slice(0, Math.max(1, max - 1)).join("")}…`;
 }
 
 /**
  * วางป้ายชื่อไม่ให้ทับกัน และไม่ทับวงของคนอื่น — ลองใต้วง เหนือวง ขวา ซ้าย (แล้วถอยออกไปอีกขั้น)
  * เอาตำแหน่งแรกที่ว่าง (ความกว้างตัวอักษรประมาณเอา ไม่ต้องวัดจริง — แค่กันซ้อนกันจนอ่านไม่ออก)
  */
-function labelPlacer() {
+function labelPlacer(bounds: { left: number; top: number; right: number; bottom: number }) {
   type Box = [number, number, number, number];
   const boxes: Box[] = [];
   const hit = (b: Box) => boxes.some((o) => b[0] < o[2] && b[2] > o[0] && b[1] < o[3] && b[3] > o[1]);
+  const inside = (b: Box) => b[0] >= bounds.left && b[1] >= bounds.top && b[2] <= bounds.right && b[3] <= bounds.bottom;
   const block = (x: number, y: number, r: number) => boxes.push([x - r, y - r, x + r, y + r]);
   const place = (x: number, y: number, r: number, text: string, size: number): LabelPos => {
-    const w = text.length * size * 0.58 + 6;
+    const w = Array.from(text).length * size * 0.58 + 6;
     const tries: [LabelPos, Box][] = [];
     for (const gap of [0, size + 4, 2 * (size + 4)]) {
       const R = r + gap;
@@ -440,11 +423,34 @@ function labelPlacer() {
         [{ x: x - R - 6, y: y + size / 3, anchor: "end" }, [x - R - 6 - w, y - size / 2, x - R - 4, y + size / 2]],
       );
     }
-    const [pos, box] = tries.find(([, b]) => !hit(b)) ?? tries[0];
+    const [pos, box] = tries.find(([, b]) => inside(b) && !hit(b)) ?? tries.find(([, b]) => inside(b)) ?? tries[0];
     boxes.push(box);
     return pos;
   };
   return { place, block };
+}
+
+/** Pure and deterministic: identical snapshots keep identical label directions between animation frames. */
+export function placeLivePlayerLabels(
+  players: LivePlayer[],
+  bounds: { left: number; top: number; right: number; bottom: number },
+  markerRadius: number,
+  fontSize: number,
+  highlighted: string | null,
+  maxChars = 16,
+): Map<string, LabelPos & { text: string }> {
+  const placer = labelPlacer(bounds);
+  players.forEach((p) => placer.block(p.px[0], p.px[1], markerRadius));
+  const ordered = [...players].sort((a, b) =>
+    Number(b.steamid === highlighted) - Number(a.steamid === highlighted) || a.steamid.localeCompare(b.steamid));
+  const out = new Map<string, LabelPos & { text: string }>();
+  ordered.forEach((p) => {
+    const text = truncatePlayerName(p.name, maxChars);
+    const pos = placer.place(p.px[0], p.px[1], markerRadius, text, fontSize);
+    const far = Math.hypot(pos.x - p.px[0], pos.y - p.px[1]) > markerRadius + fontSize * 1.5;
+    out.set(p.steamid, { ...pos, text, leader: far ? [p.px[0], p.px[1]] : undefined });
+  });
+  return out;
 }
 
 interface MapProps {
@@ -453,6 +459,8 @@ interface MapProps {
   bomb: RoundDetail["round"]["bomb"];
   grenades: ReviewGrenade[];
   live?: LivePlayer[] | null; // โหมดเล่นย้อน: คนที่ยังไม่ตาย ณ วินาทีที่ดู (null = ปิดโหมด)
+  playbackTime: number | null;
+  reducedMotion: boolean;
   onHover?: (steamid: string | null) => void; // ชี้เมาส์ที่ตัวผู้เล่น -> ไฮไลต์แถวในตารางข้างแผนที่
   zoom: number;
   center: [number, number] | null;
@@ -460,6 +468,44 @@ interface MapProps {
   highlight: string | null; // steamid ที่ถูกกดในรายชื่อ
   selected: number | null; // ลำดับการตายที่ถูกเลือก
   onSelect: (order: number | null) => void;
+}
+
+/** รูปทรงต่างกันทุกชนิด จึงอ่านได้แม้แยกสีไม่ออก */
+export function GrenadeGlyph({ type, x, y, size, color }: { type: ReviewGrenade["type"]; x: number; y: number; size: number; color: string }) {
+  const common = { fill: "#0b1220", stroke: color, strokeWidth: size * 0.16, vectorEffect: "non-scaling-stroke" as const };
+  if (type === "flash") return <path d={`M${x},${y - size} L${x + size * .28},${y - size * .3} L${x + size},${y} L${x + size * .28},${y + size * .3} L${x},${y + size} L${x - size * .28},${y + size * .3} L${x - size},${y} L${x - size * .28},${y - size * .3} Z`} {...common} />;
+  if (type === "he") return <rect x={x - size * .72} y={y - size * .72} width={size * 1.44} height={size * 1.44} rx={size * .18} transform={`rotate(45 ${x} ${y})`} {...common} />;
+  if (type === "molotov") return <path d={`M${x},${y + size} C${x - size},${y + size * .15} ${x - size * .2},${y - size * .35} ${x + size * .1},${y - size} C${x + size * .95},${y - size * .1} ${x + size},${y + size * .55} ${x},${y + size}Z`} {...common} />;
+  if (type === "decoy") return <g fill="none" stroke={color} strokeWidth={size * .15}><circle cx={x} cy={y} r={size * .9} /><circle cx={x} cy={y} r={size * .38} /></g>;
+  return <g {...common}><circle cx={x - size * .35} cy={y} r={size * .62} /><circle cx={x + size * .35} cy={y} r={size * .62} /></g>;
+}
+
+/** ไอคอนย่อสำหรับ control/legend/timeline; decoy ใช้รูปวงซ้อนจึงไม่อาศัยสีอย่างเดียว */
+function NadeMiniIcon({ type }: { type: ReviewGrenade["type"] }) {
+  return <UtilityIcon className="nade-ico" type={type} />;
+}
+
+export function PlaybackDeathMarker({ visualRadius, hitRadius, line, color, slot, selected, highlighted, name,
+                                      label, onActivate }: {
+  visualRadius: number; hitRadius: number; line: number; color: string; slot: number | null;
+  selected: boolean; highlighted: boolean; name: string; label: LabelPos; onActivate: () => void;
+}) {
+  const activate = (e: ReactMouseEvent | KeyboardEvent) => { e.stopPropagation(); onActivate(); };
+  return (
+    <g role="button" tabIndex={0} aria-label={name} aria-pressed={selected} onClick={activate}
+      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); activate(e); } }}
+      className={`death-x${selected ? " selected" : ""}${highlighted ? " highlighted" : ""}`}
+      data-testid="death-x" data-visual-diameter={visualRadius * 2} data-hit-diameter={hitRadius * 2}>
+      <circle r={hitRadius} fill="transparent" className="death-hit" />
+      {(selected || highlighted) && <circle r={visualRadius * 1.65} fill="none" stroke="#fff" strokeWidth={line * .8} className="death-focus-ring" />}
+      <path d={crossPath(visualRadius)} stroke="#0b1220" strokeWidth={line * 1.8} strokeLinecap="round" fill="none" />
+      <path d={crossPath(visualRadius)} stroke={color} strokeWidth={line} strokeLinecap="round" fill="none" className="death-x-mark" />
+      <text x={visualRadius * 1.2} y={-visualRadius * .82} textAnchor="start" className="slot-num dead"
+        style={{ fontSize: Math.max(visualRadius * 1.25, 8), fill: color }}>{slot ?? "?"}</text>
+      {(selected || highlighted) && <text x={label.x} y={label.y} textAnchor={label.anchor} className="dot-name"
+        style={{ fontSize: Math.max(visualRadius * 1.7, 11), strokeWidth: Math.max(visualRadius * .45, 3) }}>{name}</text>}
+    </g>
+  );
 }
 
 function clampRadarCenter(center: [number, number] | null, size: number, zoom: number): [number, number] {
@@ -475,7 +521,8 @@ function clampRadarCenter(center: [number, number] | null, size: number, zoom: n
  * โหมดเล่นย้อน (prop live) เพิ่มตัวผู้เล่น ณ วินาทีที่ดู — ไม่มีเส้นทางเดินย้อนหลัง
  * เลือกการตายแล้ว ระเบิดที่แสดงเหลือเฉพาะลูกที่มีผลอยู่ ณ วินาทีนั้น (ควัน/ไฟที่ยังไม่หมด แฟลช/HE ที่เพิ่งแตก)
  */
-export function MapView({ radar, deaths, bomb, grenades, live, zoom, center, onView, highlight, onHover, selected, onSelect }: MapProps) {
+export function MapView({ radar, deaths, bomb, grenades, live, playbackTime, reducedMotion,
+                          zoom, center, onView, highlight, onHover, selected, onSelect }: MapProps) {
   const s = radar.size;
   // ---- ซูม/เลื่อนดู: viewBox คือกรอบที่มองอยู่ · เก็บบน URL เพื่อให้รีเฟรช/แชร์ลิงก์แล้วเห็นกรอบเดิม
   const span = s / zoom;
@@ -532,25 +579,32 @@ export function MapView({ radar, deaths, bomb, grenades, live, zoom, center, onV
   const halo = (size: number) => ({ fontSize: size, strokeWidth: size * 0.3 });
 
   const selT = selected === null ? null : (deaths.find((d) => d.order === selected)?.t_round ?? null);
-  // โหมดเล่นย้อนกรองตามเวลาที่กำลังดูมาแล้ว จึงไม่กรองซ้ำด้วยการตายที่เลือก
-  const nades = grenades.filter((n) => n.land_px && (live ? true : selT === null || nadeActiveAt(n, selT)));
+  const renderTime = playbackTime ?? selT;
+  const nades = renderTime == null
+    ? grenades.filter((n) => n.throw_px || n.land_px)
+    : grenades.filter((n) => nadeVisibleAt(n, renderTime, reducedMotion));
   const nadeFocus = (n: ReviewGrenade) => !highlight || n.thrower?.steamid === highlight;
   const dotR = (d: ReviewDeath) => (selected === d.order ? z.dotSel : z.dot);
-  const { place, block } = labelPlacer();
+  const { place, block } = labelPlacer({ left: x0 + 4 * U, top: y0 + 4 * U, right: x0 + span - 4 * U, bottom: y0 + span - 4 * U });
   // วงทุกวงเป็นสิ่งกีดขวางของป้าย (ควัน/ไฟเป็นวงโปร่ง ป้ายทับได้)
   deaths.forEach((d) => {
     if (d.victim_px) block(d.victim_px[0], d.victim_px[1], dotR(d));
     if (d.attacker_px) block(d.attacker_px[0], d.attacker_px[1], z.atk);
   });
-  nades.forEach((n) => n.r_px === 0 && block(n.land_px![0], n.land_px![1], z.nadeIco / 2));
+  nades.forEach((n) => n.land_px && n.r_px === 0 && block(n.land_px[0], n.land_px[1], z.nadeIco / 2));
   live?.forEach((p) => block(p.px[0], p.px[1], z.dot * 0.9));   // ยังกันไม่ให้ป้ายอื่นทับตัวผู้เล่น
+  const liveLabels = placeLivePlayerLabels(live ?? [],
+    { left: x0 + 4 * U, top: y0 + 4 * U, right: x0 + span - 4 * U, bottom: y0 + span - 4 * U },
+    z.dot * .9, z.name, highlight, shown > 0 && shown < 520 ? 11 : 16);
   const deathLabel = new Map<number, LabelPos>();
   deaths.forEach((d) => {
     if (d.victim_px) deathLabel.set(d.order, place(d.victim_px[0], d.victim_px[1], dotR(d), d.victim.name, z.name));
   });
-  const nadeLabelPos = nades.map((n) =>
-    place(n.land_px![0], n.land_px![1], n.r_px > 0 ? n.r_px : z.nadeIco / 2, `${n.thrower?.name ?? "?"} · ${nadeLabel(n.type)}`, z.nadeName),
-  );
+  const nadeLabelPos = nades.map((n) => {
+    const anchor = n.land_px ?? n.throw_px ?? [0, 0];
+    return place(anchor[0], anchor[1], n.r_px > 0 ? n.r_px : z.nadeIco / 2,
+      `${n.thrower?.name ?? "?"} · ${nadeLabel(n.type)} · ${fmtT(n.t_throw)}→${fmtT(n.t_land)}`, z.nadeName);
+  });
   const involved = (d: ReviewDeath) =>
     !highlight || d.victim.steamid === highlight || d.attacker?.steamid === highlight;
   const focus = (d: ReviewDeath) => (selected === null ? involved(d) : selected === d.order);
@@ -589,43 +643,77 @@ export function MapView({ radar, deaths, bomb, grenades, live, zoom, center, onV
 
       {bomb?.px && (
         <g transform={`translate(${bomb.px[0]}, ${bomb.px[1]})`} data-testid="bomb-icon">
-          <rect x={-z.bomb} y={-z.bomb} width={2 * z.bomb} height={2 * z.bomb} rx={z.bomb * 0.35} fill="#dc2626" stroke="#fff" strokeWidth={z.line} />
-          <text textAnchor="middle" dy={z.bomb * 0.38} className="bomb-label" style={{ fontSize: z.bomb * 1.05 }}>
-            C4
-          </text>
+          <EquipmentIcon kind="bomb" x={-z.bomb} y={-z.bomb} width={2 * z.bomb} height={2 * z.bomb} className="map-equipment-icon" />
           <title>{`${t("วางบอมบ์")}${bomb.site ? ` (${bomb.site})` : ""}`}</title>
         </g>
       )}
 
-      {/* ระเบิด: วงที่จุดตก (ควัน/ไฟตามขนาดจริงโดยประมาณ) + ชื่อคนขว้าง + เส้นประจากจุดที่ขว้าง */}
-      {nades.map((n, i) => {
-        const [x, y] = n.land_px!;
-        const c = NADE_COLOR[n.type] ?? "#fff";
-        const who = n.thrower?.name ?? "?";
-        return (
-          <g key={`n${i}`} opacity={nadeFocus(n) ? 1 : 0.15} data-testid="nade">
-            {n.throw_px && (
-              <line x1={n.throw_px[0]} y1={n.throw_px[1]} x2={x} y2={y} stroke={n.thrower?.color ?? c}
-                strokeWidth={z.line * 0.8} strokeDasharray={`${5 * U} ${5 * U}`} opacity={0.5} />
-            )}
-            {/* ควัน/ไฟ = วงโปร่งตามขนาดที่มีผลจริง + ไอคอนกลางวง · แฟลช/HE = ไอคอนอย่างเดียว (แตกแล้วหายทันที) */}
-            {n.r_px > 0 && (
-              <circle cx={x} cy={y} r={n.r_px} fill={c} fillOpacity={0.32} stroke={c} strokeWidth={z.line} />
-            )}
-            {NADE_ICON[n.type] ? (
-              <image href={NADE_ICON[n.type]} x={x - z.nadeIco / 2} y={y - z.nadeIco / 2} width={z.nadeIco} height={z.nadeIco} />
-            ) : (
-              <circle cx={x} cy={y} r={z.nade} fill={c} stroke={c} strokeWidth={z.line} />
-            )}
-            <text x={nadeLabelPos[i].x} y={nadeLabelPos[i].y} textAnchor={nadeLabelPos[i].anchor} className="nade-label"
-              style={{ ...halo(z.nadeName), fill: n.thrower?.color ?? c }}>
-              {who} · {nadeLabel(n.type)}
-            </text>
-            <title>{`${t("{time} {who} ({side}) ขว้าง{nade}", { time: fmtT(n.t_land), who, side: sideLabel(n.thrower?.side), nade: nadeLabel(n.type) })}${
-              n.t_end != null && n.t_end > (n.t_land ?? 0) ? ` · ${t("มีผลถึง {time}", { time: fmtT(n.t_end) })}` : ""}`}</title>
-          </g>
-        );
-      })}
+      {/* layer 2: persistent utility effects — ขนาดเป็นภาษาภาพ ไม่ใช่รัศมีจริงจากเกม */}
+      <g data-layer="utility-effects" pointerEvents="none">
+        {nades.map((n, i) => {
+          if (!n.land_px) return null;
+          const state = renderTime == null
+            ? ((n.type === "smoke" || n.type === "molotov") && n.t_end != null ? { kind: n.type, progress: .5, opacity: .75 } : null)
+            : effectAt(n, renderTime, reducedMotion);
+          if (!state) return null;
+          const [x, y] = n.land_px;
+          const c = NADE_COLOR[n.type] ?? "#fff";
+          const pulseRadius = z.nadeIco * (.7 + state.progress * 1.5);
+          if (n.type === "smoke" || n.type === "molotov") return (
+            <g key={`fx${i}`} opacity={state.opacity * (nadeFocus(n) ? 1 : .18)} data-testid={`effect-${n.type}`}>
+              <circle cx={x} cy={y} r={n.r_px || z.nadeIco * 1.5} fill={c} fillOpacity={n.type === "smoke" ? .2 : .24}
+                stroke={c} strokeOpacity={.7} strokeWidth={z.line * .7} strokeDasharray={n.radius_is_estimate ? `${4 * U} ${3 * U}` : undefined} />
+            </g>
+          );
+          return (
+            <g key={`pulse${i}`} opacity={state.opacity * (nadeFocus(n) ? 1 : .18)} data-testid={`effect-${n.type}`}>
+              <circle cx={x} cy={y} r={pulseRadius} fill="none" stroke={c} strokeWidth={z.line}
+                strokeDasharray={n.type === "decoy" ? `${2 * U} ${3 * U}` : undefined} />
+              {n.type === "flash" && <circle cx={x} cy={y} r={pulseRadius * .45} fill={c} fillOpacity={.16} />}
+            </g>
+          );
+        })}
+      </g>
+
+      {/* layer 3: projectile trails — เส้นประคือ interpolation จาก endpoints, เส้นทึบคือ entity samples จริง */}
+      <g data-layer="projectile-trails" pointerEvents="none">
+        {nades.map((n, i) => {
+          const trail = renderTime == null
+            ? (n.throw_px && n.land_px ? { points: [n.throw_px, n.land_px], approximate: true } : null)
+            : projectileTrailAt(n, renderTime);
+          if (!trail || trail.points.length < 2) return null;
+          return <polyline key={`trail${i}`} points={trail.points.map((p) => p.join(",")).join(" ")} fill="none"
+            stroke={NADE_COLOR[n.type] ?? "#fff"} strokeWidth={z.line * .65} opacity={nadeFocus(n) ? .55 : .12}
+            strokeDasharray={trail.approximate ? `${5 * U} ${5 * U}` : undefined} strokeLinecap="round" strokeLinejoin="round"
+            data-testid={trail.approximate ? "projectile-trail-approx" : "projectile-trail-demo"} />;
+        })}
+      </g>
+
+      {/* layer 4: projectile markers + throw/landing endpoints */}
+      <g data-layer="projectile-markers">
+        {nades.map((n, i) => {
+          const projectile = renderTime == null ? null : projectileAt(n, renderTime);
+          const effect = renderTime == null ? null : effectAt(n, renderTime, reducedMotion);
+          const c = NADE_COLOR[n.type] ?? "#fff";
+          const showLanding = n.land_px && (renderTime == null || effect != null || (n.t_land != null && renderTime >= n.t_land));
+          return (
+            <g key={`marker${i}`} opacity={nadeFocus(n) ? 1 : .18} data-testid="nade">
+              {n.throw_px && (renderTime == null || (n.t_throw != null && renderTime >= n.t_throw)) &&
+                <circle cx={n.throw_px[0]} cy={n.throw_px[1]} r={z.nade * .52} fill="#0b1220" stroke={c} strokeWidth={z.line * .65} data-testid="throw-point" />}
+              {projectile && <g data-testid="projectile-marker" data-source={projectile.source}>
+                <GrenadeGlyph type={n.type} x={projectile.px[0]} y={projectile.px[1]} size={z.nade * .9} color={c} />
+              </g>}
+              {showLanding && n.land_px && <g data-testid="land-point">
+                <UtilityIcon type={n.type} x={n.land_px[0] - z.nadeIco / 2} y={n.land_px[1] - z.nadeIco / 2}
+                  width={z.nadeIco} height={z.nadeIco} className="map-utility-icon" />
+              </g>}
+              <title>{`${t("{throw} ขว้าง · {land} ตก", { throw: fmtT(n.t_throw), land: fmtT(n.t_land) })} · ${nadeLabel(n.type)}${
+                n.trajectory_source === "endpoints" ? ` · ${t("เส้นทางประมาณจากจุดขว้างถึงจุดตก")}` : ""}${
+                n.t_end != null && n.t_end > (n.t_land ?? 0) ? ` · ${t("มีผลถึง {time}", { time: fmtT(n.t_end) })}` : ""}`}</title>
+            </g>
+          );
+        })}
+      </g>
 
       {/* เส้นทิศทางการยิง: จากคนยิงไปคนตาย */}
       {deaths.map(
@@ -670,6 +758,8 @@ export function MapView({ radar, deaths, bomb, grenades, live, zoom, center, onV
           data-side={p.side ?? ""}
           onMouseEnter={() => onHover?.(p.steamid)}
           onMouseLeave={() => onHover?.(null)}
+          role="img"
+          aria-label={`${p.name}, ${p.hp} HP`}
         >
           <circle
             cx={p.px[0]}
@@ -689,7 +779,7 @@ export function MapView({ radar, deaths, bomb, grenades, live, zoom, center, onV
           >
             {p.slot ?? "?"}
           </text>
-          <title>{`${p.slot ?? "?"} · ${p.name} · ${p.hp} HP${p.place ? ` · ${p.place}` : ""}`}</title>
+          <title>{`${p.slot ?? "?"} · ${p.name} · ${p.hp} HP${p.place ? ` · ${p.place}` : ""}${p.activeWeapon ? ` · ${p.activeWeapon}` : ""}`}</title>
         </g>
       ))}
 
@@ -705,24 +795,19 @@ export function MapView({ radar, deaths, bomb, grenades, live, zoom, center, onV
               transform={`translate(${d.victim_px[0]}, ${d.victim_px[1]})`}
               className="death-dot"
               opacity={focus(d) ? 1 : 0.22}
-              onClick={(e) => {
+              onClick={!live ? (e) => {
                 e.stopPropagation();
                 onSelect(selected === d.order ? null : d.order);
-              }}
+              } : undefined}
               data-testid="death-dot"
               data-mode={live ? "playback" : "normal"}
             >
               {live ? (
-                <>
-                  {/* ✕ กลวง: เส้นล่างสีเข้มไว้ให้ยังเห็นบนพื้นเรดาร์ส่วนที่สว่าง */}
-                  <path d={crossPath(dotR(d))} stroke="#0b1220" strokeWidth={z.line * 3.2} strokeLinecap="round" fill="none" />
-                  <path d={crossPath(dotR(d))} stroke={playerFill(d.victim.side)} strokeWidth={z.line * 1.8}
-                    strokeLinecap="round" fill="none" />
-                  <text x={dotR(d) * 1.05} y={-dotR(d) * 0.75} textAnchor="start" className="slot-num dead"
-                    style={{ ...halo(z.num), fill: playerFill(d.victim.side) }}>
-                    {d.victim.slot ?? "?"}
-                  </text>
-                </>
+                <PlaybackDeathMarker visualRadius={dotR(d) * .58} hitRadius={Math.max(z.dot, 12 * U)} line={z.line}
+                  color={playerFill(d.victim.side)} slot={d.victim.slot} selected={selected === d.order}
+                  highlighted={highlight === d.victim.steamid} name={d.victim.name}
+                  label={{ x: deathLabel.get(d.order)!.x - d.victim_px[0], y: deathLabel.get(d.order)!.y - d.victim_px[1], anchor: deathLabel.get(d.order)!.anchor }}
+                  onActivate={() => onSelect(selected === d.order ? null : d.order)} />
               ) : (
                 <>
                   <circle r={dotR(d)} fill={d.victim.color} stroke={selected === d.order ? "#fff" : "#0b1220"} strokeWidth={z.line * 1.3} />
@@ -739,6 +824,40 @@ export function MapView({ radar, deaths, bomb, grenades, live, zoom, center, onV
             </g>
           ),
       )}
+
+      {/* layer 7: utility labels / selected state อยู่บนสุด ไม่บังตัวผู้เล่นระหว่างที่ marker กำลังลอย */}
+      <g data-layer="labels" pointerEvents="none">
+        {live?.map((p) => {
+          const label = liveLabels.get(p.steamid)!;
+          const focused = highlight === p.steamid;
+          return <g key={`live-label-${p.steamid}`} opacity={!highlight || focused ? 1 : .42}
+            data-testid="live-player-name" data-full-name={p.name}>
+            {label.leader && <line x1={p.px[0]} y1={p.px[1]} x2={label.x} y2={label.y - z.name * .35}
+              className="player-label-leader" stroke={playerFill(p.side)} strokeWidth={z.line * .55} />}
+            <text x={label.x} y={label.y} textAnchor={label.anchor}
+              className={`live-player-label${focused ? " selected" : ""}`}
+              style={{ ...halo(z.name), fill: "#f8fafc" }}>
+              {label.text}
+              <title>{p.name}</title>
+            </text>
+            {p.activeWeapon && <WeaponIcon name={p.activeWeapon}
+              x={label.anchor === "end" ? label.x - z.name * 1.55 : label.x + z.name * .25}
+              y={label.y + z.name * .2} width={z.name * 1.3} height={z.name * .48}
+              className="live-weapon-icon" />}
+          </g>;
+        })}
+        {nades.map((n, i) => {
+          const anchor = n.land_px ?? n.throw_px;
+          // ในภาพตามเวลาใช้ marker + timeline แทนข้อความบนเรดาร์ เพื่อไม่ให้ชื่อ/เวลาบังผู้เล่น
+          if (!anchor || renderTime != null) return null;
+          const who = n.thrower?.name ?? "?";
+          const c = n.thrower?.color ?? NADE_COLOR[n.type] ?? "#fff";
+          return <text key={`nl${i}`} x={nadeLabelPos[i].x} y={nadeLabelPos[i].y} textAnchor={nadeLabelPos[i].anchor}
+            className="nade-label" style={{ ...halo(z.nadeName), fill: c }}>
+            {who} · {nadeLabel(n.type)} · {fmtT(n.t_throw)}→{fmtT(n.t_land)}
+          </text>;
+        })}
+      </g>
     </svg>
   );
 }
@@ -753,6 +872,7 @@ interface RosterProps {
   /** ไฮไลต์ชั่วคราวตอนเอาเมาส์ชี้ — แยกจาก highlight ที่กดค้างไว้ */
   onHover: (steamid: string | null) => void;
   playback: boolean;
+  live?: LivePlayer[] | null;
 }
 
 /**
@@ -764,8 +884,9 @@ interface RosterProps {
  *
  * วงกลมเลขหน้าแถวใช้สีและรูปทรงเดียวกับบนแผนที่ เพื่อให้กวาดตาเทียบกันได้ทันที
  */
-export function TeamRoster({ teams, highlight, onHighlight, onHover, playback }: RosterProps) {
+export function TeamRoster({ teams, highlight, onHighlight, onHover, playback, live }: RosterProps) {
   const { t: tx } = useT();
+  const liveById = new Map((live ?? []).map((p) => [p.steamid, p]));
   return (
     <div className="roster" data-testid="team-roster">
       {teams.map((t) => (
@@ -776,7 +897,9 @@ export function TeamRoster({ teams, highlight, onHighlight, onHover, playback }:
             <span className="muted small">{tx("รอบนี้")}</span>
           </div>
           <ul>
-            {[...t.players].sort((a, b) => (a.slot ?? 99) - (b.slot ?? 99)).map((p) => (
+            {[...t.players].sort((a, b) => (a.slot ?? 99) - (b.slot ?? 99)).map((p) => {
+              const now = liveById.get(p.steamid);
+              return (
               <li
                 key={p.steamid}
                 className={[
@@ -805,6 +928,13 @@ export function TeamRoster({ teams, highlight, onHighlight, onHover, playback }:
                   <span className="pn">{p.name}</span>
                   {p.kills > 0 && <span className="kills">{tx("{n} คิล", { n: p.kills })}</span>}
                 </button>
+                {playback && now && (now.activeWeapon || now.armor || now.hasHelmet || now.hasDefuser) && (
+                  <div className="pgear" aria-label={tx("อุปกรณ์ปัจจุบัน")}>
+                    {now.activeWeapon && <><WeaponIcon name={now.activeWeapon} className="pgear-weapon" /><span>{weaponLabel(now.activeWeapon)}</span></>}
+                    {now.hasHelmet ? <EquipmentIcon kind="helmet" className="pgear-small" /> : now.armor ? <EquipmentIcon kind="kevlar" className="pgear-small" /> : null}
+                    {now.hasDefuser && <EquipmentIcon kind="defuser" className="pgear-small" />}
+                  </div>
+                )}
                 <div className="pstat">
                   {p.survived ? (
                     <span className="alive">{tx("รอดถึงจบรอบ")}</span>
@@ -817,7 +947,8 @@ export function TeamRoster({ teams, highlight, onHighlight, onHover, playback }:
                   )}
                 </div>
               </li>
-            ))}
+              );
+            })}
           </ul>
         </div>
       ))}
@@ -870,11 +1001,11 @@ export function DeathTimeline({ deaths, highlight, selected, onSelect, bombPlant
       {items.map((it) =>
         it.kind === "bomb" ? (
           <li key="bomb" className="tl-bomb">
-            <span className="tl-t">{fmtT(it.t)}</span> {t("วางบอมบ์")}
+            <EquipmentIcon kind="bomb" className="tl-event-icon" /> <span className="tl-t">{fmtT(it.t)}</span> {t("วางบอมบ์")}
           </li>
         ) : it.kind === "nade" ? (
           <li key={`n${it.i}`} className={`tl-nade ${!highlight || it.n.thrower?.steamid === highlight ? "" : "dim"}`}>
-            <img className="nade-dot" src={NADE_ICON[it.n.type]} alt="" />
+            <span className="nade-dot"><NadeMiniIcon type={it.n.type} /></span>
             <span className="tl-t">{fmtT(it.t)}</span>
             <span className="tl-text">
               {tn("{who} ขว้าง{nade}", { who: it.n.thrower ? <Who p={it.n.thrower} /> : "?", nade: nadeLabel(it.n.type) })}
@@ -900,6 +1031,7 @@ export function DeathTimeline({ deaths, highlight, selected, onSelect, bombPlant
               )}
               <span className="tl-meta">
                 {" · "}
+                <WeaponIcon name={it.d.weapon} className="tl-weapon-icon" />
                 {weaponLabel(it.d.weapon)}
                 {it.d.headshot && " · HS"}
                 {it.d.distance != null && ` · ${t("ระยะ {d}u", { d: it.d.distance })}`}

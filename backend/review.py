@@ -361,7 +361,8 @@ def death_context(x: float | None, y: float | None, victim_side: str | None, is_
 def _t(tick, start_tick, tickrate) -> float | None:
     if tick is None or start_tick is None or not tickrate:
         return None
-    return round((int(tick) - int(start_tick)) / int(tickrate), 1)
+    # รักษาความละเอียดระดับ tick สำหรับ event และ snapshot 8 Hz
+    return round((int(tick) - int(start_tick)) / int(tickrate), 6)
 
 
 def player_groups(roster: list[dict]) -> list[list[int]]:
@@ -415,10 +416,8 @@ def build_round_list(rounds: list[dict], first_deaths: dict[int, int], death_cou
     } for r in rounds]
 
 
-# ควัน / ไฟ อยู่นานเท่าไรถ้าเดโมไม่มี event ตอนหมด (ค่าในเกม CS2) — แฟลช / HE ทำงานทันทีที่แตก
-NADE_DEFAULT_SEC = {"smoke": 20.0, "molotov": 7.0}
-# รัศมีที่วาดบนแผนที่ (หน่วยเกม) — ขนาดโดยประมาณของกลุ่มควันและกองไฟ ลูกอื่นวาดเป็นจุด
-NADE_RADIUS = {"smoke": 144, "molotov": 120}
+# ขนาดเชิงภาพเท่านั้น ไม่ใช่รัศมีจริงจากเดโม (parser ไม่มีขอบเขตควัน/ไฟ)
+NADE_DISPLAY_RADIUS = {"smoke": 144, "molotov": 120}
 
 
 def _person_factory(roster: list[dict], in_round: list[dict]):
@@ -473,20 +472,38 @@ def _death_rows(kills: list[dict], person, *, start, tickrate: int,
 
 
 def _nade_rows(grenades: list[dict], person, *, start, tickrate: int, frame: RadarFrame | None) -> list[dict]:
-    """ระเบิด: จุดตก (วาดวง) + จุดขว้าง (เส้นประ) เป็นพิกเซล และช่วงเวลาที่มีผล"""
+    """ระเบิด: endpoints, effect time และ trajectory จริง (ถ้ามี) เป็นพิกเซลเรดาร์"""
     nades = []
     for g in grenades:
         land_t, end_t = _t(g.get("land_tick"), start, tickrate), _t(g.get("end_tick"), start, tickrate)
-        if land_t is not None and (end_t is None or end_t < land_t):
-            end_t = round(land_t + NADE_DEFAULT_SEC.get(g["type"], 0.0), 1)
+        if land_t is not None and end_t is not None and end_t < land_t:
+            end_t = None
         tx, ty, lx, ly = g.get("throw_x"), g.get("throw_y"), g.get("land_x"), g.get("land_y")
+        raw_trajectory = g.get("trajectory")
+        if isinstance(raw_trajectory, str):
+            try:
+                raw_trajectory = json.loads(raw_trajectory)
+            except (TypeError, ValueError):
+                raw_trajectory = None
+        trajectory = []
+        if frame and isinstance(raw_trajectory, list):
+            for point in raw_trajectory:
+                if not isinstance(point, (list, tuple)) or len(point) < 3 or None in point[:3]:
+                    continue
+                tick, x, y = int(point[0]), float(point[1]), float(point[2])
+                px, py = world_to_pixel(x, y, frame)
+                trajectory.append({"tick": tick, "t": _t(tick, start, tickrate),
+                                   "px": [round(px, 1), round(py, 1)]})
         nades.append({
             "type": g["type"],
             "thrower": person(g.get("thrower_id"), g.get("thrower_name"), g.get("side")),
             "t_throw": _t(g["tick"], start, tickrate), "t_land": land_t, "t_end": end_t,
             "throw_px": world_to_pixel(tx, ty, frame) if frame and None not in (tx, ty) else None,
             "land_px": world_to_pixel(lx, ly, frame) if frame and None not in (lx, ly) else None,
-            "r_px": round(NADE_RADIUS.get(g["type"], 0) / frame.scale, 1) if frame else 0,
+            "trajectory": trajectory,
+            "trajectory_source": "demo" if trajectory else ("endpoints" if None not in (tx, ty, lx, ly, land_t) else "none"),
+            "r_px": round(NADE_DISPLAY_RADIUS.get(g["type"], 0) / frame.scale, 1) if frame else 0,
+            "radius_is_estimate": g["type"] in NADE_DISPLAY_RADIUS,
         })
     return nades
 
@@ -577,36 +594,54 @@ def build_round_detail(*, match: dict, rnd: dict, roster: list[dict], in_round: 
 
 
 # ---------------------------------------------------------------------------
-# โหมดเล่นย้อน (playback): ตำแหน่งผู้เล่นรายวินาทีของหนึ่งรอบ
-#   parser เก็บตำแหน่งวินาทีละครั้ง (1 Hz) เฉพาะช่วงที่รอบเล่นอยู่และเฉพาะคนที่ยังไม่ตาย
+# โหมดเล่นย้อน: ข้อมูลใหม่ 8 Hz; ข้อมูลเก่าที่ยังเป็น 1 Hz ใช้ payload เดียวกันได้
 #   -> คนที่ตายแล้วหายไปจากเฟรมเอง และไม่มีข้อมูลช่วงซื้อของก่อน freeze จบ
 #   ที่นี่แปลงเป็นพิกเซลบนภาพเรดาร์ให้เลย หน้าเว็บจึงไม่ต้องมีสูตรแปลงพิกัดของตัวเอง (กฎเดียวกับส่วนอื่นของไฟล์นี้)
 # ---------------------------------------------------------------------------
-POSITION_HZ = 1.0        # ความถี่ที่เดโมถูกเก็บ — ระหว่างสองเฟรมหน้าเว็บวาดประมาณให้ต่อเนื่อง ไม่ใช่ข้อมูลจริง
-
-
 def build_round_positions(positions: list[dict], *, start_tick, tickrate: int, frame: RadarFrame | None) -> dict:
-    """[{tick, steam_id, side, x, y, health, place}] -> {step, t_end, frames:[{t, players:[...]}]}"""
-    by_t: dict[float, list[dict]] = {}
+    """สร้าง payload ที่เก็บ tick จริงและอนุมานความถี่จากข้อมูล จึงรองรับ fixture 1 Hz เดิม"""
+    by_tick: dict[int, dict[str, dict]] = {}
     for r in positions:
-        t = _t(r["tick"], start_tick, tickrate)
+        tick = int(r["tick"])
+        t = _t(tick, start_tick, tickrate)
         if t is None or r.get("x") is None or r.get("y") is None or frame is None:
             continue
         px, py = world_to_pixel(r["x"], r["y"], frame)
-        by_t.setdefault(t, []).append({
+        player = {
             "steamid": str(r["steam_id"]),
             "px": [round(px, 1), round(py, 1)],
             "hp": int(r.get("health") or 0),
             "side": r.get("side"),
             "place": r.get("place"),
-        })
-    frames = [{"t": t, "players": sorted(pl, key=lambda p: p["steamid"])} for t, pl in sorted(by_t.items())]
+        }
+        # Optional equipment is omitted for legacy parses instead of repeating four null fields
+        # in every snapshot. New parses retain every real value (including false/0).
+        if r.get("active_weapon") is not None:
+            player["active_weapon"] = r["active_weapon"]
+        if r.get("armor") is not None:
+            player["armor"] = int(r["armor"])
+        if r.get("has_helmet") is not None:
+            player["has_helmet"] = bool(r["has_helmet"])
+        if r.get("has_defuser") is not None:
+            player["has_defuser"] = bool(r["has_defuser"])
+        by_tick.setdefault(tick, {}).setdefault(player["steamid"], player)
+    ticks = sorted(by_tick)
+    frames = [
+        {"tick": tick, "t": _t(tick, start_tick, tickrate),
+         "players": sorted(by_tick[tick].values(), key=lambda p: p["steamid"])}
+        for tick in ticks
+    ]
+    gaps = [(b - a) / tickrate for a, b in zip(ticks, ticks[1:], strict=False)] if tickrate else []
+    step = round(sorted(gaps)[len(gaps) // 2], 6) if gaps else 0.125
+    sample_hz = round(1 / step, 2) if step > 0 else 8.0
     return {
-        "step": POSITION_HZ,
+        "step": step,
+        "sample_hz": sample_hz,
         "t_end": frames[-1]["t"] if frames else 0.0,
         "frames": frames,
-        # ข้อความนี้ให้หน้าเว็บแสดงกำกับเสมอ — ผู้ใช้ต้องรู้ว่าอะไรคือข้อมูลจริง อะไรคือการวาดประมาณ
-        "note": "ตำแหน่งถูกเก็บวินาทีละครั้ง · ช่วงระหว่างวินาทีเป็นการวาดให้ต่อเนื่อง ไม่ใช่ข้อมูลจากเดโม",
+        "note": ("ตำแหน่งถูกเก็บ 8 ครั้งต่อวินาที · การเคลื่อนที่ระหว่าง snapshot เป็นการ interpolate"
+                 if sample_hz >= 7.5 else
+                 "ข้อมูลเดิมเก็บตำแหน่งประมาณวินาทีละครั้ง · การเคลื่อนที่ระหว่าง snapshot เป็นการ interpolate"),
     }
 
 

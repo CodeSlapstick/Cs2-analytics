@@ -21,7 +21,7 @@ export const EN_CHARTS: Record<string, string> = {
   "โมโลตอฟ": "Molotov",
   "ตำแหน่งคนยิงตอนยิงคู่แข่งตาย": "where the shooter stood when they got the kill",
   "ตำแหน่งที่ผู้เล่นตาย": "where players died",
-  "ตำแหน่งที่ผู้เล่นยืน เก็บวินาทีละครั้งตลอดรอบ": "where players stood, sampled once per second through the round",
+  "ตำแหน่งที่ผู้เล่นยืน เก็บ 8 ครั้งต่อวินาทีตลอดรอบ": "where players stood, sampled eight times per second through the round",
   "จุดที่สโมคแตก": "where smokes popped",
   "จุดที่แฟลชแตก": "where flashes popped",
   "จุดที่ HE แตก": "where HE grenades exploded",

@@ -33,6 +33,7 @@ backend/parser.py — อ่านไฟล์ .dem หนึ่งไฟล์ 
 """
 import argparse
 import json
+import math
 import re
 import sys
 import time
@@ -71,6 +72,14 @@ GRENADE_TYPES = {
     "flashbang": "flash", "smokegrenade": "smoke", "hegrenade": "he",
     "molotov": "molotov", "incgrenade": "molotov", "decoy": "decoy",
 }
+PROJECTILE_TYPES = {
+    "CSmokeGrenadeProjectile": "smoke",
+    "CFlashbangProjectile": "flash",
+    "CHEGrenadeProjectile": "he",
+    "CMolotovProjectile": "molotov",
+    "CIncendiaryGrenadeProjectile": "molotov",
+    "CDecoyProjectile": "decoy",
+}
 
 
 # ==================================================================================================
@@ -82,7 +91,8 @@ ROOT = Path(__file__).resolve().parent.parent
 DEMO_DIR = ROOT / "demos"
 OUT_DIR = ROOT / "output" / "json"
 
-SCHEMA_VERSION = 6      # ขยับเมื่อโครง JSON เปลี่ยนแบบที่ ETL เดิมอ่านไม่ได้  (2 = damages, 3 = player_rounds + grenades, 4 = positions 1 Hz, 5 = team_clan + จุดวางบอมบ์, 6 = ระเบิดขว้างจากไหน/ตกที่ไหน)
+SCHEMA_VERSION = 6      # sampling ยังใช้ JSON schema เดิมและ ETL เก่าอ่านได้
+POSITION_SAMPLE_HZ = 8  # ปรับความถี่ replay ได้จากจุดเดียว; tick จริงคำนวณจาก tickrate ของเดโม
 
 # ชื่อไฟล์เดโมจาก HLTV มีแบบแผน "ทีมA-vs-ทีมB-แมพ.dem" -> แกะชื่อทีมจากชื่อไฟล์
 TEAMS_RE = re.compile(r"^(?P<a>.+?)-vs-(?P<b>.+?)-[^-]+\.dem$", re.IGNORECASE)
@@ -114,7 +124,7 @@ DAMAGE_COLUMNS = {
 #   คือมูลค่าจริง ซึ่งตรงกับนิยาม "equipment value at freeze-time end" ของ HLTV พอดี
 TICK_PROPS = ["team_name", "is_alive", "current_equip_value", "balance",
               "X", "Y", "Z", "last_place_name", "health",
-              "team_clan_name"]   # ห้าตัวหลังใช้กับตำแหน่ง 1 Hz (positions)
+              "team_clan_name", "active_weapon_name", "armor_value", "has_helmet", "has_defuser"]
 
 for _s in (sys.stdout, sys.stderr):     # ให้คอนโซล Windows พิมพ์ไทยได้
     try:
@@ -215,6 +225,23 @@ def _damage_table(dem) -> pl.DataFrame:
     )
 
 
+def position_sample_ticks(start_tick: int, end_tick: int, tickrate: int,
+                          sample_hz: int = POSITION_SAMPLE_HZ) -> list[int]:
+    """คืน tick จริงที่กระจายใกล้ ``sample_hz`` ต่อวินาที โดยไม่สร้าง tick ซ้ำ"""
+    if tickrate <= 0 or sample_hz <= 0 or end_tick <= start_tick:
+        return []
+    out: list[int] = []
+    n = 0
+    while True:
+        tick = start_tick + (2 * n * tickrate + sample_hz) // (2 * sample_hz)
+        if tick >= end_tick:
+            break
+        if not out or tick != out[-1]:
+            out.append(tick)
+        n += 1
+    return out
+
+
 def _wanted_ticks(dem, tickrate: int) -> tuple[dict[int, tuple[int, str]], dict[int, int]]:
     """tick ที่ต้องขอจาก parser คืน (tick ของ player_rounds, tick ของ positions)
 
@@ -222,7 +249,7 @@ def _wanted_ticks(dem, tickrate: int) -> tuple[dict[int, tuple[int, str]], dict[
     ใช้ end ไม่ใช่ official_end เพราะช่วงหลัง round_end ยังยิงกันได้ คนที่ตายตอนนั้นไม่นับว่าเสียรอบ
     """
     want: dict[int, tuple[int, str]] = {}
-    pos_want: dict[int, int] = {}          # tick -> round_num ของตำแหน่ง 1 Hz (ห้ามเก็บทุก tick — ดูคอมเมนต์ positions)
+    pos_want: dict[int, int] = {}          # tick จริง -> round_num ของ snapshot replay
     for r in dem.rounds.iter_rows(named=True):
         fe = r["freeze_end"] or r["start"]
         en = r["end"] or r["official_end"]
@@ -231,7 +258,7 @@ def _wanted_ticks(dem, tickrate: int) -> tuple[dict[int, tuple[int, str]], dict[
         if en is not None:
             want[int(en)] = (r["round_num"], "end")
         if fe is not None and en is not None:
-            for t in range(int(fe), int(en), tickrate):      # วินาทีละครั้ง ตั้งแต่ freeze จบถึงรอบจบ
+            for t in position_sample_ticks(int(fe), int(en), tickrate):
                 pos_want[t] = int(r["round_num"])
     return want, pos_want
 
@@ -254,10 +281,10 @@ def _player_round_table(at_start: pl.DataFrame, at_end: pl.DataFrame) -> pl.Data
 
 
 def _position_table(all_ticks: pl.DataFrame, pos_want: dict[int, int]) -> pl.DataFrame:
-    """ตำแหน่งผู้เล่น 1 Hz เฉพาะช่วงที่รอบกำลังเล่นและคนนั้นยังมีชีวิต
+    """ตำแหน่งผู้เล่น 8 Hz เฉพาะช่วงที่รอบกำลังเล่นและคนนั้นยังมีชีวิต
 
     เดโมบันทึก 64-128 tick/วินาที ถ้าเก็บทุก tick จะได้ ~2.7 ล้านแถวต่อแมตช์ และ 99% ซ้ำกัน
-    วินาทีละครั้งเหลือ ~21,000 แถว ยังพอบอกได้ว่าใครไปทางไหน โรเทตตอนไหน
+    8 ครั้งต่อวินาทีเหลือราว 168,000 แถวต่อแมตช์ แต่ลื่นพอสำหรับ 2D replay
     คนตายแล้วยังมีพิกัดค้างตรงที่ตาย ถ้าไม่กรอง is_alive จะกลายเป็น "ยืนนิ่งตรงนั้นทั้งรอบ"
     """
     return _clean(
@@ -273,7 +300,12 @@ def _position_table(all_ticks: pl.DataFrame, pos_want: dict[int, int]) -> pl.Dat
             pl.col("Z").cast(pl.Float32).alias("z"),
             pl.col("health").cast(pl.Int16),
             pl.col("last_place_name").alias("place"),
+            pl.col("active_weapon_name").cast(pl.Utf8).alias("active_weapon"),
+            pl.col("armor_value").cast(pl.Int16).alias("armor"),
+            pl.col("has_helmet").cast(pl.Boolean),
+            pl.col("has_defuser").cast(pl.Boolean),
         )
+        .unique(["round_num", "tick", "steam_id"], keep="first", maintain_order=True)
         .sort(["round_num", "tick", "steam_id"])
     )
 
@@ -304,7 +336,8 @@ def _grenade_rows(dem, tickrate: int) -> list[dict]:
         thrown = pl.DataFrame(schema={"round_num": pl.Int32, "tick": pl.Int32, "thrower_id": pl.Int64, "side": pl.Utf8,
                                       "type": pl.Utf8, "throw_x": pl.Float32, "throw_y": pl.Float32})
     # จุดที่แต่ละลูกตก + เวลาที่ควัน/ไฟหมด (หน้ารอบวาดบนแผนที่พร้อมชื่อคนขว้าง)
-    return attach_landings(thrown.to_dicts(), read_detonations(dem.parser), tickrate)
+    grenades = attach_landings(thrown.to_dicts(), read_detonations(dem.parser), tickrate)
+    return attach_trajectories(grenades, read_projectile_trajectories(dem), tickrate)
 
 
 def _player_table(dem, at_start: pl.DataFrame) -> pl.DataFrame:
@@ -440,6 +473,81 @@ def attach_landings(throws: list[dict], detonations: dict[str, list[dict]], tick
             row.update(land_x=d["x"], land_y=d["y"], land_tick=d["tick"],
                        end_tick=d["end_tick"] if g["type"] in EXPIRE_EVENTS else d["tick"])
             break
+        out.append(row)
+    return out
+
+
+def read_projectile_trajectories(dem) -> list[dict]:
+    """อ่านพิกัด projectile จริงราย tick ที่ demoparser2 มีให้; ไม่สร้างจุดจาก endpoints"""
+    try:
+        raw = dem.parse_grenades()
+    except Exception:  # noqa: BLE001 — demo เก่าบางไฟล์ไม่มี entity stream นี้
+        return []
+    if raw is None or not len(raw):
+        return []
+    return (
+        raw.filter(pl.col("grenade_type").is_in(list(PROJECTILE_TYPES)), pl.col("X").is_not_null(), pl.col("Y").is_not_null())
+        .select(
+            pl.col("thrower_steamid").cast(pl.Int64).alias("thrower_id"),
+            pl.col("grenade_type").replace_strict(PROJECTILE_TYPES).alias("type"),
+            pl.col("entity_id").cast(pl.Int32),
+            pl.col("tick").cast(pl.Int32),
+            pl.col("X").cast(pl.Float32).alias("x"),
+            pl.col("Y").cast(pl.Float32).alias("y"),
+            pl.col("Z").cast(pl.Float32).alias("z"),
+        )
+        .sort(["thrower_id", "type", "entity_id", "tick"])
+        .to_dicts()
+    )
+
+
+def attach_trajectories(grenades: list[dict], points: list[dict], tickrate: int) -> list[dict]:
+    """จับ trajectory entity ที่เริ่มใกล้ tick ขว้าง แล้วแนบจุดจริง [tick,x,y,z]
+
+    entity_id ถูก reuse ได้ จึงแบ่ง segment เมื่อ tick ไม่ต่อกันก่อนจับคู่ และไม่ใช้ตำแหน่ง
+    ที่คาดเดาจาก throw/landing มาเติมช่องว่าง
+    """
+    segments: dict[tuple[int, str], list[list[dict]]] = {}
+    current: dict[tuple[int, str, int], list[dict]] = {}
+    for p in points:
+        if p.get("thrower_id") is None:
+            continue
+        entity_key = (int(p["thrower_id"]), p["type"], int(p["entity_id"]))
+        seg = current.get(entity_key)
+        if seg is None or int(p["tick"]) > int(seg[-1]["tick"]) + 1:
+            seg = []
+            current[entity_key] = seg
+            segments.setdefault(entity_key[:2], []).append(seg)
+        seg.append(p)
+
+    used: set[int] = set()
+    out: list[dict] = []
+    max_flight = MAX_FLIGHT_SEC * int(tickrate)
+    for grenade in grenades:
+        row = {**grenade, "trajectory": None}
+        thrower = grenade.get("thrower_id")
+        if thrower is None:
+            out.append(row)
+            continue
+        start = int(grenade["tick"])
+        stop = int(grenade.get("land_tick") or (start + max_flight))
+        candidates = []
+        for segment in segments.get((int(thrower), grenade["type"]), []):
+            if id(segment) in used:
+                continue
+            first = int(segment[0]["tick"])
+            if start - 2 <= first <= stop:
+                throw_x = segment[0]["x"] if grenade.get("throw_x") is None else grenade["throw_x"]
+                throw_y = segment[0]["y"] if grenade.get("throw_y") is None else grenade["throw_y"]
+                distance = math.hypot(float(segment[0]["x"]) - float(throw_x),
+                                      float(segment[0]["y"]) - float(throw_y))
+                candidates.append((abs(first - start), distance, segment))
+        if candidates:
+            segment = min(candidates, key=lambda item: (item[0], item[1]))[2]
+            used.add(id(segment))
+            actual = [p for p in segment if start <= int(p["tick"]) <= stop]
+            if actual:
+                row["trajectory"] = [[int(p["tick"]), float(p["x"]), float(p["y"]), _num(p.get("z"), float)] for p in actual]
         out.append(row)
     return out
 

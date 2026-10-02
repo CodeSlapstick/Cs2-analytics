@@ -37,6 +37,7 @@ from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, Request,
 from fastapi.concurrency import run_in_threadpool  # เอางานหนักที่ไม่ใช่ async ไปรันในเธรดแยก ไม่ให้เซิร์ฟเวอร์ค้าง
 from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.middleware.gzip import GZipMiddleware
 
 from backend import auth  # ล็อกอิน: hash รหัสผ่าน + JWT ใน httpOnly cookie
 from backend.db import (  # noqa: F401  (load_dotenv ทำงานตอน import)
@@ -59,6 +60,7 @@ from backend.review import (
     radar_frame,
 )
 from backend.site_model import available_times, load_site_model, predict_a, read_at
+from backend.player_role_service import build_match_profiles, compatibility_reason, infer_match, load_role_model
 
 # ---------------------------------------------------------------------------
 # ส่วนที่ 1 — ค่าตั้งต้น (CONFIG) อยากแก้อะไรแก้ตรงนี้ที่เดียว
@@ -129,6 +131,7 @@ async def lifespan(app: FastAPI):
 # Swagger อยู่ใต้ /api — หน้าเว็บส่งต่อให้เฉพาะ /api /auth /assets ถ้าอยู่ที่ /docs จะเปิดจากหน้าเว็บไม่ได้
 app = FastAPI(title="CS2 Analytics API", lifespan=lifespan,
               docs_url="/api/docs", redoc_url=None, openapi_url="/api/openapi.json")
+app.add_middleware(GZipMiddleware, minimum_size=1000)
 app.mount("/assets", StaticFiles(directory=ASSETS_DIR), name="assets")  # URL ที่ขึ้นต้นด้วย /assets ให้ไปหยิบไฟล์จริงใน assets/ (ภาพเรดาร์)
 
 # Windows บางเครื่องไม่รู้จักนามสกุล .webp ทำให้ส่งไฟล์ออกไปเป็น application/octet-stream
@@ -851,6 +854,59 @@ async def api_analysis_deaths(
     }
 
 
+@app.get("/api/analysis/player-behavior")
+async def api_player_behavior(
+    demo: str = Query(..., description="Uploaded demo filename"),
+    players: str | None = Query(None, description="Optional comma-separated SteamID64 values"),
+    _: dict = Depends(require_viewer),
+    conn: asyncpg.Connection = Depends(db),
+):
+    """Infer per-match, per-side behaviour from a cached reference-only KMeans artifact."""
+    model = load_role_model()
+    match = await _review_match(conn, demo)
+    source = await conn.fetchval("SELECT source FROM matches WHERE id = $1", match["id"])
+    reason = compatibility_reason(model, match.get("map_name"), source)
+    if reason:
+        return {"available": False, "reason": reason, "map": match.get("map_name"),
+                "supported_map": model.get("map") if model else None}
+
+    selected = _parse_int_list(players, what="players")
+    round_rows = await conn.fetch("""
+        SELECT r.round_num, pr.steam_id, p.name, pr.side, pr.assists, pr.opening_kill,
+               pr.opening_death, pr.trade_kills, pr.was_traded
+        FROM player_rounds pr
+        JOIN rounds r ON r.id = pr.round_id
+        JOIN players p ON p.steam_id = pr.steam_id
+        WHERE r.match_id = $1
+        ORDER BY r.round_num, p.name
+    """, match["id"])
+    kill_rows = await conn.fetch("""
+        SELECT r.round_num, r.start_tick, r.bomb_plant_tick, k.tick, k.attacker_id,
+               k.victim_id, k.assister_id, k.attacker_side, k.victim_side,
+               k.attacker_place, k.victim_place, k.assisted_flash
+        FROM kills k JOIN rounds r ON r.id = k.round_id
+        WHERE r.match_id = $1 ORDER BY r.round_num, k.tick
+    """, match["id"])
+    profiles = await run_in_threadpool(build_match_profiles, round_rows, kill_rows, match.get("tickrate") or 128)
+    results = await run_in_threadpool(infer_match, profiles, model,
+                                      {str(p) for p in selected} if selected is not None else None)
+    return {
+        "available": True,
+        "demo": demo,
+        "map": match.get("map_name"),
+        "unit": model.get("unit"),
+        "minimum_rounds": model.get("min_rounds_per_profile", 5),
+        "players": results,
+        "source": {
+            "kind": "reference_only",
+            "matches": model.get("source_matches"),
+            "version": model.get("version"),
+            "model": model.get("model"),
+        },
+        "note": model.get("interpretation_note"),
+    }
+
+
 @app.get("/api/analysis/readability")
 async def api_readability(demo: str = Query(..., description="ชื่อไฟล์เดโมของแมตช์ที่ทีมอัปโหลด"),
                           _: dict = Depends(require_viewer), conn: asyncpg.Connection = Depends(db)):
@@ -963,6 +1019,7 @@ async def api_review_round(demo_file: str, round_num: int, _: dict = Depends(req
         WHERE k.round_id = $1 ORDER BY k.tick, k.id""", rnd["id"])
     grenades = await conn.fetch("""
         SELECT g.tick, g.thrower_id, g.side, g.type, g.throw_x, g.throw_y, g.land_x, g.land_y, g.land_tick, g.end_tick,
+               g.trajectory,
                p.name AS thrower_name
         FROM grenades g LEFT JOIN players p ON p.steam_id = g.thrower_id
         WHERE g.round_id = $1 ORDER BY g.tick, g.id""", rnd["id"])
@@ -973,14 +1030,15 @@ async def api_review_round(demo_file: str, round_num: int, _: dict = Depends(req
 @app.get("/api/review/{demo_file}/rounds/{round_num}/positions")
 async def api_review_positions(demo_file: str, round_num: int, _: dict = Depends(require_viewer),
                                conn: asyncpg.Connection = Depends(db)):
-    """ตำแหน่งผู้เล่นรายวินาทีของรอบนี้ (สำหรับโหมดเล่นย้อน) — ~9 KB ต่อรอบ ขอเฉพาะตอนเปิดโหมด"""
+    """snapshot ตำแหน่งผู้เล่นของรอบนี้ (8 Hz ใหม่ / รองรับ 1 Hz เดิม) โหลดเมื่อเปิดโหมด"""
     m = await _review_match(conn, demo_file)
     rnd = await conn.fetchrow(
         "SELECT id, round_num, start_tick FROM rounds WHERE match_id = $1 AND round_num = $2", m["id"], round_num)
     if not rnd:
         raise HTTPException(404, f"แมตช์นี้ไม่มีรอบที่ {round_num}")
     pos = await conn.fetch("""
-        SELECT tick, steam_id, side, x, y, health, place FROM player_positions
+        SELECT tick, steam_id, side, x, y, health, place, active_weapon, armor, has_helmet, has_defuser
+        FROM player_positions
         WHERE match_id = $1 AND round_num = $2 ORDER BY tick, steam_id""", m["id"], round_num)
     return build_round_positions(rows(pos), start_tick=rnd["start_tick"], tickrate=m["tickrate"],
                                  frame=radar_frame(m["map_name"]))
@@ -990,7 +1048,7 @@ async def api_review_positions(demo_file: str, round_num: int, _: dict = Depends
 # แต่ละ event ดึงพิกัดของ "ใคร" คนละคน — ตัวกรองฝั่ง/ผู้เล่นใช้กับคนคนนั้นเสมอ
 #   kills      ตำแหน่งคนยิง ตอนยิงคู่แข่งตาย
 #   deaths     ตำแหน่งคนตาย
-#   positions  ตำแหน่งที่ผู้เล่นที่ยังไม่ตายยืน วินาทีละครั้ง (player_positions 1 Hz)
+#   positions  ตำแหน่งที่ผู้เล่นที่ยังไม่ตายยืน (player_positions; ข้อมูลใหม่ 8 Hz)
 #   ระเบิด     จุดที่ระเบิดตก/แตก ของคนขว้าง — ไม่มี decoy เพราะเดโมไม่บันทึกว่ามันตกตรงไหน
 #   ไม่มี "shots" เพราะ parser เก็บ weapon_fire เฉพาะของระเบิด ไม่ได้เก็บการยิงปืน
 _HEATMAP_SQL = {

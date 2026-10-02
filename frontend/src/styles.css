@@ -467,11 +467,20 @@ svg.radar.zoomed:active { cursor: grabbing; }
 }
 .pstat { font-size: var(--fs-xs); color: var(--muted); padding-left: 30px; }
 .pstat .alive { color: var(--ok); }
+.pgear { display: flex; align-items: center; gap: 5px; min-height: 17px; padding-left: 30px; color: var(--muted); font-size: 10px; }
+.pgear svg { fill: currentColor; flex: none; }
+.pgear-weapon { width: 29px; height: 13px; }
+.pgear-small { width: 13px; height: 13px; }
 .pdot { width: 11px; height: 11px; border-radius: 50%; display: inline-block; flex: none; box-shadow: 0 0 0 1px rgba(21, 26, 35, .25); }
 .roster-note { margin: 2px 2px 0; }
 
 /* ---- ตัวหนังสือบน SVG แผนที่ (อยู่บนภาพเรดาร์พื้นมืด สีจึงคงเดิม) ---- */
 .death-dot { cursor: pointer; }
+.death-x { cursor: pointer; outline: none; }
+.death-hit { pointer-events: all; }
+.death-x-mark, .death-focus-ring { pointer-events: none; }
+.death-x:hover .death-x-mark,
+.death-x:focus-visible .death-x-mark { filter: drop-shadow(0 0 2px #fff); }
 .death-num { font-size: 22px; font-weight: 800; fill: #0b1220; pointer-events: none; }
 /* หมายเลขผู้เล่นในโหมดเล่นย้อน — fill มาจาก inline style เพราะขึ้นกับฝั่ง (ขาวบนฟ้า / เข้มบนส้ม) */
 .slot-num { font-weight: 800; font-variant-numeric: tabular-nums; pointer-events: none; }
@@ -479,6 +488,10 @@ svg.radar.zoomed:active { cursor: grabbing; }
 .bomb-label { font-size: 13px; font-weight: 800; fill: #fff; }
 .dot-name { font-size: 20px; font-weight: 700; fill: #fff; paint-order: stroke; stroke: #0b1220; stroke-width: 5px; pointer-events: none; }
 .dot-name.atk { font-size: 17px; }
+.live-player-label { font-weight: 650; letter-spacing: .01em; paint-order: stroke; stroke: rgba(5, 10, 18, .94); pointer-events: none; }
+.live-player-label.selected { font-weight: 800; stroke-width: 4.5px !important; }
+.player-label-leader { opacity: .58; vector-effect: non-scaling-stroke; }
+.live-weapon-icon, .map-utility-icon, .map-equipment-icon { fill: #f8fafc; filter: drop-shadow(0 1px 1px #050a12); }
 .nade-label { font-size: 16px; font-weight: 700; paint-order: stroke; stroke: #0b1220; stroke-width: 4px; pointer-events: none; }
 
 /* ---- ไทม์ไลน์ + บริบท ---- */
@@ -499,9 +512,11 @@ svg.radar.zoomed:active { cursor: grabbing; }
 .tl-num { width: 20px; height: 20px; border-radius: 50%; display: inline-grid; place-items: center; font-size: var(--fs-xs); font-weight: 800; color: #0b1220; flex: none; }
 .tl-t { font-variant-numeric: tabular-nums; color: var(--muted); }
 .tl-meta { color: var(--muted); }
+.tl-weapon-icon { width: 30px; height: 13px; margin: 0 5px 0 2px; fill: currentColor; vertical-align: -2px; }
+.tl-event-icon { width: 17px; height: 17px; fill: currentColor; vertical-align: -4px; }
 .who { white-space: nowrap; }
 .who .pdot { width: 8px; height: 8px; margin-right: 3px; }
-.nade-dot { width: 10px; height: 10px; border-radius: 50%; align-self: center; justify-self: center; }
+.nade-dot { width: 16px; height: 16px; align-self: center; justify-self: center; display: inline-grid; place-items: center; }
 .summary { border-top: 1px solid var(--line); padding-top: 10px; margin-top: 4px; font-size: var(--fs-sm); }
 .summary p { margin: 4px 0; }
 
@@ -1086,11 +1101,43 @@ a.an-tab:hover { text-decoration: none; }
 .pl-matches a { grid-template-columns: 48px 46px 1fr auto; }
 .pl-thumb { width: 48px; height: 27px; border-radius: 4px; }
 /* ไอคอนระเบิดแทนจุดสี */
-.nade-ico { width: 16px; height: 16px; display: inline-block; vertical-align: -3px; flex: none; }
+.nade-ico { width: 16px; height: 16px; display: inline-block; vertical-align: -3px; flex: none; fill: currentColor; }
+.nade-decoy-ico { fill: none; stroke: var(--purple, #a78bfa); stroke-width: 1.8; }
 .nade-toggle .nade-ico { width: 15px; height: 15px; }
 .legend .nade-ico { margin-right: 3px; }
 .seg-btn .nade-ico { margin-right: 4px; width: 15px; height: 15px; }
-img.nade-dot { width: 16px; height: 16px; border-radius: 0; }
+.nade-dot .nade-ico { width: 16px; height: 16px; }
+
+/* Player behavior: factual match-side profiles, visually subordinate to the main analysis. */
+.behavior { margin-top: 28px; padding: 20px; border: 1px solid var(--line); background: var(--card); border-radius: 12px; }
+.behavior-head { display: flex; gap: 12px; align-items: flex-start; margin-bottom: 18px; }
+.behavior-head h2 { margin: 0 0 4px; font-size: var(--fs-xl); }
+.behavior-head p { margin: 0; max-width: 72ch; }
+.behavior-title-icon { width: 36px; height: 36px; padding: 7px; border-radius: 9px; color: var(--text); background: var(--card-2); flex: none; }
+.behavior-title-icon svg { width: 100%; height: 100%; fill: currentColor; }
+.behavior-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.behavior-side { min-width: 0; }
+.behavior-side h3 { margin: 0 0 10px; font-size: var(--fs-md); }
+.behavior-card { padding: 12px 14px; margin-top: 8px; border: 1px solid var(--line); border-left: 3px solid var(--t); border-radius: 8px; background: var(--bg); }
+.behavior-side.side-ct .behavior-card { border-left-color: var(--ct); }
+.behavior-player { display: flex; gap: 10px; align-items: baseline; justify-content: space-between; min-width: 0; }
+.behavior-player b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.behavior-role { display: block; margin-top: 8px; font-size: var(--fs-lg); }
+.behavior-signals { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 5px; }
+.behavior-signals li { display: flex; justify-content: space-between; gap: 12px; color: var(--text); }
+.behavior-signals small { color: var(--muted); text-align: right; }
+.behavior-margin { margin: 9px 0 0; font-size: var(--fs-xs); }
+.behavior-note { margin: 16px 0 0; font-size: var(--fs-xs); line-height: 1.5; }
+.behavior-state { min-height: 72px; display: flex; align-items: center; }
+.behavior-empty { gap: 12px; }
+.behavior-empty svg { width: 32px; height: 32px; flex: none; }
+.behavior-empty p { margin: 4px 0 0; }
+@media (max-width: 720px) {
+  .behavior { padding: 15px; }
+  .behavior-grid { grid-template-columns: 1fr; }
+  .behavior-signals li { display: block; }
+  .behavior-signals small { display: block; text-align: left; margin-top: 2px; }
+}
 
 /* Public home — tactical debrief room. */
 .page:has(.home-page) { max-width: none; padding: 0; }

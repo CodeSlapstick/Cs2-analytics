@@ -21,7 +21,7 @@ type Side = "all" | "ct" | "t";
 const EVENTS: { key: HeatEvent; label: string; who: string; group: "คน" | "ระเบิด" }[] = [
   { key: "kills", label: "คิล", who: "ตำแหน่งคนยิงตอนยิงคู่แข่งตาย", group: "คน" },
   { key: "deaths", label: "ตาย", who: "ตำแหน่งที่ผู้เล่นตาย", group: "คน" },
-  { key: "positions", label: "ยืน", who: "ตำแหน่งที่ผู้เล่นยืน เก็บวินาทีละครั้งตลอดรอบ", group: "คน" },
+  { key: "positions", label: "ยืน", who: "ตำแหน่งที่ผู้เล่นยืน เก็บ 8 ครั้งต่อวินาทีตลอดรอบ", group: "คน" },
   { key: "smoke", label: "สโมค", who: "จุดที่สโมคแตก", group: "ระเบิด" },
   { key: "flash", label: "แฟลช", who: "จุดที่แฟลชแตก", group: "ระเบิด" },
   { key: "he", label: "HE", who: "จุดที่ HE แตก", group: "ระเบิด" },

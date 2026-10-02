@@ -24,7 +24,7 @@ from sqlalchemy import (
     UniqueConstraint,
     text,
 )
-from sqlalchemy.dialects.postgresql import REAL
+from sqlalchemy.dialects.postgresql import JSONB, REAL
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -245,7 +245,7 @@ class PlayerRound(Base):
 
 
 class PlayerPosition(Base):
-    """ตำแหน่งผู้เล่นที่ 1 Hz — หนึ่งแถวต่อคนต่อวินาที เฉพาะช่วงที่รอบกำลังเล่นและคนนั้นยังมีชีวิต"""
+    """snapshot ตำแหน่งผู้เล่น 8 Hz เฉพาะช่วงที่รอบกำลังเล่นและคนนั้นยังมีชีวิต"""
     __tablename__ = "player_positions"
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     match_id: Mapped[int] = mapped_column(ForeignKey("matches.id", ondelete="CASCADE"), nullable=False)
@@ -258,9 +258,15 @@ class PlayerPosition(Base):
     z: Mapped[float | None] = mapped_column(REAL)
     health: Mapped[int | None] = mapped_column(SmallInteger)
     place: Mapped[str | None] = mapped_column(Text)
+    active_weapon: Mapped[str | None] = mapped_column(Text)
+    armor: Mapped[int | None] = mapped_column(SmallInteger)
+    has_helmet: Mapped[bool | None] = mapped_column(Boolean)
+    has_defuser: Mapped[bool | None] = mapped_column(Boolean)
 
     __table_args__ = (
         CheckConstraint("side IN ('ct', 't')", name="player_positions_side_check"),
+        UniqueConstraint("match_id", "round_num", "tick", "steam_id",
+                         name="player_positions_snapshot_unique"),
         Index("player_positions_match_round_idx", "match_id", "round_num"),
         Index("player_positions_player_idx", "steam_id"),
     )
@@ -282,6 +288,7 @@ class Grenade(Base):
     land_y: Mapped[float | None] = mapped_column(REAL)
     land_tick: Mapped[int | None] = mapped_column(Integer)
     end_tick: Mapped[int | None] = mapped_column(Integer)
+    trajectory: Mapped[list | None] = mapped_column(JSONB)  # [[tick,x,y,z], ...] จาก projectile entity จริง
 
     __table_args__ = (
         CheckConstraint("side IN ('ct', 't')", name="grenades_side_check"),

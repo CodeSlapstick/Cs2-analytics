@@ -124,9 +124,14 @@ export const EN_MATCH: Record<string, string> = {
   "ความเร็ว": "Speed",
   "กลับไปภาพสรุปทั้งรอบ": "Back to the whole-round summary view",
   "ภาพสรุปรอบ": "Round summary view",
-  "ตำแหน่งถูกเก็บวินาทีละครั้ง · ช่วงระหว่างวินาทีเป็นการวาดให้ต่อเนื่อง ไม่ใช่ข้อมูลจากเดโม":
-    "Positions are recorded once per second · movement between seconds is smoothed for display, not demo data",
-  "ชื่อข้างวง = คนขว้าง · เส้นประ = ทางที่ขว้างมา": "Name by the circle = thrower · dashed line = throw path",
+  "ตำแหน่งถูกเก็บ 8 ครั้งต่อวินาที · การเคลื่อนที่ระหว่าง snapshot เป็นการ interpolate":
+    "Positions are sampled eight times per second · movement between snapshots is interpolated",
+  "ข้อมูลเดิมเก็บตำแหน่งประมาณวินาทีละครั้ง · การเคลื่อนที่ระหว่าง snapshot เป็นการ interpolate":
+    "Legacy data samples positions about once per second · movement between snapshots is interpolated",
+  "เส้นทึบ = ตำแหน่ง projectile จากเดโม · เส้นประ = เส้นประมาณจากจุดขว้างถึงจุดตก · วง utility เป็นขนาดเพื่อการแสดงผล":
+    "Solid line = projectile samples from the demo · dashed line = estimated throw-to-land path · utility circles are display sizes",
+  "{throw} ขว้าง · {land} ตก": "Thrown {throw} · landed {land}",
+  "เส้นทางประมาณจากจุดขว้างถึงจุดตก": "Estimated path from throw to landing",
   "ไทม์ไลน์ของรอบ": "Round timeline",
   "ไทม์ไลน์": "Timeline",
   "วางบอมบ์": "Bomb planted",
