@@ -40,13 +40,12 @@ export function PlayerPage() {
   return (
     <div className="player" data-testid="player-page">
       <header className="pl-head">
-        {d.player.avatar ? <img className="pl-avatar" src={d.player.avatar} alt="" /> : <img className="pl-avatar" src={unknownAvatar} alt="" />}
+        {d.player.avatar ? <img className="pl-avatar" src={d.player.avatar} alt="" referrerPolicy="no-referrer" /> : <img className="pl-avatar" src={unknownAvatar} alt="" />}
         <div>
           <h1>{d.player.name}</h1>
-          <p className="muted">
-            {t("จาก {n} แมตช์ที่โหลดเข้าระบบ", { n: num(d.source.matches) })}
-            {d.player.linked_account && <> · {t("บัญชีในระบบ: {account}", { account: d.player.linked_account })}</>}
-          </p>
+          {d.player.linked_account && (
+            <p className="muted">{t("บัญชีในระบบ: {account}", { account: d.player.linked_account })}</p>
+          )}
         </div>
       </header>
 

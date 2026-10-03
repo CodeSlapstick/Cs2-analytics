@@ -78,6 +78,7 @@ class Player(Base):
     __tablename__ = "players"
     steam_id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     name: Mapped[str] = mapped_column(Text, nullable=False)
+    avatar: Mapped[str | None] = mapped_column(Text)                     # URL รูปโปรไฟล์ Steam (ดึงเมื่อเปิดดูครั้งแรก)
 
 
 class Match(Base):

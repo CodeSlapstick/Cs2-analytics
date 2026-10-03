@@ -217,8 +217,24 @@ def test_username_from_steam_persona(persona, expected):
     assert auth.username_for_steam(persona, "76561198012345678") == expected
 
 
-def test_steam_persona_without_api_key_does_not_invent_a_name(monkeypatch):
+def test_steam_persona_without_api_key_uses_community_profile(monkeypatch):
     monkeypatch.setattr(auth, "STEAM_API_KEY", "")
+
+    class FakeResponse:
+        def read(self, _limit=None):
+            return (b"<profile><steamID><![CDATA[Alice]]></steamID>"
+                    b"<avatarFull><![CDATA[https://avatars.steamstatic.com/a_full.jpg]]></avatarFull></profile>")
+        def __enter__(self): return self
+        def __exit__(self, *args): return False
+
+    monkeypatch.setattr(auth.urllib.request, "urlopen", lambda *_args, **_kwargs: FakeResponse())
+    assert auth.steam_persona("76561198012345678") == {
+        "name": "Alice", "avatar": "https://avatars.steamstatic.com/a_full.jpg"}
+
+
+def test_steam_persona_returns_safe_fallback_when_steam_is_unavailable(monkeypatch):
+    monkeypatch.setattr(auth, "STEAM_API_KEY", "")
+    monkeypatch.setattr(auth.urllib.request, "urlopen", lambda *_args, **_kwargs: (_ for _ in ()).throw(OSError()))
     assert auth.steam_persona("76561198012345678") == {"name": "steam_76561198012345678", "avatar": None}
 
 

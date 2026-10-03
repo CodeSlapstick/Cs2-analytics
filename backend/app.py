@@ -327,7 +327,15 @@ async def auth_me(request: Request, viewer: dict = Depends(require_viewer)):
     if viewer["type"] == auth.STEAM and pool is not None:
         try:
             async with pool.acquire() as conn:
-                avatar = await conn.fetchval("SELECT avatar FROM accounts WHERE id = $1", viewer["id"])
+                account = await conn.fetchrow("SELECT steam_id, avatar FROM accounts WHERE id = $1", viewer["id"])
+                avatar = account["avatar"] if account else None
+                # บัญชีเก่าที่เคยล็อกอินตอนยังไม่มี STEAM_API_KEY จะไม่มีรูปติดฐานข้อมูล
+                # ขอจาก Steam ตอนใช้งานครั้งแรกแล้วแคชไว้ จึงไม่ยิง Steam ซ้ำทุก request
+                if account and not avatar:
+                    profile = await run_in_threadpool(auth.steam_persona, str(account["steam_id"]))
+                    avatar = profile["avatar"]
+                    if avatar:
+                        await conn.execute("UPDATE accounts SET avatar = $2 WHERE id = $1", viewer["id"], avatar)
         except Exception as e:                                    # noqa: BLE001 — รูปหายดีกว่า session หลุด
             log(f"[AUTH] ดึง avatar ของ user {viewer['id']} ไม่ได้: {e}")
     return {"user": {**viewer, "avatar": avatar}}
@@ -494,12 +502,22 @@ async def api_player_summary(who: str, viewer: dict = Depends(require_viewer), c
         SELECT clutch_vs AS vs, COUNT(*) AS attempts, COUNT(*) FILTER (WHERE clutch_won) AS wins
         FROM player_rounds WHERE steam_id = $1 AND clutch_vs > 0 GROUP BY clutch_vs ORDER BY clutch_vs""", steam_id)
     account = await conn.fetchrow("SELECT username, avatar FROM accounts WHERE steam_id = $1", steam_id)
+    avatar = account["avatar"] if account else None
+    if not avatar:
+        avatar = await conn.fetchval("SELECT avatar FROM players WHERE steam_id = $1", steam_id)
+    if not avatar:
+        # ผู้เล่นจากเดโมไม่จำเป็นต้องมีบัญชีในระบบ แต่ SteamID ในเดโมใช้ขอรูปสาธารณะได้
+        # ดึงเมื่อเปิดหน้าครั้งแรกและแคชไว้ใน players เพื่อไม่เรียก Steam ซ้ำ
+        profile = await run_in_threadpool(auth.steam_persona, str(steam_id))
+        avatar = profile["avatar"]
+        if avatar:
+            await conn.execute("UPDATE players SET avatar = $2 WHERE steam_id = $1", steam_id, avatar)
 
     by_side = {r["side"]: {"kills": r["kills"], "deaths": r["deaths"]} for r in entry}
     both = {"kills": sum(v["kills"] for v in by_side.values()), "deaths": sum(v["deaths"] for v in by_side.values())}
     return {
         "player": {"steam_id": str(steam_id), "name": row["name"],
-                   "avatar": account["avatar"] if account else None,
+                   "avatar": avatar,
                    "linked_account": account["username"] if account else None},
         "totals": {k: row[k] for k in ("matches", "rounds", "kills", "deaths", "assists", "headshots",
                                        "kd", "hs_rate", "adr", "kast", "win_rate", "survival_rate", "rating")},
