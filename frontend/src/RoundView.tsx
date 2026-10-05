@@ -1,4 +1,4 @@
-import { type KeyboardEvent, type MouseEvent as ReactMouseEvent, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { type KeyboardEvent, type MouseEvent as ReactMouseEvent, type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   api,
@@ -50,10 +50,11 @@ interface RoundViewProps {
   roundNum: number;
   view: ViewState;
   setView: (patch: Partial<ViewState>) => void;
+  roundSelector?: ReactNode;
 }
 
 /** เนื้อหาของหนึ่งรอบ: รายชื่อทีม / แผนที่ / ไทม์ไลน์ — state ทั้งหมดมาจาก URL · ไม่มีผลโมเดลในหน้านี้ (อยู่ที่ /analysis) */
-export function RoundView({ demo, roundNum, view, setView }: RoundViewProps) {
+export function RoundView({ demo, roundNum, view, setView, roundSelector }: RoundViewProps) {
   // โหมดเล่นย้อน: เวลาที่กำลังเล่นอยู่เก็บใน state (เปลี่ยนทุกเฟรม) แล้วเขียนลง URL ตอนหยุดเท่านั้น
   const [playing, setPlaying] = useState(false);
   const [speed, setSpeed] = useState<(typeof SPEEDS)[number]>(1);
@@ -333,6 +334,8 @@ export function RoundView({ demo, roundNum, view, setView }: RoundViewProps) {
               </button>
             )}
           </div>
+          {/* เลือกรอบจากใต้ตัวควบคุมแผนที่ เพื่อเปลี่ยนรอบได้ทันทีหลังดูเล่นย้อน */}
+          {roundSelector}
           {view.playback && pos && pos.frames.length > 0 && <p className="muted small pb-note">{t(pos.note)}</p>}
           {anyNadeOn && (
             <div className="legend">
