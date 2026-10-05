@@ -106,6 +106,7 @@ def log(msg: str) -> None:
 # ค่าจาก .env ที่รากโปรเจกต์ (backend/db.py โหลดเข้า environment ให้แล้วตอน import)
 # ที่อยู่ที่เบราว์เซอร์เห็น (Steam ต้องส่งผู้ใช้กลับมาที่นี่) — ว่าง = เดาจาก Host ของคำขอ ซึ่งถูกต้องเมื่ออยู่หลัง nginx ของ compose
 PUBLIC_URL = os.environ.get("PUBLIC_URL", "").rstrip("/")
+FRONTEND_URL = os.environ.get("FRONTEND_URL", "").rstrip("/")
 
 
 # ---------------------------------------------------------------------------
@@ -161,6 +162,16 @@ async def db(request: Request) -> asyncpg.Connection:
         raise HTTPException(503, "ฐานข้อมูลยังไม่พร้อม — เปิดด้วย docker compose up -d db แล้วรีสตาร์ตเซิร์ฟเวอร์")
     async with pool.acquire() as conn:
         yield conn
+
+
+async def _optional_columns(conn: asyncpg.Connection, table: str, names: tuple[str, ...]) -> set[str]:
+    """Read columns on the table resolved by the connection's search path."""
+    return {
+        row["attname"] for row in await conn.fetch("""
+            SELECT attname FROM pg_attribute
+            WHERE attrelid = to_regclass($1) AND attname = ANY($2::text[])
+              AND attnum > 0 AND NOT attisdropped""", table, list(names))
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -246,6 +257,21 @@ def _public_base(request: Request) -> str:
     return f"{scheme}://{host}"
 
 
+def _frontend_base(request: Request) -> str:
+    """Frontend origin for browser redirects; the proxy origin is the default."""
+    if FRONTEND_URL:
+        return FRONTEND_URL
+    base = _public_base(request)
+    parsed = urllib.parse.urlsplit(base)
+    if parsed.hostname in ("localhost", "127.0.0.1") and parsed.port == 8000:
+        return f"{parsed.scheme}://{parsed.hostname}:5173"
+    return base
+
+
+def _frontend_redirect(request: Request, path: str) -> RedirectResponse:
+    return RedirectResponse(f"{_frontend_base(request)}{path}", status_code=303)
+
+
 @app.get("/auth/steam/login")
 def auth_steam_login(request: Request, next: str = "/player"):
     """พาไปล็อกอินที่ Steam แล้วให้ส่งกลับมาที่ /auth/steam/callback (พก next ไปด้วยใน return_to)"""
@@ -260,13 +286,16 @@ async def auth_steam_callback(request: Request, next: str = "/player",
                               conn: asyncpg.Connection = Depends(db)):
     """Steam ส่งกลับมาที่นี่ — ตรวจกับ Steam ก่อนเสมอ ผ่านแล้วค่อยสร้าง/หาบัญชีแล้วติดคุกกี้ JWT"""
     params = dict(request.query_params)
-    steamid = await run_in_threadpool(auth.verify_steam_openid, params)
+    expected_return_to = (f"{_public_base(request)}/auth/steam/callback"
+                          f"?next={urllib.parse.quote(_safe_next(next), safe='/')}")
+    steamid = await run_in_threadpool(auth.verify_steam_openid, params,
+                                     expected_return_to=expected_return_to)
     if not steamid:
         log("[AUTH] Steam ไม่ยืนยันการล็อกอินนี้")
-        return RedirectResponse("/login?err=steam", status_code=303)
+        return _frontend_redirect(request, "/login?err=steam")
     if not auth.steam_id_allowed(steamid):
         log(f"[AUTH] SteamID {steamid} ไม่อยู่ใน STEAM_ALLOWED_IDS")
-        return RedirectResponse("/login?err=steam_denied", status_code=303)
+        return _frontend_redirect(request, "/login?err=steam_denied")
 
     profile = await run_in_threadpool(auth.steam_persona, steamid)
     row = await conn.fetchrow("SELECT id, username FROM accounts WHERE steam_id = $1", int(steamid))
@@ -282,13 +311,13 @@ async def auth_steam_callback(request: Request, next: str = "/player",
             except asyncpg.UniqueViolationError:
                 continue
         if row is None:
-            return RedirectResponse("/login?err=steam_account", status_code=303)
+            return _frontend_redirect(request, "/login?err=steam_account")
         log(f"[AUTH] สร้างบัญชีจาก Steam {steamid} -> {row['username']} (id {row['id']})")
     else:
         await conn.execute("UPDATE accounts SET last_login = now(), avatar = COALESCE($2, avatar) WHERE id = $1",
                            row["id"], profile["avatar"])
 
-    response = RedirectResponse(_safe_next(next), status_code=303)
+    response = _frontend_redirect(request, _safe_next(next))
     auth.set_auth_cookie(response, auth.create_token(row["id"], row["username"]), persistent=True)
     return response
 
@@ -1017,9 +1046,11 @@ async def api_review_round(demo_file: str, round_num: int, _: dict = Depends(req
         LEFT JOIN players pv ON pv.steam_id = k.victim_id
         LEFT JOIN players ps ON ps.steam_id = k.assister_id
         WHERE k.round_id = $1 ORDER BY k.tick, k.id""", rnd["id"])
-    grenades = await conn.fetch("""
+    grenade_columns = await _optional_columns(conn, "grenades", ("trajectory",))
+    trajectory = "g.trajectory" if "trajectory" in grenade_columns else "NULL::jsonb AS trajectory"
+    grenades = await conn.fetch(f"""
         SELECT g.tick, g.thrower_id, g.side, g.type, g.throw_x, g.throw_y, g.land_x, g.land_y, g.land_tick, g.end_tick,
-               g.trajectory,
+               {trajectory},
                p.name AS thrower_name
         FROM grenades g LEFT JOIN players p ON p.steam_id = g.thrower_id
         WHERE g.round_id = $1 ORDER BY g.tick, g.id""", rnd["id"])
@@ -1036,8 +1067,14 @@ async def api_review_positions(demo_file: str, round_num: int, _: dict = Depends
         "SELECT id, round_num, start_tick FROM rounds WHERE match_id = $1 AND round_num = $2", m["id"], round_num)
     if not rnd:
         raise HTTPException(404, f"แมตช์นี้ไม่มีรอบที่ {round_num}")
-    pos = await conn.fetch("""
-        SELECT tick, steam_id, side, x, y, health, place, active_weapon, armor, has_helmet, has_defuser
+    equipment = ("active_weapon", "armor", "has_helmet", "has_defuser")
+    available = await _optional_columns(conn, "player_positions", equipment)
+    defaults = {"active_weapon": "NULL::text", "armor": "NULL::integer",
+                "has_helmet": "NULL::boolean", "has_defuser": "NULL::boolean"}
+    equipment_sql = ", ".join(name if name in available else f"{defaults[name]} AS {name}"
+                              for name in equipment)
+    pos = await conn.fetch(f"""
+        SELECT tick, steam_id, side, x, y, health, place, {equipment_sql}
         FROM player_positions
         WHERE match_id = $1 AND round_num = $2 ORDER BY tick, steam_id""", m["id"], round_num)
     return build_round_positions(rows(pos), start_tick=rnd["start_tick"], tickrate=m["tickrate"],
