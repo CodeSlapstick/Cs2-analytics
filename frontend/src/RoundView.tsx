@@ -164,7 +164,11 @@ export function RoundView({ demo, roundNum, view, setView, roundSelector }: Roun
   // (การตายเหล่านั้นยังอยู่ครบในแผนที่ปกติและในไทม์ไลน์ ไม่ได้ถูกซ่อนจากผู้ใช้)
   const shownDeaths = view.playback ? d.deaths.filter((x) => time > 0 && x.t_round != null && x.t_round >= 0 && x.t_round <= time) : d.deaths;
   const plantT = d.round.bomb_planted_t;
-  const shownBomb = view.playback && (time === 0 || (plantT != null && time < plantT)) ? null : d.round.bomb;
+  const bombActive = (plantT == null ? time > 0 : time >= plantT && time < plantT + 40)
+    && (d.round.bomb_resolved_t == null || time < d.round.bomb_resolved_t);
+  const shownBomb = !view.playback || bombActive ? d.round.bomb : null;
+  const bombRemaining = view.playback && bombActive && plantT != null && d.radar
+    ? Math.max(0, 40 - (time - plantT)) : null;
   // ชี้เมาส์อยู่ให้ชนะการกดค้าง — ปล่อยเมาส์แล้วกลับไปที่ตัวที่กดค้างไว้เหมือนเดิม
   const focusPlayer = hover ?? view.player;
 
@@ -230,29 +234,18 @@ export function RoundView({ demo, roundNum, view, setView, roundSelector }: Roun
         </aside>
 
         <section className="map-col" aria-label={t("แผนที่ของรอบ")}>
-          <div className="map-stage">
-            {d.radar ? (
-              <MapView
-                radar={d.radar}
-                deaths={shownDeaths}
-                bomb={shownBomb}
-                grenades={shownNades}
-                live={live}
-                defusingPlayer={defusingPlayer}
-                playbackTime={view.playback ? time : null}
-                reducedMotion={reducedMotion}
-                zoom={view.zoom}
-                center={view.center}
-                onView={(zoom, center) => setView({ zoom, center })}
-                highlight={focusPlayer}
-                onHover={setHover}
-                selected={view.death}
-                onSelect={(o) => setView({ death: o })}
-              />
-            ) : (
-              <p className="muted">{t("ยังไม่มีภาพเรดาร์ของแมพ {map}", { map: d.match.map_name ?? "" })}</p>
+          {/* C4 HUD กับปุ่มซูมอยู่ในหัวการ์ดเหนือภาพเรดาร์ เพื่อไม่บังพื้นที่เล่นบนแผนที่ */}
+          <div className="map-card-header">
+            {bombRemaining != null && (
+              <div className={`c4-hud${bombRemaining <= 10 ? " critical" : ""}`} data-testid="c4-countdown"
+                aria-label={`C4 ${bombRemaining.toFixed(1)}s`}>
+                <EquipmentIcon kind="bomb" className="c4-hud-icon" />
+                <span className="c4-hud-time">{bombRemaining.toFixed(1)}s</span>
+                <span className="c4-hud-track" aria-hidden="true">
+                  <span style={{ width: `${(bombRemaining / 40) * 100}%` }} />
+                </span>
+              </div>
             )}
-            {/* ซูมลอยอยู่มุมแผนที่ — ไม่กินบรรทัดใต้แผนที่อีกแถว (ล้อเมาส์บนแผนที่ก็ซูมได้) */}
             <div className="map-zoom" role="group" aria-label={t("ซูมแผนที่")}>
               <button type="button" onClick={() => {
                 const next = clampZoom(view.zoom * 1.4);
@@ -272,6 +265,30 @@ export function RoundView({ demo, roundNum, view, setView, roundSelector }: Roun
                 </button>
               )}
             </div>
+          </div>
+          <div className="map-stage">
+            {d.radar ? (
+              <MapView
+                radar={d.radar}
+                deaths={shownDeaths}
+                bomb={shownBomb}
+                bombPlantedT={plantT}
+                grenades={shownNades}
+                live={live}
+                defusingPlayer={defusingPlayer}
+                playbackTime={view.playback ? time : null}
+                reducedMotion={reducedMotion}
+                zoom={view.zoom}
+                center={view.center}
+                onView={(zoom, center) => setView({ zoom, center })}
+                highlight={focusPlayer}
+                onHover={setHover}
+                selected={view.death}
+                onSelect={(o) => setView({ death: o })}
+              />
+            ) : (
+              <p className="muted">{t("ยังไม่มีภาพเรดาร์ของแมพ {map}", { map: d.match.map_name ?? "" })}</p>
+            )}
           </div>
           {/* เล่นย้อน: กดครั้งเดียวทั้งเปิดโหมดและเริ่มเล่น (เดิมต้องกดเปิดโหมดก่อน แล้วกดเล่นอีกที) */}
           <div className="map-play">
@@ -468,6 +485,7 @@ interface MapProps {
   radar: NonNullable<RoundDetail["radar"]>;
   deaths: ReviewDeath[];
   bomb: RoundDetail["round"]["bomb"];
+  bombPlantedT: number | null;
   grenades: ReviewGrenade[];
   live?: LivePlayer[] | null; // โหมดเล่นย้อน: คนที่ยังไม่ตาย ณ วินาทีที่ดู (null = ปิดโหมด)
   defusingPlayer?: LivePlayer | null;
@@ -480,6 +498,34 @@ interface MapProps {
   highlight: string | null; // steamid ที่ถูกกดในรายชื่อ
   selected: number | null; // ลำดับการตายที่ถูกเลือก
   onSelect: (order: number | null) => void;
+}
+
+export function PlantedBomb({ x, y, radius, site, plantTime, playbackTime, label }: {
+  x: number; y: number; radius: number; site: string | null;
+  plantTime: number | null; playbackTime: number | null; label: string;
+}) {
+  // C4 นับถอยหลัง 40 วินาทีจากเวลาเริ่มวาง; เวลา replay เปลี่ยนแล้วคำนวณใหม่ทันที
+  const remainingSeconds = plantTime == null || playbackTime == null
+    ? null : Math.max(0, Math.min(40, 40 - (playbackTime - plantTime)));
+  const progressPercent = remainingSeconds == null ? 0 : (remainingSeconds / 40) * 100;
+  const ringRadius = radius * 1.5;
+  const circumference = 2 * Math.PI * ringRadius;
+
+  return (
+    <g transform={`translate(${x}, ${y})`} data-testid="bomb-icon">
+      {/* วง SVG สีแดงลดความยาวตามเปอร์เซ็นต์เวลาที่เหลือ โดยเริ่มจากด้านบนของ C4 */}
+      {remainingSeconds != null && (
+        <g data-testid="bomb-timer" pointerEvents="none">
+          <circle r={ringRadius} fill="none" stroke="#7f1d1d" strokeWidth={radius * .22} />
+          <circle r={ringRadius} fill="none" stroke="#ef4444" strokeWidth={radius * .22}
+            strokeDasharray={circumference} strokeDashoffset={circumference * (1 - progressPercent / 100)}
+            transform="rotate(-90)" strokeLinecap="round" />
+        </g>
+      )}
+      <EquipmentIcon kind="bomb" x={-radius} y={-radius} width={2 * radius} height={2 * radius} className="map-bomb-icon" />
+      <title>{`${label}${site ? ` (${site})` : ""}${remainingSeconds != null ? ` · ${remainingSeconds.toFixed(1)}s` : ""}`}</title>
+    </g>
+  );
 }
 
 /** รูปทรงต่างกันทุกชนิด จึงอ่านได้แม้แยกสีไม่ออก */
@@ -533,7 +579,7 @@ function clampRadarCenter(center: [number, number] | null, size: number, zoom: n
  * โหมดเล่นย้อน (prop live) เพิ่มตัวผู้เล่น ณ วินาทีที่ดู — ไม่มีเส้นทางเดินย้อนหลัง
  * เลือกการตายแล้ว ระเบิดที่แสดงเหลือเฉพาะลูกที่มีผลอยู่ ณ วินาทีนั้น (ควัน/ไฟที่ยังไม่หมด แฟลช/HE ที่เพิ่งแตก)
  */
-export function MapView({ radar, deaths, bomb, grenades, live, defusingPlayer, playbackTime, reducedMotion,
+export function MapView({ radar, deaths, bomb, bombPlantedT, grenades, live, defusingPlayer, playbackTime, reducedMotion,
                           zoom, center, onView, highlight, onHover, selected, onSelect }: MapProps) {
   const s = radar.size;
   // ---- ซูม/เลื่อนดู: viewBox คือกรอบที่มองอยู่ · เก็บบน URL เพื่อให้รีเฟรช/แชร์ลิงก์แล้วเห็นกรอบเดิม
@@ -659,17 +705,15 @@ export function MapView({ radar, deaths, bomb, grenades, live, defusingPlayer, p
           <line x1={defusingPlayer.px[0]} y1={defusingPlayer.px[1]} x2={bomb.px[0]} y2={bomb.px[1]}
             stroke="#38bdf8" strokeWidth={z.line} strokeDasharray={`${4 * U} ${2 * U}`}
             className={reducedMotion ? undefined : "defuse-beam"} />
-          <circle cx={bomb.px[0]} cy={bomb.px[1]} r={z.bomb * 1.45} fill="none"
+          <circle cx={bomb.px[0]} cy={bomb.px[1]} r={z.bomb * 1.9} fill="none"
             stroke="#7dd3fc" strokeWidth={z.line} className={reducedMotion ? undefined : "defuse-ring"} />
         </g>
       )}
 
-      {/* C4 ใช้สีแดงบนแผนที่ เพื่อแยกเป้าหมายวางบอมบ์ออกจากระเบิดขว้างทั่วไป */}
+      {/* C4 ใช้สีแดงและวงนับถอยหลัง เพื่อแยกเป้าหมายวางบอมบ์ออกจากระเบิดขว้างทั่วไป */}
       {bomb?.px && (
-        <g transform={`translate(${bomb.px[0]}, ${bomb.px[1]})`} data-testid="bomb-icon">
-          <EquipmentIcon kind="bomb" x={-z.bomb} y={-z.bomb} width={2 * z.bomb} height={2 * z.bomb} className="map-bomb-icon" />
-          <title>{`${t("วางบอมบ์")}${bomb.site ? ` (${bomb.site})` : ""}`}</title>
-        </g>
+        <PlantedBomb x={bomb.px[0]} y={bomb.px[1]} radius={z.bomb} site={bomb.site}
+          plantTime={bombPlantedT} playbackTime={playbackTime} label={t("วางบอมบ์")} />
       )}
 
       {/* layer 2: persistent utility effects — ขนาดเป็นภาษาภาพ ไม่ใช่รัศมีจริงจากเกม */}

@@ -2,7 +2,7 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
-import { MapView, placeLivePlayerLabels, PlaybackDeathMarker, truncatePlayerName } from "./RoundView";
+import { MapView, PlantedBomb, placeLivePlayerLabels, PlaybackDeathMarker, truncatePlayerName } from "./RoundView";
 import type { LivePlayer } from "./playback";
 import { LangProvider } from "./i18n";
 
@@ -71,6 +71,7 @@ describe("defuse map effect", () => {
       armor: null, hasHelmet: null, hasDefuser: true };
     const props = { radar: { image: "/radar.png", size: 1024, map: "de_ancient" }, deaths: [],
       bomb: { x: 0, y: 0, px: [120, 110] as [number, number], site: "A" }, grenades: [],
+      bombPlantedT: 5,
       live: [player], playbackTime: 10, reducedMotion: false, zoom: 1, center: null,
       onView: vi.fn(), highlight: null, selected: null, onSelect: vi.fn() };
     const { rerender } = render(<LangProvider><MapView {...props} defusingPlayer={player} /></LangProvider>);
@@ -80,5 +81,18 @@ describe("defuse map effect", () => {
     expect(screen.getByTestId("live-player").querySelector(".defuse-ring")).toBeTruthy();
     rerender(<LangProvider><MapView {...props} defusingPlayer={null} /></LangProvider>);
     expect(screen.queryByTestId("defuse-effect")).toBeNull();
+  });
+});
+
+describe("planted C4 countdown", () => {
+  it("updates its radial ring when replay time is scrubbed", () => {
+    const props = { x: 100, y: 100, radius: 10, site: "A", plantTime: 5, label: "วางบอมบ์" };
+    const { container, rerender } = render(<svg><PlantedBomb {...props} playbackTime={5} /></svg>);
+    const ring = () => container.querySelector('[data-testid="bomb-timer"] circle[stroke="#ef4444"]')!;
+    expect(Number(ring().getAttribute("stroke-dashoffset"))).toBeCloseTo(0);
+    rerender(<svg><PlantedBomb {...props} playbackTime={25} /></svg>);
+    expect(Number(ring().getAttribute("stroke-dashoffset"))).toBeCloseTo(Math.PI * 15);
+    rerender(<svg><PlantedBomb {...props} playbackTime={45} /></svg>);
+    expect(Number(ring().getAttribute("stroke-dashoffset"))).toBeCloseTo(2 * Math.PI * 15);
   });
 });

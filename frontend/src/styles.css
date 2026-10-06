@@ -386,6 +386,7 @@ a.rbox:hover { outline: 2px solid var(--text); outline-offset: 1px; text-decorat
 }
 .map-col .muted { color: #93a1b8; }
 .map-col a { color: #7fb0ff; }
+.map-card-header { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: flex-start; gap: 8px; min-height: 32px; }
 .map-stage { width: min(100%, 74dvh); aspect-ratio: 1; margin-inline: auto; position: relative; }
 .map-stage svg.radar { width: 100%; height: 100%; display: block; background: #0a0f1a; border-radius: 6px; touch-action: none; }
 svg.radar.zoomed { cursor: grab; }
@@ -413,8 +414,8 @@ svg.radar.zoomed:active { cursor: grabbing; }
 }
 .pb-play:hover { background: #f07d0c; }
 .pb-speeds { display: inline-flex; gap: 4px; }
-/* ซูม: ลอยมุมขวาบนของแผนที่ */
-.map-zoom { position: absolute; top: 8px; right: 8px; display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+/* ซูม: อยู่ในหัวการ์ดเหนือแผนที่ ไม่บังตำแหน่งผู้เล่น */
+.map-zoom { display: flex; align-items: flex-start; gap: 4px; }
 .map-zoom button {
   min-width: 32px; height: 32px; display: grid; place-items: center; border-radius: 7px; padding: 0 8px;
   border: 1px solid #2c3a55; background: rgba(16, 24, 38, .88); color: #dbe4f2; cursor: pointer;
@@ -423,6 +424,20 @@ svg.radar.zoomed:active { cursor: grabbing; }
 .map-zoom button:hover:not(:disabled) { border-color: #7fb0ff; color: #fff; }
 .map-zoom button:disabled { opacity: .35; cursor: default; }
 .map-zoom .mz-reset { font-size: var(--fs-xs); font-weight: 600; }
+.c4-hud {
+  pointer-events: none;
+  display: grid; grid-template-columns: 16px auto; align-items: center; gap: 3px 7px;
+  min-width: 84px; padding: 6px 10px; border: 1px solid rgba(239, 68, 68, .4);
+  border-radius: 9px; background: rgba(15, 23, 42, .86); color: #fff;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, .3); backdrop-filter: blur(6px);
+}
+.c4-hud-icon { width: 16px; height: 16px; fill: #ef4444; }
+.c4-hud-time { font: 700 var(--fs-sm)/1.1 monospace; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.c4-hud-track { grid-column: 1 / -1; height: 3px; overflow: hidden; border-radius: 3px; background: rgba(239, 68, 68, .18); }
+.c4-hud-track > span { display: block; height: 100%; border-radius: inherit; background: #ef4444; }
+.c4-hud.critical .c4-hud-time { color: #fca5a5; animation: c4-hud-pulse 1s ease-in-out infinite; }
+@keyframes c4-hud-pulse { 50% { opacity: .55; } }
+@media (prefers-reduced-motion: reduce) { .c4-hud.critical .c4-hud-time { animation: none; } }
 .pb-range { flex: 1 1 150px; min-width: 110px; accent-color: var(--ct); }
 .pb-clock { font-variant-numeric: tabular-nums; }
 .pb-speed {

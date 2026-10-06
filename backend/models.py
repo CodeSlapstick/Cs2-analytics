@@ -139,6 +139,7 @@ class Round(Base):
     start_tick: Mapped[int | None] = mapped_column(Integer)        # tick ที่ freeze time จบ
     end_tick: Mapped[int | None] = mapped_column(Integer)          # official_end (รวมช่วงหลังตัดสินรอบ)
     bomb_plant_tick: Mapped[int | None] = mapped_column(Integer)   # NULL = รอบนี้ไม่มีการวางระเบิด
+    bomb_resolved_tick: Mapped[int | None] = mapped_column(Integer)  # defused/exploded event
     winner_side: Mapped[str | None] = mapped_column(Text)
     end_reason: Mapped[str | None] = mapped_column(Text)           # t_killed / ct_killed / bomb_defused / ...
     bomb_plant_x: Mapped[float | None] = mapped_column(REAL)       # จุดที่วางบอมบ์ (migration 0004)

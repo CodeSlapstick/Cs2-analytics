@@ -61,7 +61,7 @@ EVENTS = [
     "round_end",
     "round_officially_ended",
     "bomb_planted",           # ไม่จำเป็นต่อ kills แต่ทำให้คอลัมน์ bomb_plant ในตารางรอบไม่ว่าง
-    "bomb_begindefuse", "bomb_abortdefuse", "bomb_defused",
+    "bomb_begindefuse", "bomb_abortdefuse", "bomb_defused", "bomb_exploded",
 ]
 
 # props ของผู้เล่นที่ให้ parser แนบมากับทุก event
@@ -203,6 +203,22 @@ def _defuse_intervals(events: dict[str, pl.DataFrame], rounds: list[dict]) -> di
                 intervals.setdefault(key[0], []).append({"start_tick": start, "end_tick": tick,
                                                            "steam_id": steamid})
     return intervals
+
+
+def _bomb_resolution_ticks(events: dict[str, pl.DataFrame], rounds: list[dict]) -> dict[int, int]:
+    """Use the recorded defuse or explosion tick to end the planted C4 display."""
+    resolved: dict[int, int] = {}
+    for name in ("bomb_defused", "bomb_exploded"):
+        for row in events.get(name, pl.DataFrame()).iter_rows(named=True):
+            if row.get("tick") is None:
+                continue
+            tick = int(row["tick"])
+            rnd = next((r for r in rounds if r.get("bomb_plant_tick") is not None
+                        and r["end_tick"] is not None and r["bomb_plant_tick"] <= tick <= r["end_tick"]), None)
+            if rnd is not None:
+                number = int(rnd["round_num"])
+                resolved[number] = min(tick, resolved.get(number, tick))
+    return resolved
 
 
 def _kill_table(dem) -> pl.DataFrame:
@@ -423,8 +439,10 @@ def parse_demo(path: Path) -> dict:
     team_a, team_b = teams_from_filename(path.name)
     rounds_data = rounds.to_dicts()
     defuses = _defuse_intervals(dem.events, rounds_data)
+    resolutions = _bomb_resolution_ticks(dem.events, rounds_data)
     for r in rounds_data:
         r["defuses"] = defuses.get(r["round_num"], [])
+        r["bomb_resolved_tick"] = resolutions.get(r["round_num"])
 
     return {
         "schema_version": SCHEMA_VERSION,

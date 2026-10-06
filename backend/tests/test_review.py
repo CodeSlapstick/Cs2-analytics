@@ -176,6 +176,14 @@ def test_round_detail_converts_defuse_ticks_for_playback(sample_doc, model, fram
     assert result["round"]["defuses"] == [{"steamid": "42", "start_t": 10, "end_t": 15}]
 
 
+def test_round_detail_exposes_bomb_resolution_time(sample_doc, model, frame):
+    match, rnd, roster, in_round, kills = as_db_rows(sample_doc, 1)
+    tick = rnd["start_tick"] + 30 * match["tickrate"]
+    result = build_round_detail(match=match, rnd={**rnd, "bomb_resolved_tick": tick},
+                                roster=roster, in_round=in_round, kills=kills, frame=frame, model=model)
+    assert result["round"]["bomb_resolved_t"] == 30
+
+
 def test_every_round_payload_is_consistent(sample_doc, model, frame):
     for r in sample_doc["rounds"]:
         n = r["round_num"]

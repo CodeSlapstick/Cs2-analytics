@@ -585,14 +585,16 @@ def build_round_detail(*, match: dict, rnd: dict, roster: list[dict], in_round: 
     defuses = [{"steamid": str(item["steam_id"]), "start_t": _t(item["start_tick"], start, tickrate),
                 "end_t": _t(item["end_tick"], start, tickrate)} for item in raw_defuses]
     event_ticks = [k["tick"] for k in kills]
-    event_ticks.extend(t for t in (rnd.get("bomb_plant_tick"), latest_damage_tick) if t is not None)
+    event_ticks.extend(t for t in (rnd.get("bomb_plant_tick"), rnd.get("bomb_resolved_tick"), latest_damage_tick) if t is not None)
     event_ticks.extend(item["end_tick"] for item in raw_defuses)
     latest_event_t = _t(max(event_ticks), start, tickrate) if event_ticks else None
 
     return {
         "match": {k: match.get(k) for k in ("id", "demo_file", "map_name", "tickrate", "team_a", "team_b")},
         "round": {"num": rnd["round_num"], "winner_side": winner, "end_reason": rnd.get("end_reason"),
-                  "bomb_planted_t": _t(rnd.get("bomb_plant_tick"), start, tickrate), "bomb": _bomb_marker(rnd, frame),
+                  "bomb_planted_t": _t(rnd.get("bomb_plant_tick"), start, tickrate),
+                  "bomb_resolved_t": _t(rnd.get("bomb_resolved_tick"), start, tickrate),
+                  "bomb": _bomb_marker(rnd, frame),
                   "duration": _t(rnd.get("end_tick"), start, tickrate), "latest_event_t": latest_event_t,
                   "defuses": defuses},
         "radar": None if not frame else {"image": "/assets" + frame.image, "size": frame.size, "map": frame.map_name},

@@ -134,6 +134,19 @@ def test_defuse_intervals_use_real_start_abort_and_completion_events():
     assert _defuse_intervals({"bomb_defused": events["bomb_defused"]}, rounds) == {}
 
 
+def test_bomb_resolution_uses_recorded_defuse_or_explosion_tick():
+    import polars as pl
+
+    from backend.parser import _bomb_resolution_ticks
+    rounds = [
+        {"round_num": 1, "start_tick": 100, "bomb_plant_tick": 200, "end_tick": 500},
+        {"round_num": 2, "start_tick": 600, "bomb_plant_tick": 700, "end_tick": 1000},
+    ]
+    events = {"bomb_defused": pl.DataFrame({"tick": [340]}),
+              "bomb_exploded": pl.DataFrame({"tick": [880]})}
+    assert _bomb_resolution_ticks(events, rounds) == {1: 340, 2: 880}
+
+
 def test_team_clan_and_bomb_position(doc):
     """schema 5: ทุกแถว player_rounds มี team_clan และทุกรอบที่วางบอมบ์มีพิกัดวางบอมบ์"""
     assert all("team_clan" in x for x in doc["player_rounds"])
