@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, useLocation, useParams } from "react-router-dom";
 import { ApiError, auth, isGuest, playerApi, type PlayerMap, type PlayerWeapon } from "./api";
-import { MapThumb, NotFound, num, weaponLabel } from "./utils";
+import { MapThumb, NotFound, weaponLabel } from "./utils";
 import unknownAvatar from "./assets/avatar-unknown.jpg";
 import { useT } from "./i18n";
 
