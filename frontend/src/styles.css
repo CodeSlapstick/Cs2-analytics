@@ -335,9 +335,10 @@ a.badge:hover { text-decoration: none; filter: brightness(.96); }
 .title-pick:has(select:focus-visible) { outline: 2px solid var(--ct-ink); outline-offset: 2px; }
 .tp-caret { flex: none; color: var(--muted); pointer-events: none; }
 
-.round-strip { display: flex; flex-wrap: nowrap; align-items: center; gap: 4px; min-width: 0; overflow-x: auto; scrollbar-width: none; padding: 4px 3px 6px; margin: 0 0 12px; }
-.round-strip::-webkit-scrollbar { display: none; }
-.round-strip > * { flex: none; }
+.round-strip { display: flex; align-items: center; gap: 4px; min-width: 0; margin: 0 0 12px; }
+.round-strip-scroll { position: relative; display: flex; flex: 1 1 auto; flex-wrap: nowrap; align-items: center; gap: 4px; min-width: 0; overflow-x: auto; scrollbar-width: none; padding: 6px; }
+.round-strip-scroll::-webkit-scrollbar { display: none; }
+.round-strip-scroll > * { flex: none; }
 .round-strip .half-gap { width: 1px; height: 22px; background: #46516a; margin: 0 4px; }
 .rbox { width: 28px; height: 28px; border-radius: 7px; display: grid; place-items: center; font-weight: 700; font-size: var(--fs-xs); }
 /* พื้นใช้คู่สีเข้มของ CT ไม่ใช่ --ct ตัวจริง — เลขสีขาวบน #4f8cff ได้ contrast แค่ 3:1 อ่านไม่ออก */
@@ -347,12 +348,11 @@ a.badge:hover { text-decoration: none; filter: brightness(.96); }
 a.rbox { text-decoration: none; }
 a.rbox:hover { outline: 2px solid var(--text); outline-offset: 1px; text-decoration: none; }
 .round-strip .rbox.active { outline: 3px solid var(--text); outline-offset: 1px; }
-.round-strip button {
+.round-strip > button {
   background: var(--card); color: var(--text); border: 1px solid var(--line); border-radius: 7px;
-  width: 28px; height: 28px; padding: 0; cursor: pointer; font-size: var(--fs-sm);
+  flex: none; width: 28px; height: 28px; padding: 0; cursor: pointer; font-size: var(--fs-sm);
 }
-.round-strip button:hover:not(:disabled) { border-color: var(--ct); }
-.round-strip button:disabled { opacity: .35; cursor: default; }
+.round-strip > button:hover { border-color: var(--ct); }
 @container main (max-width: 639px) {
   .title-pick { font-size: var(--fs-md); }
   .rp-head { flex-wrap: wrap; }
@@ -490,6 +490,7 @@ svg.radar.zoomed:active { cursor: grabbing; }
 .live-player-label.selected { font-weight: 800; stroke-width: 4.5px !important; }
 .player-label-leader { opacity: .58; vector-effect: non-scaling-stroke; }
 .live-weapon-icon, .map-utility-icon, .map-equipment-icon { fill: #f8fafc; filter: drop-shadow(0 1px 1px #050a12); }
+.map-bomb-icon { fill: #ef4444; filter: drop-shadow(0 0 3px rgba(239, 68, 68, .85)); }
 .nade-label { font-size: 16px; font-weight: 700; paint-order: stroke; stroke: #0b1220; stroke-width: 4px; pointer-events: none; }
 
 /* ---- ไทม์ไลน์ + บริบท ---- */

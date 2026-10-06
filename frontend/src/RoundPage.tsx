@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useRef } from "react";
+import { Fragment, type WheelEvent, useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, Navigate, useNavigate, useParams } from "react-router-dom";
 import { api, matchesQuery, type Match, type RoundListItem } from "./api";
@@ -120,7 +120,7 @@ function RoundBody({ entry, roundNum, view, setView, params }: BodyProps) {
 
   return (
     <RoundView demo={entry.demo_file} roundNum={roundNum} view={view} setView={setView}
-      roundSelector={<RoundStrip demo={entry.demo_file} rounds={list} current={roundNum} idx={idx} go={go} params={params} />} />
+      roundSelector={<RoundStrip demo={entry.demo_file} rounds={list} current={roundNum} params={params} />} />
   );
 }
 
@@ -128,8 +128,6 @@ interface StripProps {
   demo: string;
   rounds: RoundListItem[];
   current: number;
-  idx: number;
-  go: (n: number) => void;
   params: URLSearchParams;
 }
 
@@ -140,43 +138,45 @@ interface StripProps {
  */
 const halfBreakAfter = (n: number) => n === 12 || (n > 24 && (n - 24) % 3 === 0);
 
-function RoundStrip({ demo, rounds, current, idx, go, params }: StripProps) {
-  const ref = useRef<HTMLElement>(null);
+function RoundStrip({ demo, rounds, current, params }: StripProps) {
+  // ลูกศรซ้าย/ขวาและล้อเมาส์ใช้ ref นี้เลื่อนรายการรอบแนวนอนบนคอมพิวเตอร์
+  const scrollRef = useRef<HTMLDivElement>(null);
   const { t } = useT();
   useEffect(() => {
-    const box = ref.current;
+    const box = scrollRef.current;
     const el = box?.querySelector<HTMLElement>('[aria-current="page"]');
     if (!el || !box || box.scrollWidth <= box.clientWidth) return;
     box.scrollTo({ left: el.offsetLeft - box.clientWidth / 2 + el.clientWidth / 2, behavior: "smooth" });
   }, [current, rounds.length]);
+  // ล้อเมาส์แนวตั้งเลื่อนรอบไปทางซ้าย/ขวาได้ โดยไม่ต้องใช้ทัชแพด
+  const onWheel = (e: WheelEvent<HTMLDivElement>) => {
+    if (scrollRef.current) scrollRef.current.scrollLeft += e.deltaY;
+  };
   const last = rounds[rounds.length - 1]?.round_num;
   return (
-    // แถบรอบใช้ flex-nowrap และ overflow-x-auto เพื่อไม่ตัดบรรทัดบนจอแคบหรือเมื่อมีรอบต่อเวลา
-    <nav className="round-strip" data-testid="round-strip" aria-label={t("เลือกรอบ")} ref={ref}>
-      <button type="button" disabled={idx <= 0} onClick={() => go(rounds[idx - 1].round_num)} title={t("รอบก่อน (←)")}
-        aria-label={t("รอบก่อน")}>
+    <nav className="round-strip" data-testid="round-strip" aria-label={t("เลือกรอบ")}>
+      <button type="button" onClick={() => scrollRef.current?.scrollBy({ left: -160, behavior: "smooth" })}
+        aria-label={t("เลื่อนรอบไปทางซ้าย")} title={t("เลื่อนรอบไปทางซ้าย")}>
         ‹
       </button>
-      {rounds.map((r) => (
-        <Fragment key={r.round_num}>
-          <Link
-            to={roundUrl(demo, r.round_num, params, ["d", "z", "c"])}
-            className={`rbox ${r.winner_side ?? "none"} ${r.round_num === current ? "active" : ""}`}
-            title={t("รอบ {n} · {side} ชนะ · {reason} · ตาย {deaths}", { n: r.round_num, side: sideLabel(r.winner_side), reason: endReasonLabel(r.end_reason), deaths: r.deaths_count })}
-            aria-current={r.round_num === current ? "page" : undefined}
-          >
-            {r.round_num}
-          </Link>
-          {halfBreakAfter(r.round_num) && r.round_num !== last && <span className="half-gap" aria-hidden="true" />}
-        </Fragment>
-      ))}
-      <button
-        type="button"
-        disabled={idx < 0 || idx >= rounds.length - 1}
-        onClick={() => go(rounds[idx + 1].round_num)}
-        title={t("รอบถัดไป (→)")}
-        aria-label={t("รอบถัดไป")}
-      >
+      {/* รอบอยู่บรรทัดเดียว; รอบต่อเวลาเลื่อนในกรอบนี้โดยไม่ดันลูกศรออกจากขอบ */}
+      <div className="round-strip-scroll" ref={scrollRef} onWheel={onWheel}>
+        {rounds.map((r) => (
+          <Fragment key={r.round_num}>
+            <Link
+              to={roundUrl(demo, r.round_num, params, ["d", "z", "c"])}
+              className={`rbox ${r.winner_side ?? "none"} ${r.round_num === current ? "active" : ""}`}
+              title={t("รอบ {n} · {side} ชนะ · {reason} · ตาย {deaths}", { n: r.round_num, side: sideLabel(r.winner_side), reason: endReasonLabel(r.end_reason), deaths: r.deaths_count })}
+              aria-current={r.round_num === current ? "page" : undefined}
+            >
+              {r.round_num}
+            </Link>
+            {halfBreakAfter(r.round_num) && r.round_num !== last && <span className="half-gap" aria-hidden="true" />}
+          </Fragment>
+        ))}
+      </div>
+      <button type="button" onClick={() => scrollRef.current?.scrollBy({ left: 160, behavior: "smooth" })}
+        title={t("เลื่อนรอบไปทางขวา")} aria-label={t("เลื่อนรอบไปทางขวา")}>
         ›
       </button>
     </nav>

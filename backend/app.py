@@ -1032,8 +1032,10 @@ async def api_review_round(demo_file: str, round_num: int, _: dict = Depends(req
                            conn: asyncpg.Connection = Depends(db)):
     """รอบเดียวแบบละเอียด: ทีม / การตายทุกครั้ง (พิกัด + พิกเซลบนเรดาร์) / บริบทจาก grid_ml1 / สรุปรอบ"""
     m = await _review_match(conn, demo_file)
-    rnd = await conn.fetchrow("""
-        SELECT id, round_num, start_tick, winner_side, end_reason, bomb_plant_tick, bomb_plant_x, bomb_plant_y, bomb_site
+    round_columns = await _optional_columns(conn, "rounds", ("end_tick",))
+    end_tick = "end_tick" if "end_tick" in round_columns else "NULL::integer AS end_tick"
+    rnd = await conn.fetchrow(f"""
+        SELECT id, round_num, start_tick, {end_tick}, winner_side, end_reason, bomb_plant_tick, bomb_plant_x, bomb_plant_y, bomb_site
         FROM rounds WHERE match_id = $1 AND round_num = $2""", m["id"], round_num)
     if not rnd:
         raise HTTPException(404, f"แมตช์นี้ไม่มีรอบที่ {round_num}")
@@ -1054,8 +1056,10 @@ async def api_review_round(demo_file: str, round_num: int, _: dict = Depends(req
                p.name AS thrower_name
         FROM grenades g LEFT JOIN players p ON p.steam_id = g.thrower_id
         WHERE g.round_id = $1 ORDER BY g.tick, g.id""", rnd["id"])
+    latest_damage_tick = await conn.fetchval("SELECT MAX(tick) FROM damages WHERE round_id = $1", rnd["id"])
     return build_round_detail(match=m, rnd=dict(rnd), roster=roster, in_round=rows(in_round), kills=rows(kills),
-                              grenades=rows(grenades), frame=radar_frame(m["map_name"]), model=load_grid_model())
+                              grenades=rows(grenades), frame=radar_frame(m["map_name"]), model=load_grid_model(),
+                              latest_damage_tick=latest_damage_tick)
 
 
 @app.get("/api/review/{demo_file}/rounds/{round_num}/positions")

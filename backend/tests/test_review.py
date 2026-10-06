@@ -155,6 +155,17 @@ def detail(doc, n, model, frame):
     return build_round_detail(match=match, rnd=rnd, roster=roster, in_round=in_round, kills=kills, frame=frame, model=model)
 
 
+def test_round_detail_exposes_post_round_duration_and_latest_event(sample_doc, model, frame):
+    match, rnd, roster, in_round, kills = as_db_rows(sample_doc, 1)
+    start, rate = rnd["start_tick"], match["tickrate"]
+    late_kill = {**kills[-1], "tick": start + 34 * rate}
+    result = build_round_detail(match=match, rnd={**rnd, "end_tick": start + 24 * rate},
+                                roster=roster, in_round=in_round, kills=[late_kill],
+                                latest_damage_tick=start + 32 * rate, frame=frame, model=model)
+    assert result["round"]["duration"] == 24
+    assert result["round"]["latest_event_t"] == 34
+
+
 def test_every_round_payload_is_consistent(sample_doc, model, frame):
     for r in sample_doc["rounds"]:
         n = r["round_num"]

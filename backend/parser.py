@@ -246,7 +246,8 @@ def _wanted_ticks(dem, tickrate: int) -> tuple[dict[int, tuple[int, str]], dict[
     """tick ที่ต้องขอจาก parser คืน (tick ของ player_rounds, tick ของ positions)
 
     tick "start" = freeze จบ (ฝั่ง + เงิน)   tick "end" = round_end (ใครยังรอด)
-    ใช้ end ไม่ใช่ official_end เพราะช่วงหลัง round_end ยังยิงกันได้ คนที่ตายตอนนั้นไม่นับว่าเสียรอบ
+    ใช้ end สำหรับสถิติรอดจบรอบ แต่ตำแหน่ง replay เก็บถึง official_end
+    เพื่อให้เห็นการไล่ยิงหลังบอมบ์ถูกกู้หรือหลังรอบตัดสินแล้ว
     """
     want: dict[int, tuple[int, str]] = {}
     pos_want: dict[int, int] = {}          # tick จริง -> round_num ของ snapshot replay
@@ -257,8 +258,9 @@ def _wanted_ticks(dem, tickrate: int) -> tuple[dict[int, tuple[int, str]], dict[
             want[int(fe)] = (r["round_num"], "start")
         if en is not None:
             want[int(en)] = (r["round_num"], "end")
-        if fe is not None and en is not None:
-            for t in position_sample_ticks(int(fe), int(en), tickrate):
+        replay_end = r["official_end"] or en
+        if fe is not None and replay_end is not None:
+            for t in position_sample_ticks(int(fe), int(replay_end), tickrate):
                 pos_want[t] = int(r["round_num"])
     return want, pos_want
 

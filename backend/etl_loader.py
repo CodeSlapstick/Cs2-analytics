@@ -101,10 +101,10 @@ async def _insert_rounds(conn, match_id: int, rounds: list[dict]) -> dict[int, i
     round_id_map: dict[int, int] = {}
     for r in rounds:
         rid = await conn.fetchval("""
-            INSERT INTO rounds (match_id, round_num, start_tick, bomb_plant_tick, winner_side, end_reason,
+            INSERT INTO rounds (match_id, round_num, start_tick, end_tick, bomb_plant_tick, winner_side, end_reason,
                                 bomb_plant_x, bomb_plant_y, bomb_site)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id;
-        """, match_id, int(r["round_num"]), _int(r.get("start_tick")), _int(r.get("bomb_plant_tick")),
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id;
+        """, match_id, int(r["round_num"]), _int(r.get("start_tick")), _int(r.get("end_tick")), _int(r.get("bomb_plant_tick")),
            r.get("winner_side"), r.get("end_reason"),
            _float(r.get("bomb_plant_x")), _float(r.get("bomb_plant_y")), r.get("bomb_site"))
         round_id_map[int(r["round_num"])] = rid

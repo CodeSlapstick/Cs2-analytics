@@ -78,7 +78,10 @@ export function RoundView({ demo, roundNum, view, setView, roundSelector }: Roun
     enabled: view.playback,
     staleTime: Infinity, // ตำแหน่งของรอบที่แกะแล้วไม่เปลี่ยน
   });
-  const endT = positions.data?.t_end ?? 0;
+  // เวลารอบต้องครอบคลุมคิลหลังปลดบอมบ์/จบรอบด้วย ไม่เช่นนั้น replay หยุดก่อนเห็นคนตายครบ
+  const latestEventT = Math.max(0, q.data?.round.latest_event_t ?? 0,
+    ...(q.data?.deaths.map((death) => death.t_round ?? 0) ?? []));
+  const endT = q.data ? Math.max(q.data.round.duration ?? 0, latestEventT + 1, positions.data?.t_end ?? 0) : 0;
 
   // เปลี่ยนรอบ = เริ่มดูใหม่ตั้งแต่ต้นรอบ
   const roundKey = `${demo}/${roundNum}`;
@@ -93,7 +96,7 @@ export function RoundView({ demo, roundNum, view, setView, roundSelector }: Roun
 
   // นาฬิกาเดินด้วย requestAnimationFrame (ตามเวลาจริง ไม่ใช่จำนวนเฟรม) · หยุดเองเมื่อถึงท้ายรอบ
   useEffect(() => {
-    if (!playing || endT <= 0) return;
+    if (!playing || !positions.data || endT <= 0) return;
     let raf = 0;
     let last = performance.now();
     const tick = (now: number) => {
@@ -111,7 +114,7 @@ export function RoundView({ demo, roundNum, view, setView, roundSelector }: Roun
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [playing, speed, endT]);
+  }, [playing, speed, endT, positions.data]);
 
   // หยุดแล้วค่อยเก็บวินาทีที่ดูค้างลง URL — แชร์ลิงก์ "ดูตั้งแต่วินาทีนี้" ได้ แต่ไม่อัปเดต router ทุกเฟรม
   useEffect(() => {
@@ -151,7 +154,9 @@ export function RoundView({ demo, roundNum, view, setView, roundSelector }: Roun
   const roster = new Map(
     d.teams.flatMap((t) => t.players.map((p) => [p.steamid, { name: p.name, color: p.color, slot: p.slot }] as const)),
   );
-  const live = view.playback && pos ? playersAt(pos, time, roster) : null;
+  const deadIds = new Set(d.deaths.filter((death) => death.t_round != null && death.t_round >= 0 && death.t_round <= time)
+    .map((death) => death.victim.steamid));
+  const live = view.playback && pos ? playersAt(pos, time, roster).filter((player) => !deadIds.has(player.steamid)) : null;
   // บางรอบในเดโมมีการตายที่บันทึกไว้ก่อนรอบเริ่ม (t_round ติดลบ — ส่วนใหญ่คือตกที่สูงตอนสลับรอบ)
   // โหมดเล่นย้อนนับเฉพาะการตายที่อยู่ในช่วงเวลาของรอบจริง ไม่งั้นคนคนเดียวจะโผล่ทั้งแบบยังไม่ตายและตายแล้วพร้อมกัน
   // (การตายเหล่านั้นยังอยู่ครบในแผนที่ปกติและในไทม์ไลน์ ไม่ได้ถูกซ่อนจากผู้ใช้)
@@ -644,9 +649,10 @@ export function MapView({ radar, deaths, bomb, grenades, live, playbackTime, red
     >
       <image href={radar.image} x={0} y={0} width={s} height={s} />
 
+      {/* C4 ใช้สีแดงบนแผนที่ เพื่อแยกเป้าหมายวางบอมบ์ออกจากระเบิดขว้างทั่วไป */}
       {bomb?.px && (
         <g transform={`translate(${bomb.px[0]}, ${bomb.px[1]})`} data-testid="bomb-icon">
-          <EquipmentIcon kind="bomb" x={-z.bomb} y={-z.bomb} width={2 * z.bomb} height={2 * z.bomb} className="map-equipment-icon" />
+          <EquipmentIcon kind="bomb" x={-z.bomb} y={-z.bomb} width={2 * z.bomb} height={2 * z.bomb} className="map-bomb-icon" />
           <title>{`${t("วางบอมบ์")}${bomb.site ? ` (${bomb.site})` : ""}`}</title>
         </g>
       )}
@@ -752,8 +758,10 @@ export function MapView({ radar, deaths, bomb, grenades, live, playbackTime, red
       {/* โหมดเล่นย้อน: ตัวผู้เล่นที่ยังไม่ตาย ณ วินาทีนั้น
           วงทึบสีของฝั่ง (CT ฟ้า / T ส้ม) + หมายเลข 1-5 ในวง — ไม่มีชื่อบนแผนที่ ชื่ออยู่ในตารางข้างแผนที่
           ขอบวงเป็นสีเข้มไว้ให้ยังแยกออกจากกันตอนสองคนยืนชิดกัน (สีเดียวกันทั้งทีม) */}
-      {live?.map((p) => (
-        <g
+      {live?.map((p) => {
+        const hpPct = Math.max(0, Math.min(100, p.hp ?? 100));
+        const fillId = `player-hp-${p.steamid}`;
+        return <g
           key={`live-${p.steamid}`}
           opacity={!highlight || highlight === p.steamid ? 1 : 0.28}
           data-testid="live-player"
@@ -764,11 +772,16 @@ export function MapView({ radar, deaths, bomb, grenades, live, playbackTime, red
           role="img"
           aria-label={`${p.name}, ${p.hp} HP`}
         >
+          {/* SVG linear-gradient แทนระดับ HP ที่เติมจากล่างขึ้นบน จึงไม่ต้องเพิ่มแถบเลือดบนแผนที่ */}
+          <linearGradient id={fillId} x1="0%" y1="100%" x2="0%" y2="0%">
+            <stop offset={`${hpPct}%`} stopColor={playerFill(p.side)} style={{ transition: "offset 0.2s ease" }} />
+            <stop offset={`${hpPct}%`} stopColor="#111827" style={{ transition: "offset 0.2s ease" }} />
+          </linearGradient>
           <circle
             cx={p.px[0]}
             cy={p.px[1]}
             r={highlight === p.steamid ? z.dot : z.dot * 0.9}
-            fill={playerFill(p.side)}
+            fill={`url(#${fillId})`}
             stroke={highlight === p.steamid ? "#fff" : "#0b1220"}
             strokeWidth={z.line * (highlight === p.steamid ? 2 : 1.2)}
           />
@@ -778,13 +791,13 @@ export function MapView({ radar, deaths, bomb, grenades, live, playbackTime, red
             dy={z.num * 0.36}
             textAnchor="middle"
             className="slot-num"
-            style={{ fontSize: z.num * 1.05, fill: playerInk(p.side) }}
+            style={{ fontSize: z.num * 1.05, fill: "#fff", paintOrder: "stroke", stroke: "#0b1220", strokeWidth: z.line * 0.8 }}
           >
             {p.slot ?? "?"}
           </text>
           <title>{`${p.slot ?? "?"} · ${p.name} · ${p.hp} HP${p.place ? ` · ${p.place}` : ""}${p.activeWeapon ? ` · ${p.activeWeapon}` : ""}`}</title>
-        </g>
-      ))}
+        </g>;
+      })}
 
       {/* จุดตาย — ตัวเลขบนแผนที่ต้องหมายถึงสิ่งเดียวกันเสมอในแต่ละโหมด ไม่ปนกัน
             โหมดเล่นย้อน  ✕ กลวงสีของฝั่ง + "หมายเลขผู้เล่น" (ทุกเลขบนแผนที่ = หมายเลขผู้เล่น)

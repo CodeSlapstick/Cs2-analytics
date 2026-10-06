@@ -561,7 +561,8 @@ def _round_summary(deaths: list[dict], winner: str | None) -> dict:
 
 
 def build_round_detail(*, match: dict, rnd: dict, roster: list[dict], in_round: list[dict], kills: list[dict],
-                       frame: RadarFrame | None, model: GridModel | None, grenades: list[dict] = ()) -> dict:
+                       frame: RadarFrame | None, model: GridModel | None, grenades: list[dict] = (),
+                       latest_damage_tick: int | None = None) -> dict:
     """payload ของหนึ่งรอบ
 
     match    {id, demo_file, map_name, tickrate, team_a, team_b}
@@ -578,11 +579,15 @@ def build_round_detail(*, match: dict, rnd: dict, roster: list[dict], in_round: 
 
     deaths = _death_rows(kills, person, start=start, tickrate=tickrate, frame=frame, model=model)
     nades = _nade_rows(grenades, person, start=start, tickrate=tickrate, frame=frame)
+    event_ticks = [k["tick"] for k in kills]
+    event_ticks.extend(t for t in (rnd.get("bomb_plant_tick"), latest_damage_tick) if t is not None)
+    latest_event_t = _t(max(event_ticks), start, tickrate) if event_ticks else None
 
     return {
         "match": {k: match.get(k) for k in ("id", "demo_file", "map_name", "tickrate", "team_a", "team_b")},
         "round": {"num": rnd["round_num"], "winner_side": winner, "end_reason": rnd.get("end_reason"),
-                  "bomb_planted_t": _t(rnd.get("bomb_plant_tick"), start, tickrate), "bomb": _bomb_marker(rnd, frame)},
+                  "bomb_planted_t": _t(rnd.get("bomb_plant_tick"), start, tickrate), "bomb": _bomb_marker(rnd, frame),
+                  "duration": _t(rnd.get("end_tick"), start, tickrate), "latest_event_t": latest_event_t},
         "radar": None if not frame else {"image": "/assets" + frame.image, "size": frame.size, "map": frame.map_name},
         "grid": None if not model or not frame or model.map_name != frame.map_name else {
             "source": model.source, "ct_win_overall": model.ct_win_overall, "min_kills": model.min_kills},
