@@ -248,6 +248,7 @@ export interface RoundDetail {
     bomb: { x: number; y: number; px: Px | null; site: string | null } | null;
     duration?: number | null;
     latest_event_t?: number | null;
+    defuses?: { steamid: string; start_t: number; end_t: number }[];
   };
   radar: { image: string; size: number; map: string } | null;
   grid: { source: GridSource; ct_win_overall: number; min_kills: number } | null;

@@ -157,6 +157,8 @@ export function RoundView({ demo, roundNum, view, setView, roundSelector }: Roun
   const deadIds = new Set(d.deaths.filter((death) => death.t_round != null && death.t_round >= 0 && death.t_round <= time)
     .map((death) => death.victim.steamid));
   const live = view.playback && pos ? playersAt(pos, time, roster).filter((player) => !deadIds.has(player.steamid)) : null;
+  const activeDefuse = view.playback ? d.round.defuses?.find((event) => event.start_t <= time && time < event.end_t) : null;
+  const defusingPlayer = activeDefuse ? live?.find((player) => player.steamid === activeDefuse.steamid && player.side === "ct") : null;
   // บางรอบในเดโมมีการตายที่บันทึกไว้ก่อนรอบเริ่ม (t_round ติดลบ — ส่วนใหญ่คือตกที่สูงตอนสลับรอบ)
   // โหมดเล่นย้อนนับเฉพาะการตายที่อยู่ในช่วงเวลาของรอบจริง ไม่งั้นคนคนเดียวจะโผล่ทั้งแบบยังไม่ตายและตายแล้วพร้อมกัน
   // (การตายเหล่านั้นยังอยู่ครบในแผนที่ปกติและในไทม์ไลน์ ไม่ได้ถูกซ่อนจากผู้ใช้)
@@ -236,6 +238,7 @@ export function RoundView({ demo, roundNum, view, setView, roundSelector }: Roun
                 bomb={shownBomb}
                 grenades={shownNades}
                 live={live}
+                defusingPlayer={defusingPlayer}
                 playbackTime={view.playback ? time : null}
                 reducedMotion={reducedMotion}
                 zoom={view.zoom}
@@ -467,6 +470,7 @@ interface MapProps {
   bomb: RoundDetail["round"]["bomb"];
   grenades: ReviewGrenade[];
   live?: LivePlayer[] | null; // โหมดเล่นย้อน: คนที่ยังไม่ตาย ณ วินาทีที่ดู (null = ปิดโหมด)
+  defusingPlayer?: LivePlayer | null;
   playbackTime: number | null;
   reducedMotion: boolean;
   onHover?: (steamid: string | null) => void; // ชี้เมาส์ที่ตัวผู้เล่น -> ไฮไลต์แถวในตารางข้างแผนที่
@@ -529,7 +533,7 @@ function clampRadarCenter(center: [number, number] | null, size: number, zoom: n
  * โหมดเล่นย้อน (prop live) เพิ่มตัวผู้เล่น ณ วินาทีที่ดู — ไม่มีเส้นทางเดินย้อนหลัง
  * เลือกการตายแล้ว ระเบิดที่แสดงเหลือเฉพาะลูกที่มีผลอยู่ ณ วินาทีนั้น (ควัน/ไฟที่ยังไม่หมด แฟลช/HE ที่เพิ่งแตก)
  */
-export function MapView({ radar, deaths, bomb, grenades, live, playbackTime, reducedMotion,
+export function MapView({ radar, deaths, bomb, grenades, live, defusingPlayer, playbackTime, reducedMotion,
                           zoom, center, onView, highlight, onHover, selected, onSelect }: MapProps) {
   const s = radar.size;
   // ---- ซูม/เลื่อนดู: viewBox คือกรอบที่มองอยู่ · เก็บบน URL เพื่อให้รีเฟรช/แชร์ลิงก์แล้วเห็นกรอบเดิม
@@ -648,6 +652,17 @@ export function MapView({ radar, deaths, bomb, grenades, live, playbackTime, red
       onPointerCancel={() => { drag.current = null; }}
     >
       <image href={radar.image} x={0} y={0} width={s} height={s} />
+
+      {/* ช่วงที่ CT กำลังกู้บอมบ์ เส้นประเชื่อมผู้เล่นกับ C4 และวงแสงเต้นรอบทั้งสองตำแหน่ง */}
+      {bomb?.px && defusingPlayer && (
+        <g pointerEvents="none" data-testid="defuse-effect">
+          <line x1={defusingPlayer.px[0]} y1={defusingPlayer.px[1]} x2={bomb.px[0]} y2={bomb.px[1]}
+            stroke="#38bdf8" strokeWidth={z.line} strokeDasharray={`${4 * U} ${2 * U}`}
+            className={reducedMotion ? undefined : "defuse-beam"} />
+          <circle cx={bomb.px[0]} cy={bomb.px[1]} r={z.bomb * 1.45} fill="none"
+            stroke="#7dd3fc" strokeWidth={z.line} className={reducedMotion ? undefined : "defuse-ring"} />
+        </g>
+      )}
 
       {/* C4 ใช้สีแดงบนแผนที่ เพื่อแยกเป้าหมายวางบอมบ์ออกจากระเบิดขว้างทั่วไป */}
       {bomb?.px && (
@@ -772,6 +787,10 @@ export function MapView({ radar, deaths, bomb, grenades, live, playbackTime, red
           role="img"
           aria-label={`${p.name}, ${p.hp} HP`}
         >
+          {defusingPlayer?.steamid === p.steamid && (
+            <circle cx={p.px[0]} cy={p.px[1]} r={z.dot * 1.5} fill="none" stroke="#7dd3fc"
+              strokeWidth={z.line} pointerEvents="none" className={reducedMotion ? undefined : "defuse-ring"} />
+          )}
           {/* SVG linear-gradient แทนระดับ HP ที่เติมจากล่างขึ้นบน จึงไม่ต้องเพิ่มแถบเลือดบนแผนที่ */}
           <linearGradient id={fillId} x1="0%" y1="100%" x2="0%" y2="0%">
             <stop offset={`${hpPct}%`} stopColor={playerFill(p.side)} style={{ transition: "offset 0.2s ease" }} />

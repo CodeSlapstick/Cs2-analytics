@@ -144,6 +144,7 @@ class Round(Base):
     bomb_plant_x: Mapped[float | None] = mapped_column(REAL)       # จุดที่วางบอมบ์ (migration 0004)
     bomb_plant_y: Mapped[float | None] = mapped_column(REAL)
     bomb_site: Mapped[str | None] = mapped_column(Text)
+    defuse_intervals: Mapped[list | None] = mapped_column(JSONB)
 
     __table_args__ = (
         UniqueConstraint("match_id", "round_num"),

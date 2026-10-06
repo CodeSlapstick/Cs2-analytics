@@ -1032,10 +1032,11 @@ async def api_review_round(demo_file: str, round_num: int, _: dict = Depends(req
                            conn: asyncpg.Connection = Depends(db)):
     """รอบเดียวแบบละเอียด: ทีม / การตายทุกครั้ง (พิกัด + พิกเซลบนเรดาร์) / บริบทจาก grid_ml1 / สรุปรอบ"""
     m = await _review_match(conn, demo_file)
-    round_columns = await _optional_columns(conn, "rounds", ("end_tick",))
+    round_columns = await _optional_columns(conn, "rounds", ("end_tick", "defuse_intervals"))
     end_tick = "end_tick" if "end_tick" in round_columns else "NULL::integer AS end_tick"
+    defuse_intervals = "defuse_intervals" if "defuse_intervals" in round_columns else "NULL::jsonb AS defuse_intervals"
     rnd = await conn.fetchrow(f"""
-        SELECT id, round_num, start_tick, {end_tick}, winner_side, end_reason, bomb_plant_tick, bomb_plant_x, bomb_plant_y, bomb_site
+        SELECT id, round_num, start_tick, {end_tick}, {defuse_intervals}, winner_side, end_reason, bomb_plant_tick, bomb_plant_x, bomb_plant_y, bomb_site
         FROM rounds WHERE match_id = $1 AND round_num = $2""", m["id"], round_num)
     if not rnd:
         raise HTTPException(404, f"แมตช์นี้ไม่มีรอบที่ {round_num}")

@@ -2,8 +2,9 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
-import { placeLivePlayerLabels, PlaybackDeathMarker, truncatePlayerName } from "./RoundView";
+import { MapView, placeLivePlayerLabels, PlaybackDeathMarker, truncatePlayerName } from "./RoundView";
 import type { LivePlayer } from "./playback";
+import { LangProvider } from "./i18n";
 
 describe("playback death marker", () => {
   it("uses a 40% smaller visual X while preserving a 24px interactive target", async () => {
@@ -56,5 +57,28 @@ describe("live player labels", () => {
   it("truncates Unicode by code point and preserves short multilingual names", () => {
     expect(truncatePlayerName("玩家一", 4)).toBe("玩家一");
     expect(truncatePlayerName("abcdefgh", 5)).toBe("abcd…");
+  });
+});
+
+describe("defuse map effect", () => {
+  it("shows the beam and rings only while a live CT is defusing", () => {
+    vi.stubGlobal("ResizeObserver", class {
+      observe() {}
+      disconnect() {}
+    });
+    const player: LivePlayer = { steamid: "42", name: "CT", px: [100, 100], hp: 100,
+      side: "ct", place: null, color: "#2563c9", slot: 1, activeWeapon: null,
+      armor: null, hasHelmet: null, hasDefuser: true };
+    const props = { radar: { image: "/radar.png", size: 1024, map: "de_ancient" }, deaths: [],
+      bomb: { x: 0, y: 0, px: [120, 110] as [number, number], site: "A" }, grenades: [],
+      live: [player], playbackTime: 10, reducedMotion: false, zoom: 1, center: null,
+      onView: vi.fn(), highlight: null, selected: null, onSelect: vi.fn() };
+    const { rerender } = render(<LangProvider><MapView {...props} defusingPlayer={player} /></LangProvider>);
+    const effect = screen.getByTestId("defuse-effect");
+    expect(effect.querySelector("line")?.getAttribute("stroke")).toBe("#38bdf8");
+    expect(effect.querySelector("circle")).toBeTruthy();
+    expect(screen.getByTestId("live-player").querySelector(".defuse-ring")).toBeTruthy();
+    rerender(<LangProvider><MapView {...props} defusingPlayer={null} /></LangProvider>);
+    expect(screen.queryByTestId("defuse-effect")).toBeNull();
   });
 });

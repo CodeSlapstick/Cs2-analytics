@@ -491,6 +491,10 @@ svg.radar.zoomed:active { cursor: grabbing; }
 .player-label-leader { opacity: .58; vector-effect: non-scaling-stroke; }
 .live-weapon-icon, .map-utility-icon, .map-equipment-icon { fill: #f8fafc; filter: drop-shadow(0 1px 1px #050a12); }
 .map-bomb-icon { fill: #ef4444; filter: drop-shadow(0 0 3px rgba(239, 68, 68, .85)); }
+.defuse-beam { animation: defuse-flow .8s linear infinite; }
+.defuse-ring { animation: defuse-pulse 1.2s ease-in-out infinite; }
+@keyframes defuse-flow { to { stroke-dashoffset: -12px; } }
+@keyframes defuse-pulse { 50% { opacity: .45; stroke-width: 4px; } }
 .nade-label { font-size: 16px; font-weight: 700; paint-order: stroke; stroke: #0b1220; stroke-width: 4px; pointer-events: none; }
 
 /* ---- ไทม์ไลน์ + บริบท ---- */

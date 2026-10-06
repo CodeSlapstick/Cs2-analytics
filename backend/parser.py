@@ -61,6 +61,7 @@ EVENTS = [
     "round_end",
     "round_officially_ended",
     "bomb_planted",           # ไม่จำเป็นต่อ kills แต่ทำให้คอลัมน์ bomb_plant ในตารางรอบไม่ว่าง
+    "bomb_begindefuse", "bomb_abortdefuse", "bomb_defused",
 ]
 
 # props ของผู้เล่นที่ให้ parser แนบมากับทุก event
@@ -174,6 +175,34 @@ def _round_table(dem) -> pl.DataFrame:
         pl.struct(["bomb_plant_x", "bomb_plant_y"])
           .map_elements(lambda r: site_of(r["bomb_plant_x"], r["bomb_plant_y"], map_name), return_dtype=pl.Utf8)
           .alias("bomb_site"))
+
+
+def _defuse_intervals(events: dict[str, pl.DataFrame], rounds: list[dict]) -> dict[int, list[dict]]:
+    """Pair real begin/abort/completion events; never guess a missing start time."""
+    names = ("bomb_begindefuse", "bomb_abortdefuse", "bomb_defused")
+    timeline = sorted(
+        ((int(row["tick"]), name, str(row["user_steamid"]))
+         for name in names for row in events.get(name, pl.DataFrame()).iter_rows(named=True)
+         if row.get("tick") is not None and row.get("user_steamid") is not None),
+        key=lambda item: item[0],
+    )
+    active: dict[tuple[int, str], int] = {}
+    intervals: dict[int, list[dict]] = {}
+    for tick, name, steamid in timeline:
+        rnd = next((r for r in rounds if r["start_tick"] is not None and r["end_tick"] is not None
+                    and r["start_tick"] <= tick <= r["end_tick"]
+                    and r.get("bomb_plant_tick") is not None and r["bomb_plant_tick"] <= tick), None)
+        if rnd is None:
+            continue
+        key = (int(rnd["round_num"]), steamid)
+        if name == "bomb_begindefuse":
+            active[key] = tick
+        else:
+            start = active.pop(key, None)
+            if start is not None and tick > start:
+                intervals.setdefault(key[0], []).append({"start_tick": start, "end_tick": tick,
+                                                           "steam_id": steamid})
+    return intervals
 
 
 def _kill_table(dem) -> pl.DataFrame:
@@ -392,6 +421,11 @@ def parse_demo(path: Path) -> dict:
     players = _player_table(dem, at_start)
 
     team_a, team_b = teams_from_filename(path.name)
+    rounds_data = rounds.to_dicts()
+    defuses = _defuse_intervals(dem.events, rounds_data)
+    for r in rounds_data:
+        r["defuses"] = defuses.get(r["round_num"], [])
+
     return {
         "schema_version": SCHEMA_VERSION,
         "generated_at": datetime.now(UTC).isoformat(timespec="seconds"),
@@ -405,7 +439,7 @@ def parse_demo(path: Path) -> dict:
         "counts": {"players": len(players), "rounds": len(rounds), "kills": len(kills), "damages": len(damages),
                    "player_rounds": len(player_rounds), "grenades": len(grenades), "positions": len(positions)},
         "players": players.to_dicts(),
-        "rounds": rounds.to_dicts(),
+        "rounds": rounds_data,
         "kills": kills.to_dicts(),
         "damages": damages.to_dicts(),
         "player_rounds": player_rounds.to_dicts(),
