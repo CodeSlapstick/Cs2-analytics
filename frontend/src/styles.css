@@ -348,9 +348,11 @@ a.badge:hover { text-decoration: none; filter: brightness(.96); }
 .title-pick:has(select:focus-visible) { outline: 2px solid var(--ct-ink); outline-offset: 2px; }
 .tp-caret { flex: none; color: var(--muted); pointer-events: none; }
 
-.round-strip { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; margin: 0 0 12px; }
-.round-strip .half-gap { width: 1px; height: 22px; background: #46516a; margin: 0 5px; flex: none; }
-.rbox { width: 32px; height: 32px; border-radius: 7px; display: grid; place-items: center; font-weight: 700; font-size: var(--fs-sm); }
+.round-strip { display: flex; flex-wrap: nowrap; align-items: center; gap: 4px; min-width: 0; overflow-x: auto; scrollbar-width: none; padding: 4px 3px 6px; margin: 0 0 12px; }
+.round-strip::-webkit-scrollbar { display: none; }
+.round-strip > * { flex: none; }
+.round-strip .half-gap { width: 1px; height: 22px; background: #46516a; margin: 0 4px; }
+.rbox { width: 28px; height: 28px; border-radius: 7px; display: grid; place-items: center; font-weight: 700; font-size: var(--fs-xs); }
 /* พื้นใช้คู่สีเข้มของ CT ไม่ใช่ --ct ตัวจริง — เลขสีขาวบน #4f8cff ได้ contrast แค่ 3:1 อ่านไม่ออก */
 .rbox.ct { background: var(--ct-ink); color: #fff; }
 .rbox.t { background: var(--t); color: #291200; }
@@ -360,15 +362,11 @@ a.rbox:hover { outline: 2px solid var(--text); outline-offset: 1px; text-decorat
 .round-strip .rbox.active { outline: 3px solid var(--text); outline-offset: 1px; }
 .round-strip button {
   background: var(--card); color: var(--text); border: 1px solid var(--line); border-radius: 7px;
-  width: 32px; height: 32px; cursor: pointer; font-size: var(--fs-md);
+  width: 28px; height: 28px; padding: 0; cursor: pointer; font-size: var(--fs-sm);
 }
 .round-strip button:hover:not(:disabled) { border-color: var(--ct); }
 .round-strip button:disabled { opacity: .35; cursor: default; }
-/* จอแคบ: บรรทัดเดียวเลื่อนข้าง แทนการพับเป็นสามบรรทัด */
 @container main (max-width: 639px) {
-  .round-strip { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; padding: 4px 3px 6px; margin-left: -3px; margin-right: -3px; }
-  .round-strip::-webkit-scrollbar { display: none; }
-  .round-strip > * { flex: none; }
   .title-pick { font-size: var(--fs-md); }
   .rp-head { flex-wrap: wrap; }
 }

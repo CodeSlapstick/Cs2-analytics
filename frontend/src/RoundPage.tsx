@@ -119,10 +119,8 @@ function RoundBody({ entry, roundNum, view, setView, params }: BodyProps) {
   }
 
   return (
-    <>
-      <RoundStrip demo={entry.demo_file} rounds={list} current={roundNum} idx={idx} go={go} params={params} />
-      <RoundView demo={entry.demo_file} roundNum={roundNum} view={view} setView={setView} />
-    </>
+    <RoundView demo={entry.demo_file} roundNum={roundNum} view={view} setView={setView}
+      roundSelector={<RoundStrip demo={entry.demo_file} rounds={list} current={roundNum} idx={idx} go={go} params={params} />} />
   );
 }
 
@@ -153,6 +151,7 @@ function RoundStrip({ demo, rounds, current, idx, go, params }: StripProps) {
   }, [current, rounds.length]);
   const last = rounds[rounds.length - 1]?.round_num;
   return (
+    // แถบรอบใช้ flex-nowrap และ overflow-x-auto เพื่อไม่ตัดบรรทัดบนจอแคบหรือเมื่อมีรอบต่อเวลา
     <nav className="round-strip" data-testid="round-strip" aria-label={t("เลือกรอบ")} ref={ref}>
       <button type="button" disabled={idx <= 0} onClick={() => go(rounds[idx - 1].round_num)} title={t("รอบก่อน (←)")}
         aria-label={t("รอบก่อน")}>

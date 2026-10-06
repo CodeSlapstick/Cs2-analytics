@@ -179,9 +179,10 @@ def test_openid_reply_is_only_trusted_when_steam_says_is_valid(monkeypatch):
         def __enter__(self): return self
         def __exit__(self, *a): return False
 
-    def fake_urlopen(req, timeout=None):
+    def fake_urlopen(req, timeout=None, context=None):
         sent["url"] = req.full_url
         sent["body"] = req.data.decode()
+        assert context is not None and timeout == 10
         return FakeResponse(fake_urlopen.answer)
 
     monkeypatch.setattr(auth.urllib.request, "urlopen", fake_urlopen)
@@ -192,11 +193,56 @@ def test_openid_reply_is_only_trusted_when_steam_says_is_valid(monkeypatch):
     assert auth.verify_steam_openid(dict(good)) is None
     assert auth.verify_steam_openid({**good, "openid.mode": "cancel"}) is None
 
-    def boom(req, timeout=None):
+    def boom(req, timeout=None, context=None):
         raise OSError("steam unreachable")
 
     monkeypatch.setattr(auth.urllib.request, "urlopen", boom)
     assert auth.verify_steam_openid(dict(good)) is None
+
+
+def test_openid_return_to_must_match_login_callback(monkeypatch):
+    claimed = "https://steamcommunity.com/openid/id/76561198012345678"
+    callback = "http://localhost:8000/auth/steam/callback?next=/player"
+    params = {"openid.mode": "id_res", "openid.claimed_id": claimed,
+              "openid.return_to": callback, "openid.sig": "signed"}
+
+    class ValidResponse:
+        def read(self): return b"is_valid:true\n"
+        def __enter__(self): return self
+        def __exit__(self, *args): return False
+
+    monkeypatch.setattr(auth.urllib.request, "urlopen", lambda *args, **kwargs: ValidResponse())
+    assert auth.verify_steam_openid(params, expected_return_to=callback) == "76561198012345678"
+    assert auth.verify_steam_openid(params, expected_return_to="http://localhost:5173/auth/steam/callback?next=/player") is None
+
+
+def test_steam_verification_posts_all_openid_fields_and_logs_rejection(monkeypatch, caplog):
+    callback = "http://localhost:8000/auth/steam/callback?next=/player"
+    params = {"openid.mode": "id_res", "openid.claimed_id": "https://steamcommunity.com/openid/id/76561198012345678",
+              "openid.identity": "https://steamcommunity.com/openid/id/76561198012345678",
+              "openid.return_to": callback, "openid.sig": "signature", "openid.signed": "return_to,identity",
+              "openid.assoc_handle": "association", "openid.response_nonce": "nonce", "other": "ignored"}
+    sent = {}
+
+    class RejectedResponse:
+        status = 200
+        def read(self): return b"ns:http://specs.openid.net/auth/2.0\n is_valid:false \n"
+        def __enter__(self): return self
+        def __exit__(self, *args): return False
+
+    def fake_urlopen(req, timeout=None, context=None):
+        sent["method"] = req.get_method()
+        sent["content_type"] = req.get_header("Content-type")
+        sent["params"] = parse_qs(req.data.decode())
+        return RejectedResponse()
+
+    monkeypatch.setattr(auth.urllib.request, "urlopen", fake_urlopen)
+    assert auth.verify_steam_openid(params, expected_return_to=callback) is None
+    assert sent["method"] == "POST"
+    assert sent["content_type"] == "application/x-www-form-urlencoded"
+    assert sent["params"] == {**{k: [v] for k, v in params.items() if k.startswith("openid.")},
+                              "openid.mode": ["check_authentication"]}
+    assert "HTTP 200" in caplog.text and "is_valid:false" in caplog.text
 
 
 def test_allowlist_empty_means_everyone(monkeypatch):
@@ -255,6 +301,18 @@ def test_public_base_prefers_the_configured_url(monkeypatch):
     from backend import app as appmod
     monkeypatch.setattr(appmod, "PUBLIC_URL", "https://scouting.example.com")
     assert appmod._public_base(_get([(b"host", b"localhost:3000")])) == "https://scouting.example.com"
+
+
+def test_steam_redirects_use_frontend_origin(monkeypatch):
+    from backend import app as appmod
+    monkeypatch.setattr(appmod, "PUBLIC_URL", "")
+    monkeypatch.setattr(appmod, "FRONTEND_URL", "")
+    request = _get([(b"host", b"127.0.0.1:8000")])
+    assert appmod._frontend_redirect(request, "/login?err=steam").headers["location"] == \
+        "http://127.0.0.1:5173/login?err=steam"
+    monkeypatch.setattr(appmod, "FRONTEND_URL", "https://frontend.example")
+    assert appmod._frontend_redirect(request, "/player").headers["location"] == \
+        "https://frontend.example/player"
 
 
 @pytest.mark.parametrize("given,expected", [

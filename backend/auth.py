@@ -16,17 +16,23 @@ backend/auth.py — ล็อกอินด้วย Steam (OpenID 2.0) + JWT �
 วันไหนจะแยกสิทธิ์ ให้แก้ที่ app.require_viewer() กับ app.can_modify_match() เท่านั้น
 """
 import json
+import logging
 import os
 import re
 import secrets
+import ssl
 import urllib.parse
+import urllib.error
 import urllib.request
 import xml.etree.ElementTree as ET
 from datetime import UTC, datetime, timedelta
 
 import jwt
+import certifi
 
 import backend.db  # noqa: F401  โหลด .env เข้า environment ก่อนอ่าน SECRET_KEY / COOKIE_SECURE
+
+logger = logging.getLogger("uvicorn.error")
 
 COOKIE_NAME = "cs2_token"
 JWT_ALG = "HS256"
@@ -166,24 +172,42 @@ def steam_id_allowed(steamid: str) -> bool:
     return not STEAM_ALLOWED_IDS or steamid in STEAM_ALLOWED_IDS
 
 
-def verify_steam_openid(params: dict, *, url: str = STEAM_OPENID_URL) -> str | None:
+def verify_steam_openid(params: dict, *, url: str = STEAM_OPENID_URL,
+                        expected_return_to: str | None = None) -> str | None:
     """ถาม Steam ซ้ำว่าพารามิเตอร์ชุดนี้ออกโดย Steam จริงไหม — ผ่านแล้วคืน SteamID64 ไม่ผ่านคืน None
 
     ฟังก์ชันนี้เรียกเน็ต (เรียกผ่าน run_in_threadpool จาก route ที่เป็น async)
     """
     steamid = steamid_from_claimed_id(params.get("openid.claimed_id"))
     if not steamid or params.get("openid.mode") != "id_res":
+        logger.warning("Steam OpenID callback has invalid claimed_id or mode")
         return None
+    if expected_return_to is not None and params.get("openid.return_to") != expected_return_to:
+        logger.warning("Steam OpenID return_to mismatch: received=%r expected=%r",
+                       params.get("openid.return_to"), expected_return_to)
+        return None
+    # Relay every OpenID callback field unchanged except the mode. The signature
+    # covers fields such as return_to and response_nonce, so omitting one fails.
     check = {k: v for k, v in params.items() if k.startswith("openid.")}
     check["openid.mode"] = "check_authentication"
-    body = urllib.parse.urlencode(check).encode()
-    req = urllib.request.Request(url, data=body, headers={"Content-Type": "application/x-www-form-urlencoded"})
+    body = urllib.parse.urlencode(check).encode("utf-8")
+    req = urllib.request.Request(url, data=body, method="POST",
+                                 headers={"Content-Type": "application/x-www-form-urlencoded"})
+    ssl_context = ssl.create_default_context(cafile=certifi.where())
     try:
-        with urllib.request.urlopen(req, timeout=HTTP_TIMEOUT) as r:      # noqa: S310 — URL คงที่ของ Steam
+        with urllib.request.urlopen(req, context=ssl_context, timeout=10) as r:  # noqa: S310 — URL คงที่ของ Steam
             answer = r.read().decode("utf-8", "replace")
-    except OSError:
+            status = r.status if hasattr(r, "status") else r.getcode() if hasattr(r, "getcode") else 200
+    except urllib.error.HTTPError as exc:
+        answer = exc.read().decode("utf-8", "replace")
+        logger.warning("Steam OpenID verification HTTP %s: %s", exc.code, answer)
+        return None
+    except OSError as exc:
+        logger.warning("Steam OpenID verification request failed: %r", exc)
         return None
     ok = any(line.strip() == "is_valid:true" for line in answer.splitlines())
+    if not ok:
+        logger.warning("Steam OpenID verification HTTP %s: %s", status, answer)
     return steamid if ok else None
 
 
@@ -233,4 +257,3 @@ def username_for_steam(persona: str, steamid: str) -> str:
     """ชื่อผู้ใช้ในระบบเราจากชื่อ Steam — เหลือเฉพาะตัวอักษรที่ USERNAME_RE ยอมรับ ไม่เหลืออะไรก็ใช้ steam_<id>"""
     cleaned = re.sub(r"[^A-Za-z0-9_.-]", "", (persona or "").strip())[:32]
     return cleaned if USERNAME_RE.match(cleaned) else f"steam_{steamid}"
-

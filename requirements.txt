@@ -17,6 +17,7 @@ fastapi>=0.115
 uvicorn[standard]>=0.30
 python-multipart>=0.0.9  # FastAPI ใช้ตัวนี้อ่านไฟล์ที่อัปโหลดมา (POST /api/demos) ขาดแล้ว endpoint จะพังตอนสตาร์ต
 pyjwt>=2.8               # token ล็อกอิน (JWT ใน httpOnly cookie) — backend/auth.py
+certifi>=2024.2.2        # CA bundle สำหรับตรวจ TLS ของ Steam OpenID
 asyncpg>=0.30            # driver PostgreSQL แบบ async (SQLAlchemy ใช้ตัวนี้ข้างใน และ query เดิมใช้ตรง ๆ)
 sqlalchemy[asyncio]>=2.0,<3
 alembic>=1.13            # migration ของสคีมา
