@@ -389,7 +389,40 @@ export interface MatchHeatmap {
 
 const enc = encodeURIComponent;
 
+export interface OpeningCatalogRow {
+  id: number; demo_file: string; map_name: string | null; steamid: string; name: string | null; match_date: string | null;
+}
+export interface OpeningPoint { t: number; px: Px }
+export interface OpeningRound {
+  key: string; demo_file: string; match_name: string; match_date: string | null;
+  round_num: number; side: Side; clock_available: boolean;
+  segments: OpeningPoint[][]; max_gap: number; death_t: number | null; utility: ReviewGrenade[] | null;
+}
+export interface OpeningRoutes {
+  radar: RoundDetail["radar"]; rounds: OpeningRound[]; matches: number;
+  undated_matches: number; window_seconds: number; clock_source: string;
+}
+
+export interface CoachOption {
+  id: number; name: string; match_share: number; rounds: number; matches: number;
+  profile: Record<string, number>; evidence: { demo_file: string; round_num: number; side: Side }[];
+}
+export interface CoachRound {
+  round_num: number; side: Side; available: boolean; reason?: string | null;
+  experimental?: boolean; observed_pattern?: number | null; options: CoachOption[];
+}
+export interface CoachResult {
+  available: boolean; reason?: string; map?: string; side?: Side; rounds: CoachRound[];
+  model?: { version: string; trained_at: string; reference_matches: number; clock_provenance: string;
+    validation: { accuracy: number; baseline: number; test_winning_rounds: number; beats_baseline: boolean;
+      train_matches: number[]; test_matches: number[] } | null };
+}
+
 export const api = {
+  coach: (demo: string, side: Side) => request<CoachResult>(`/api/coach/${enc(demo)}?side=${side}`),
+  openingCatalog: () => request<OpeningCatalogRow[]>("/api/opening-route/catalog"),
+  openingRoutes: (steamid: string, map: string, side: Side, limit: number) =>
+    request<OpeningRoutes>(`/api/opening-route?steamid=${enc(steamid)}&map=${enc(map)}&side=${side}&limit=${limit}`),
   reviewRounds: (demo: string) => request<RoundListItem[]>(`/api/review/${enc(demo)}/rounds`),
   reviewRound: (demo: string, n: number) => request<RoundDetail>(`/api/review/${enc(demo)}/rounds/${n}`),
   reviewPositions: (demo: string, n: number) =>

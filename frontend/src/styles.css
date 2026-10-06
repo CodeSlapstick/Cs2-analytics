@@ -5,6 +5,20 @@
    วางบนพื้นขาวจะกลายเป็นสี่เหลี่ยมดำลอย จึงคงพื้นมืดไว้ในกล่องนั้นกล่องเดียว)
    ================================================================================================ */
 :root {
+  /* Route series are comparison identities, separate from CT/T side colors. */
+  --route-series-1: #67e8f9;
+  --route-series-2: #a3e635;
+  --route-series-3: #c4b5fd;
+  --route-series-4: #f9a8d4;
+  --route-series-5: #fde68a;
+  --route-series-6: #6ee7b7;
+  --route-series-7: #cbd5e1;
+  --route-series-8: #d8b4fe;
+  --utility-flash: #fde68a;
+  --utility-smoke: #cbd5e1;
+  --utility-molotov: #f9a8d4;
+  --utility-he: #a3e635;
+  --utility-decoy: #c4b5fd;
   /* --- พื้นและเส้น: เทาอมฟ้าจาง ๆ ให้เข้าชุดกับสีทีม ไม่ใช่เทากลางที่ดูไม่ได้ตั้งใจเลือก --- */
   --bg: #0b0e14;
   --card: #151a23;
@@ -140,8 +154,8 @@ a.btn-ghost { display: inline-block; font-weight: 600; }
   .topbar { padding: 8px 16px 0; gap: 4px 12px; }
   .usermenu { order: 2; margin-left: auto; }
   /* แถวสอง: เมนู + ปุ่มภาษา — แถวแรกเหลือแค่โลโก้กับบัญชี ไม่ล้นจอ 390px */
-  .topbar nav { order: 3; flex: 1 0 calc(100% - 96px); min-width: 0; overflow-x: auto; scrollbar-width: none; margin: 0 -6px; padding-bottom: 6px; }
-  .lang-toggle { order: 4; margin: 0 0 6px; }
+  .topbar nav { order: 4; flex: 1 0 100%; min-width: 0; overflow-x: auto; scrollbar-width: none; margin: 0 -6px; padding-bottom: 6px; }
+  .lang-toggle { order: 3; margin: 0 0 6px; }
   .topbar nav a { white-space: nowrap; }
 }
 

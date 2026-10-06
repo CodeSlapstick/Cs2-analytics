@@ -40,6 +40,8 @@ from fastapi.staticfiles import StaticFiles
 from starlette.middleware.gzip import GZipMiddleware
 
 from backend import auth  # ล็อกอิน: hash รหัสผ่าน + JWT ใน httpOnly cookie
+from backend.coach import build_coach_samples, load_coach_model, recommend_round
+from backend.coach_data import load_coach_facts
 from backend.db import (  # noqa: F401  (load_dotenv ทำงานตอน import)
     DATABASE_URL,
     apply_schema,
@@ -48,6 +50,8 @@ from backend.db import (  # noqa: F401  (load_dotenv ทำงานตอน im
 )
 from backend.features import assign_teams, rating2_approx  # ผูกคนกับทีม (Round Review) · Rating 2.0 ประมาณการ
 from backend.jobs import QueueUnavailable, enqueue_parse, job_state, queue_health  # คิวงาน parse (Sprint 2)
+from backend.opening_routes import build_opening_rounds, match_date, select_matches
+from backend.player_role_service import build_match_profiles, compatibility_reason, infer_match, load_role_model
 from backend.review import (
     HEATMAP_EVENTS,
     build_economy,
@@ -60,7 +64,6 @@ from backend.review import (
     radar_frame,
 )
 from backend.site_model import available_times, load_site_model, predict_a, read_at
-from backend.player_role_service import build_match_profiles, compatibility_reason, infer_match, load_role_model
 
 # ---------------------------------------------------------------------------
 # ส่วนที่ 1 — ค่าตั้งต้น (CONFIG) อยากแก้อะไรแก้ตรงนี้ที่เดียว
@@ -1030,6 +1033,88 @@ async def api_readability(demo: str = Query(..., description="ชื่อไฟ
         "benchmark": model.get("metrics", {}).get("readability"),
         "source": model.get("source"), "note": model.get("note"),
     }
+
+
+@app.get("/api/coach/{demo_file}")
+async def api_coach(demo_file: str, side: str = "t", _: dict = Depends(require_viewer),
+                    conn: asyncpg.Connection = Depends(db)):
+    if side not in ("t", "ct"):
+        raise HTTPException(422, "ฝั่งต้องเป็น T หรือ CT")
+    match = await _review_match(conn, demo_file)
+    model = load_coach_model()
+    if not model or model.get("map") != match["map_name"]:
+        return {"available": False, "reason": "model_unavailable" if not model else "unsupported_map", "rounds": []}
+    data = await load_coach_facts(conn, match["map_name"], match_id=match["id"])
+    samples = [s for s in build_coach_samples(data) if s["side"] == side]
+    return {"available": True, "map": match["map_name"], "side": side,
+            "model": {"version": model["version"], "trained_at": model["trained_at"],
+                      "reference_matches": len(model["training_match_ids"]),
+                      "validation": model["sides"].get(side, {}).get("validation"),
+                      "clock_provenance": model["clock_provenance"]},
+            "rounds": [recommend_round(s, model, map_name=match["map_name"], exclude_match=match["id"]) for s in samples]}
+
+
+@app.get("/api/opening-route/catalog")
+async def api_opening_catalog(_: dict = Depends(require_viewer), conn: asyncpg.Connection = Depends(db)):
+    records = await conn.fetch("""
+        SELECT m.id, m.demo_file, m.map_name, p.steam_id::text AS steamid, p.name
+        FROM matches m JOIN match_players mp ON mp.match_id = m.id
+        JOIN players p ON p.steam_id = mp.steam_id
+        WHERE m.status = 'done' AND (
+            EXISTS (SELECT 1 FROM player_positions pp WHERE pp.match_id = m.id AND pp.steam_id = p.steam_id)
+            OR EXISTS (SELECT 1 FROM grenades g JOIN rounds r ON r.id = g.round_id
+                       WHERE r.match_id = m.id AND g.thrower_id = p.steam_id))
+        ORDER BY p.name, m.demo_file
+    """)
+    return [{**dict(r), "match_date": match_date(r["demo_file"])} for r in records]
+
+
+@app.get("/api/opening-route")
+async def api_opening_route(steamid: str, map: str, side: str = "t", limit: int = 0,
+                            _: dict = Depends(require_viewer), conn: asyncpg.Connection = Depends(db)):
+    if side not in ("t", "ct") or limit not in (0, 5, 10) or not steamid.isdigit() or not 0 < int(steamid) < 2**63:
+        raise HTTPException(422, "ตัวกรอง Opening Route ไม่ถูกต้อง")
+    sid = int(steamid)
+    candidates = rows(await conn.fetch("""
+        SELECT m.id, m.demo_file, m.map_name, m.tickrate, m.team_a, m.team_b
+        FROM matches m JOIN match_players mp ON mp.match_id = m.id
+        WHERE m.status = 'done' AND mp.steam_id = $1 AND m.map_name = $2 AND (
+            EXISTS (SELECT 1 FROM player_positions pp WHERE pp.match_id = m.id AND pp.steam_id = $1)
+            OR EXISTS (SELECT 1 FROM grenades g JOIN rounds r ON r.id = g.round_id
+                       WHERE r.match_id = m.id AND g.thrower_id = $1))
+    """, sid, map))
+    matches = select_matches(candidates, limit)
+    ids = [m["id"] for m in matches]
+    rounds_ = rows(await conn.fetch("""
+        SELECT r.id, r.match_id, r.round_num, r.start_tick, pr.side,
+               (SELECT MIN(k.tick) FROM kills k WHERE k.round_id = r.id AND k.victim_id = $2) AS death_tick
+        FROM rounds r JOIN player_rounds pr ON pr.round_id = r.id
+        WHERE r.match_id = ANY($1::int[]) AND pr.steam_id = $2 AND pr.side = $3
+        ORDER BY r.match_id, r.round_num
+    """, ids, sid, side))
+    round_ids = [r["id"] for r in rounds_]
+    positions = rows(await conn.fetch("""
+        SELECT r.id AS round_id, pp.tick, pp.x, pp.y, pp.health
+        FROM player_positions pp JOIN rounds r ON r.match_id = pp.match_id AND r.round_num = pp.round_num
+        JOIN matches m ON m.id = r.match_id
+        WHERE r.id = ANY($1::int[]) AND pp.steam_id = $2
+          AND pp.tick BETWEEN r.start_tick AND r.start_tick + 30 * m.tickrate
+        ORDER BY r.id, pp.tick
+    """, round_ids, sid))
+    columns = await _optional_columns(conn, "grenades", ("trajectory",))
+    trajectory = "g.trajectory" if "trajectory" in columns else "NULL::jsonb AS trajectory"
+    grenades = rows(await conn.fetch(f"""
+        SELECT g.round_id, g.tick, g.thrower_id, g.side, g.type, g.throw_x, g.throw_y,
+               g.land_x, g.land_y, g.land_tick, g.end_tick, {trajectory}, p.name AS thrower_name
+        FROM grenades g LEFT JOIN players p ON p.steam_id = g.thrower_id
+        JOIN rounds r ON r.id = g.round_id JOIN matches m ON m.id = r.match_id
+        WHERE g.round_id = ANY($1::int[]) AND g.thrower_id = $2
+          AND g.tick BETWEEN r.start_tick AND r.start_tick + 30 * m.tickrate
+        ORDER BY g.round_id, g.tick, g.id
+    """, round_ids, sid))
+    result = build_opening_rounds(matches, rounds_, positions, grenades, sid, map)
+    return {**result, "matches": len(matches), "undated_matches": sum(match_date(m["demo_file"]) is None for m in candidates),
+            "window_seconds": 30, "clock_source": "stored_start_tick_unverified"}
 
 
 @app.get("/api/review/{demo_file}/rounds")

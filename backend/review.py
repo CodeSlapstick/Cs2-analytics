@@ -471,7 +471,7 @@ def _death_rows(kills: list[dict], person, *, start, tickrate: int,
     return deaths
 
 
-def _nade_rows(grenades: list[dict], person, *, start, tickrate: int, frame: RadarFrame | None) -> list[dict]:
+def build_grenade_rows(grenades: list[dict], person, *, start, tickrate: int, frame: RadarFrame | None) -> list[dict]:
     """ระเบิด: endpoints, effect time และ trajectory จริง (ถ้ามี) เป็นพิกเซลเรดาร์"""
     nades = []
     for g in grenades:
@@ -577,7 +577,7 @@ def build_round_detail(*, match: dict, rnd: dict, roster: list[dict], in_round: 
     person, info, side_now, colours, slots = _person_factory(roster, in_round)
 
     deaths = _death_rows(kills, person, start=start, tickrate=tickrate, frame=frame, model=model)
-    nades = _nade_rows(grenades, person, start=start, tickrate=tickrate, frame=frame)
+    nades = build_grenade_rows(grenades, person, start=start, tickrate=tickrate, frame=frame)
 
     return {
         "match": {k: match.get(k) for k in ("id", "demo_file", "map_name", "tickrate", "team_a", "team_b")},

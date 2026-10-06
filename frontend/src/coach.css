@@ -1,0 +1,17 @@
+.coach-page { max-width: 1300px; margin: auto; }
+.coach-page > p { max-width: 80ch; }
+.coach-match-summary { overflow-wrap: anywhere; color: var(--muted); }
+.coach-filters.filters label { display: grid; gap: 6px; flex: 1 1 140px; font-size: var(--fs-sm); color: var(--muted); }
+.coach-filters.filters label:first-child { flex: 3 1 320px; min-width: 0; }
+.coach-disclosure { font-size: var(--fs-sm); color: var(--muted); margin: 18px 0; }
+.coach-round-heading { display: flex; flex-wrap: wrap; align-items: baseline; gap: 12px 24px; margin-top: 24px; }
+.coach-round-heading h2 { margin: 0; }
+.coach-options { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+.coach-options h2 { font-size: var(--fs-md); }
+.coach-profile { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 12px 0 20px; }
+.coach-profile dt { color: var(--muted); font-size: var(--fs-xs); }
+.coach-profile dd { margin: 0; font-variant-numeric: tabular-nums; }
+.coach-evidence { display: grid; gap: 10px; }
+.coach-evidence a { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: var(--fs-xs); }
+.coach-model h2 { font-size: var(--fs-md); }
+@media (max-width: 850px) { .coach-options { grid-template-columns: 1fr; } }

@@ -9,6 +9,8 @@ import { MatchPage } from "./MatchPage";
 import { RoundPage } from "./RoundPage";
 import { PlayerPage } from "./PlayerPage";
 import { AnalysisPage } from "./AnalysisPage";
+import { OpeningRoutePage } from "./OpeningRoutePage";
+import { CoachPage } from "./CoachPage";
 import { HeatmapPage } from "./HeatmapPage";
 import { EconomyPage } from "./EconomyPage";
 import { HomePage } from "./HomePage";
@@ -178,6 +180,8 @@ const NAV = [
   { to: "/player", label: "สถิติของฉัน", end: false, steamOnly: true },
   { to: "/matches", label: "แมตช์", end: false, steamOnly: false },
   { to: "/analysis", label: "เครื่องมือวิเคราะห์", end: false, steamOnly: false },
+  { to: "/opening-route", label: "Opening Route", end: false, steamOnly: false },
+  { to: "/coach", label: "Coach", end: false, steamOnly: false },
 ];
 
 /** โหมดเยี่ยมชมไม่มี "ฉัน" — ไม่ต้องโชว์แท็บที่เปิดแล้วเจอแต่หน้าว่าง และหน้าแรกพาไปหน้าแมตช์แทน */
@@ -202,6 +206,12 @@ function TopBar() {
   const { pathname } = useLocation();
   const guest = useViewerIsGuest();
   const { t } = useT();
+  const navRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const nav = navRef.current;
+    const active = nav?.querySelector<HTMLElement>("a.active");
+    if (nav && active) nav.scrollLeft = active.offsetLeft - nav.offsetLeft - (nav.clientWidth - active.clientWidth) / 2;
+  }, [pathname, guest]);
   if (pathname === "/" || pathname === "/login") return null;
   return (
     <header className="topbar">
@@ -209,7 +219,7 @@ function TopBar() {
         <Mark />
         <span>CS2 SCOUTING</span>
       </Link>
-      <nav aria-label={t("เมนูหลัก")}>
+      <nav ref={navRef} aria-label={t("เมนูหลัก")}>
         {NAV.filter((n) => !(guest && n.steamOnly)).map((n) => (
           <NavLink key={n.to} to={n.to} end={n.end} className={({ isActive }) => (isActive ? "active" : "")}>
             {t(n.label)}
@@ -240,6 +250,8 @@ function App() {
             <Route path="/matches/:demo/heatmap" element={<HeatmapPage />} />
             <Route path="/matches/:demo/economy" element={<EconomyPage />} />
             <Route path="/analysis" element={<AnalysisPage />} />
+            <Route path="/opening-route" element={<OpeningRoutePage />} />
+            <Route path="/coach" element={<CoachPage />} />
             <Route path="/player" element={<PlayerPage />} />
             <Route path="/player/:steamId" element={<PlayerPage />} />
             <Route path="*" element={<NotFound />} />
