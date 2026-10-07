@@ -105,6 +105,48 @@ def test_position_sample_ticks_are_unique_and_near_eight_hz(tickrate):
     assert all(abs((b - a) - tickrate / 8) <= 1 for a, b in zip(ticks, ticks[1:], strict=False))
 
 
+def test_replay_positions_continue_after_gameplay_round_end():
+    from types import SimpleNamespace
+    import polars as pl
+
+    from backend.parser import _wanted_ticks
+    dem = SimpleNamespace(rounds=pl.DataFrame([{"round_num": 1, "freeze_end": 1000, "start": 800,
+                                                 "end": 1000 + 24 * 128, "official_end": 1000 + 34 * 128}]))
+    want, positions = _wanted_ticks(dem, 128)
+    assert want[1000 + 24 * 128] == (1, "end")
+    assert max(positions) > 1000 + 33 * 128
+
+
+def test_defuse_intervals_use_real_start_abort_and_completion_events():
+    import polars as pl
+
+    from backend.parser import _defuse_intervals
+    rounds = [{"round_num": 1, "start_tick": 100, "bomb_plant_tick": 200, "end_tick": 500}]
+    events = {
+        "bomb_begindefuse": pl.DataFrame({"tick": [220, 300], "user_steamid": ["42", "42"]}),
+        "bomb_abortdefuse": pl.DataFrame({"tick": [240], "user_steamid": ["42"]}),
+        "bomb_defused": pl.DataFrame({"tick": [330], "user_steamid": ["42"]}),
+    }
+    assert _defuse_intervals(events, rounds) == {1: [
+        {"steam_id": "42", "start_tick": 220, "end_tick": 240},
+        {"steam_id": "42", "start_tick": 300, "end_tick": 330},
+    ]}
+    assert _defuse_intervals({"bomb_defused": events["bomb_defused"]}, rounds) == {}
+
+
+def test_bomb_resolution_uses_recorded_defuse_or_explosion_tick():
+    import polars as pl
+
+    from backend.parser import _bomb_resolution_ticks
+    rounds = [
+        {"round_num": 1, "start_tick": 100, "bomb_plant_tick": 200, "end_tick": 500},
+        {"round_num": 2, "start_tick": 600, "bomb_plant_tick": 700, "end_tick": 1000},
+    ]
+    events = {"bomb_defused": pl.DataFrame({"tick": [340]}),
+              "bomb_exploded": pl.DataFrame({"tick": [880]})}
+    assert _bomb_resolution_ticks(events, rounds) == {1: 340, 2: 880}
+
+
 def test_team_clan_and_bomb_position(doc):
     """schema 5: ทุกแถว player_rounds มี team_clan และทุกรอบที่วางบอมบ์มีพิกัดวางบอมบ์"""
     assert all("team_clan" in x for x in doc["player_rounds"])
@@ -199,4 +241,3 @@ def test_projectile_trajectory_uses_real_points_once_and_never_fabricates():
     assert [p[0] for p in first["trajectory"]] == [100, 101, 102]
     assert [p[0] for p in second["trajectory"]] == [200, 201, 202]
     assert missing["trajectory"] is None
-
