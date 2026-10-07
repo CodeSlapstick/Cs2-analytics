@@ -362,9 +362,10 @@ a.badge:hover { text-decoration: none; filter: brightness(.96); }
 .title-pick:has(select:focus-visible) { outline: 2px solid var(--ct-ink); outline-offset: 2px; }
 .tp-caret { flex: none; color: var(--muted); pointer-events: none; }
 
-.round-strip { display: flex; flex-wrap: nowrap; align-items: center; gap: 4px; min-width: 0; overflow-x: auto; scrollbar-width: none; padding: 4px 3px 6px; margin: 0 0 12px; }
-.round-strip::-webkit-scrollbar { display: none; }
-.round-strip > * { flex: none; }
+.round-strip { display: flex; align-items: center; gap: 4px; min-width: 0; margin: 0 0 12px; }
+.round-strip-scroll { position: relative; display: flex; flex: 1 1 auto; flex-wrap: nowrap; align-items: center; gap: 4px; min-width: 0; overflow-x: auto; scrollbar-width: none; padding: 6px; }
+.round-strip-scroll::-webkit-scrollbar { display: none; }
+.round-strip-scroll > * { flex: none; }
 .round-strip .half-gap { width: 1px; height: 22px; background: #46516a; margin: 0 4px; }
 .rbox { width: 28px; height: 28px; border-radius: 7px; display: grid; place-items: center; font-weight: 700; font-size: var(--fs-xs); }
 /* พื้นใช้คู่สีเข้มของ CT ไม่ใช่ --ct ตัวจริง — เลขสีขาวบน #4f8cff ได้ contrast แค่ 3:1 อ่านไม่ออก */
@@ -374,12 +375,11 @@ a.badge:hover { text-decoration: none; filter: brightness(.96); }
 a.rbox { text-decoration: none; }
 a.rbox:hover { outline: 2px solid var(--text); outline-offset: 1px; text-decoration: none; }
 .round-strip .rbox.active { outline: 3px solid var(--text); outline-offset: 1px; }
-.round-strip button {
+.round-strip > button {
   background: var(--card); color: var(--text); border: 1px solid var(--line); border-radius: 7px;
-  width: 28px; height: 28px; padding: 0; cursor: pointer; font-size: var(--fs-sm);
+  flex: none; width: 28px; height: 28px; padding: 0; cursor: pointer; font-size: var(--fs-sm);
 }
-.round-strip button:hover:not(:disabled) { border-color: var(--ct); }
-.round-strip button:disabled { opacity: .35; cursor: default; }
+.round-strip > button:hover { border-color: var(--ct); }
 @container main (max-width: 639px) {
   .title-pick { font-size: var(--fs-md); }
   .rp-head { flex-wrap: wrap; }
@@ -413,6 +413,7 @@ a.rbox:hover { outline: 2px solid var(--text); outline-offset: 1px; text-decorat
 }
 .map-col .muted { color: #93a1b8; }
 .map-col a { color: #7fb0ff; }
+.map-card-header { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: flex-start; gap: 8px; min-height: 32px; }
 .map-stage { width: min(100%, 74dvh); aspect-ratio: 1; margin-inline: auto; position: relative; }
 .map-stage svg.radar { width: 100%; height: 100%; display: block; background: #0a0f1a; border-radius: 6px; touch-action: none; }
 svg.radar.zoomed { cursor: grab; }
@@ -440,8 +441,8 @@ svg.radar.zoomed:active { cursor: grabbing; }
 }
 .pb-play:hover { background: #f07d0c; }
 .pb-speeds { display: inline-flex; gap: 4px; }
-/* ซูม: ลอยมุมขวาบนของแผนที่ */
-.map-zoom { position: absolute; top: 8px; right: 8px; display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+/* ซูม: อยู่ในหัวการ์ดเหนือแผนที่ ไม่บังตำแหน่งผู้เล่น */
+.map-zoom { display: flex; align-items: flex-start; gap: 4px; }
 .map-zoom button {
   min-width: 32px; height: 32px; display: grid; place-items: center; border-radius: 7px; padding: 0 8px;
   border: 1px solid #2c3a55; background: rgba(16, 24, 38, .88); color: #dbe4f2; cursor: pointer;
@@ -450,6 +451,20 @@ svg.radar.zoomed:active { cursor: grabbing; }
 .map-zoom button:hover:not(:disabled) { border-color: #7fb0ff; color: #fff; }
 .map-zoom button:disabled { opacity: .35; cursor: default; }
 .map-zoom .mz-reset { font-size: var(--fs-xs); font-weight: 600; }
+.c4-hud {
+  pointer-events: none;
+  display: grid; grid-template-columns: 16px auto; align-items: center; gap: 3px 7px;
+  min-width: 84px; padding: 6px 10px; border: 1px solid rgba(239, 68, 68, .4);
+  border-radius: 9px; background: rgba(15, 23, 42, .86); color: #fff;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, .3); backdrop-filter: blur(6px);
+}
+.c4-hud-icon { width: 16px; height: 16px; fill: #ef4444; }
+.c4-hud-time { font: 700 var(--fs-sm)/1.1 monospace; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.c4-hud-track { grid-column: 1 / -1; height: 3px; overflow: hidden; border-radius: 3px; background: rgba(239, 68, 68, .18); }
+.c4-hud-track > span { display: block; height: 100%; border-radius: inherit; background: #ef4444; }
+.c4-hud.critical .c4-hud-time { color: #fca5a5; animation: c4-hud-pulse 1s ease-in-out infinite; }
+@keyframes c4-hud-pulse { 50% { opacity: .55; } }
+@media (prefers-reduced-motion: reduce) { .c4-hud.critical .c4-hud-time { animation: none; } }
 .pb-range { flex: 1 1 150px; min-width: 110px; accent-color: var(--ct); }
 .pb-clock { font-variant-numeric: tabular-nums; }
 .pb-speed {
@@ -517,6 +532,11 @@ svg.radar.zoomed:active { cursor: grabbing; }
 .live-player-label.selected { font-weight: 800; stroke-width: 4.5px !important; }
 .player-label-leader { opacity: .58; vector-effect: non-scaling-stroke; }
 .live-weapon-icon, .map-utility-icon, .map-equipment-icon { fill: #f8fafc; filter: drop-shadow(0 1px 1px #050a12); }
+.map-bomb-icon { fill: #ef4444; filter: drop-shadow(0 0 3px rgba(239, 68, 68, .85)); }
+.defuse-beam { animation: defuse-flow .8s linear infinite; }
+.defuse-ring { animation: defuse-pulse 1.2s ease-in-out infinite; }
+@keyframes defuse-flow { to { stroke-dashoffset: -12px; } }
+@keyframes defuse-pulse { 50% { opacity: .45; stroke-width: 4px; } }
 .nade-label { font-size: 16px; font-weight: 700; paint-order: stroke; stroke: #0b1220; stroke-width: 4px; pointer-events: none; }
 
 /* ---- ไทม์ไลน์ + บริบท ---- */

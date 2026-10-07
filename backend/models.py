@@ -138,12 +138,15 @@ class Round(Base):
     match_id: Mapped[int] = mapped_column(ForeignKey("matches.id", ondelete="CASCADE"), nullable=False)
     round_num: Mapped[int] = mapped_column(Integer, nullable=False)
     start_tick: Mapped[int | None] = mapped_column(Integer)        # tick ที่ freeze time จบ
+    end_tick: Mapped[int | None] = mapped_column(Integer)          # official_end (รวมช่วงหลังตัดสินรอบ)
     bomb_plant_tick: Mapped[int | None] = mapped_column(Integer)   # NULL = รอบนี้ไม่มีการวางระเบิด
+    bomb_resolved_tick: Mapped[int | None] = mapped_column(Integer)  # defused/exploded event
     winner_side: Mapped[str | None] = mapped_column(Text)
     end_reason: Mapped[str | None] = mapped_column(Text)           # t_killed / ct_killed / bomb_defused / ...
     bomb_plant_x: Mapped[float | None] = mapped_column(REAL)       # จุดที่วางบอมบ์ (migration 0004)
     bomb_plant_y: Mapped[float | None] = mapped_column(REAL)
     bomb_site: Mapped[str | None] = mapped_column(Text)
+    defuse_intervals: Mapped[list | None] = mapped_column(JSONB)
 
     __table_args__ = (
         UniqueConstraint("match_id", "round_num"),
