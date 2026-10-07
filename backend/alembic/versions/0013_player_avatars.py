@@ -4,7 +4,6 @@ Revision ID: 0013_avatars
 Revises: 0012
 """
 from alembic import op
-import sqlalchemy as sa
 
 
 revision = "0013_avatars"
@@ -14,8 +13,10 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.add_column("players", sa.Column("avatar", sa.Text(), nullable=True))
+    # The baseline schema already contains this column.  Keep this branch
+    # migration safe for databases created both before and after that change.
+    op.execute("ALTER TABLE players ADD COLUMN IF NOT EXISTS avatar TEXT")
 
 
 def downgrade() -> None:
-    op.drop_column("players", "avatar")
+    op.execute("ALTER TABLE players DROP COLUMN IF EXISTS avatar")
