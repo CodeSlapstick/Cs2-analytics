@@ -694,6 +694,13 @@ html:has(.login-shell) { color-scheme: dark; scrollbar-color: #2E3647 #0B0E14; }
   min-height: 100dvh; display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(440px, 1fr);
   background: var(--l-bg); color: var(--l-text); font: 400 16px/1.55 var(--l-body); caret-color: var(--l-orange);
 }
+html[data-theme="light"] body:has(.login-shell) { background: #edf1f5; }
+html[data-theme="light"]:has(.login-shell) { color-scheme: light; scrollbar-color: #98a6b7 #edf1f5; }
+html[data-theme="light"] .login-shell {
+  --l-bg: #edf1f5; --l-plate: #ffffff; --l-field: #f3f6f9; --l-steel: #c6d0dc; --l-steel-hi: #8f9eaf;
+  --l-orange: #d95700; --l-orange-hi: #a94100; --l-cyan: #007f91; --l-text: #15202c; --l-soft: #3d4a59;
+  --l-muted: #596779; --l-red: #b42334;
+}
 .login-shell ::selection { background: rgba(255, 107, 0, .38); color: #fff; }
 .login-shell :focus-visible { outline: 2px solid var(--l-cyan); outline-offset: 3px; }
 
@@ -753,6 +760,10 @@ html:has(.login-shell) { color-scheme: dark; scrollbar-color: #2E3647 #0B0E14; }
   display: flex; flex-direction: column; gap: 2px; padding: 10px 14px 11px; min-width: 132px;
   background: rgba(30, 35, 45, .78); border: 1px solid var(--l-steel); border-radius: 4px;
 }
+html[data-theme="light"] .brief { background: radial-gradient(60% 55% at 64% 52%, rgba(0, 127, 145, .09), transparent 70%), var(--l-bg); }
+html[data-theme="light"] .brief::before { opacity: .58; }
+html[data-theme="light"] .brief-radar { opacity: .72; }
+html[data-theme="light"] .brief-stats li { background: rgba(255, 255, 255, .82); }
 .brief-stats b { font: 700 22px/1.1 var(--l-display); color: var(--l-text); font-variant-numeric: tabular-nums; }
 .brief-stats span { font-size: 13.5px; color: var(--l-muted); }
 .brief-caption { margin: 0; font-size: 13px; color: var(--l-muted); }
@@ -767,6 +778,8 @@ html:has(.login-shell) { color-scheme: dark; scrollbar-color: #2E3647 #0B0E14; }
   padding: 36px 36px 28px; background: var(--l-plate); border: 1px solid var(--l-steel); border-radius: 6px;
   box-shadow: 0 28px 64px -24px rgba(0, 0, 0, .75), 0 2px 6px rgba(0, 0, 0, .35);
 }
+html[data-theme="light"] .login-side { background: radial-gradient(65% 50% at 50% 45%, rgba(217, 87, 0, .08), transparent 70%), var(--l-bg); }
+html[data-theme="light"] .login-card { box-shadow: 0 28px 64px -30px rgba(31, 45, 61, .32), 0 2px 6px rgba(31, 45, 61, .1); }
 .lc-corner { position: absolute; width: 20px; height: 20px; border: 0 solid var(--l-orange); pointer-events: none; }
 .lc-corner.tl { top: -1px; left: -1px; border-top-width: 2px; border-left-width: 2px; border-top-left-radius: 6px; }
 .lc-corner.tr { top: -1px; right: -1px; border-top-width: 2px; border-right-width: 2px; border-top-right-radius: 6px; }
@@ -784,6 +797,7 @@ html:has(.login-shell) { color-scheme: dark; scrollbar-color: #2E3647 #0B0E14; }
   animation: l-in .24s ease-out;
 }
 .lc-error svg { flex: none; color: var(--l-red); margin-top: 1px; }
+html[data-theme="light"] .lc-error { color: #7f1d2d; background: rgba(180, 35, 52, .08); border-color: rgba(180, 35, 52, .42); }
 @keyframes l-in { from { opacity: 0; transform: translateY(-4px); } }
 
 /* ปุ่ม Steam: ปุ่มเดียวของหน้านี้ — เข้าระบบได้ทางเดียว จึงให้น้ำหนักเป็นปุ่มหลัก */
@@ -794,10 +808,12 @@ html:has(.login-shell) { color-scheme: dark; scrollbar-color: #2E3647 #0B0E14; }
   transition: border-color .15s ease-out, background-color .15s ease-out, box-shadow .25s ease-out;
 }
 .lc-steam svg { color: var(--l-cyan); }
+html[data-theme="light"] .lc-steam { background: #e7edf3; }
 .lc-steam:hover, .lc-steam:focus-visible {
   text-decoration: none; border-color: var(--l-cyan); background: #1B2836;
   box-shadow: 0 0 0 3px rgba(0, 229, 255, .14), 0 0 22px -8px rgba(0, 229, 255, .6);
 }
+html[data-theme="light"] .lc-steam:hover, html[data-theme="light"] .lc-steam:focus-visible { background: #dde6ee; }
 
 /* ตัวคั่นระหว่างสองทางเข้า */
 .lc-or { display: flex; align-items: center; gap: 12px; margin: 0; font-size: 13.5px; color: var(--l-muted); }
@@ -813,6 +829,7 @@ html:has(.login-shell) { color-scheme: dark; scrollbar-color: #2E3647 #0B0E14; }
 .lc-guest:hover:not(:disabled), .lc-guest:focus-visible {
   border-color: var(--l-steel-hi); color: var(--l-text); background: rgba(255, 255, 255, .04);
 }
+html[data-theme="light"] .lc-guest:hover:not(:disabled), html[data-theme="light"] .lc-guest:focus-visible { background: rgba(21, 32, 44, .045); }
 .lc-guest:disabled { opacity: .55; cursor: progress; }
 .lc-guest svg { color: var(--l-muted); }
 
@@ -1140,17 +1157,17 @@ a.an-tab:hover { text-decoration: none; }
 }
 
 /* ปุ่มสลับภาษาบนหน้า login — ใช้สีของโลกหน้า login เอง (พื้นมืด ฟ้า reticle) ลอยมุมขวาบน */
-.login-shell .login-lang {
-  position: absolute; top: 16px; right: 16px; z-index: 2; margin: 0;
-  border-color: var(--l-steel); background: rgba(21, 26, 35, .8);
-}
+.login-tools { position: absolute; top: 16px; right: 16px; z-index: 2; display: flex; align-items: center; gap: 8px; }
+.login-shell .login-lang { margin: 0; border-color: var(--l-steel); background: color-mix(in srgb, var(--l-field) 88%, transparent); }
+.login-shell .theme-toggle { border-color: var(--l-steel); background: color-mix(in srgb, var(--l-field) 88%, transparent); color: var(--l-muted); }
+.login-shell .theme-toggle:hover { border-color: var(--l-cyan); background: var(--l-field); color: var(--l-text); }
 .login-shell .login-lang button { color: var(--l-muted); font-family: var(--l-display); }
 .login-shell .login-lang button:hover:not(.on) { color: var(--l-text); }
 .login-shell .login-lang button.on { background: var(--l-cyan); color: #06232a; }
 /* จอแคบ: หน้า login เรียงเป็นแนวตั้ง — ปุ่มภาษาอยู่เหนือการ์ดชิดขวา ไม่ทับมุมการ์ด */
 @media (max-width: 1023px) {
   .login-shell .login-side { gap: 12px; }
-  .login-shell .login-lang { position: static; justify-self: end; order: -1; }
+  .login-tools { position: static; justify-self: end; order: -1; }
 }
 
 /* ================================================================================================

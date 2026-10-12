@@ -8,6 +8,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import { ApiError, auth } from "./api";
 import { LangToggle, useT } from "./i18n";
+import { ThemeToggle } from "./theme";
 // เส้นโครงสีฟ้าที่สกัดจากภาพเรดาร์ de_mirage จริงของเกม (ที่มาฝังอยู่ในไฟล์ PNG)
 import radarLines from "./assets/brief-mirage-lines.png";
 
@@ -129,7 +130,10 @@ export function LoginPage() {
       </section>
 
       <section className="login-side">
-        <LangToggle className="lang-toggle login-lang" />
+        <div className="login-tools">
+          <ThemeToggle />
+          <LangToggle className="lang-toggle login-lang" />
+        </div>
         <div className="login-card" data-testid="login-card">
           <span className="lc-corner tl" aria-hidden="true" />
           <span className="lc-corner tr" aria-hidden="true" />
