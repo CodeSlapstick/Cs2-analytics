@@ -1265,14 +1265,11 @@ html[data-theme="light"] .home-workflow::after { opacity:.1; }
 .stage-live i { width:6px; height:6px; border-radius:50%; background:var(--h-orange); box-shadow:0 0 12px rgba(255,107,0,.8); }
 .stage-body { display:grid; grid-template-columns:minmax(0,1fr) 190px; min-height:420px; }
 .stage-map { position:relative; overflow:hidden; background:#080d15; border-right:1px solid var(--h-line); }
-.stage-map::before { content:""; position:absolute; inset:0; opacity:.28; background-image:linear-gradient(rgba(0,229,255,.09) 1px,transparent 1px),linear-gradient(90deg,rgba(0,229,255,.09) 1px,transparent 1px); background-size:34px 34px; }
-.stage-map img { position:absolute; width:84%; height:84%; object-fit:contain; left:8%; top:8%; opacity:.72; filter:saturate(.65) brightness(1.15); }
-.stage-path { position:absolute; inset:0; width:100%; height:100%; }
-.stage-path path { fill:none; stroke:rgba(0,229,255,.55); stroke-width:.55; stroke-dasharray:2 2; }
-.stage-player { position:absolute; z-index:3; width:28px; height:28px; transform:translate(-50%,-50%); border-radius:50%; display:grid; place-items:center; color:#fff; border:2px solid #08101c; font:700 12px/1 "Chakra Petch",sans-serif; box-shadow:0 5px 12px rgba(0,0,0,.55); }
+.stage-map img { position:absolute; width:92%; height:92%; object-fit:contain; left:4%; top:4%; opacity:.9; filter:saturate(.72) brightness(.88); }
+.stage-player-wrap { position:absolute; z-index:3; width:0; height:0; }
+.stage-player { position:absolute; z-index:2; width:28px; height:28px; transform:translate(-50%,-50%); border-radius:50%; display:grid; place-items:center; color:#fff; border:2px solid #08101c; font:700 12px/1 "Chakra Petch",sans-serif; box-shadow:0 5px 12px rgba(0,0,0,.55); }
 .stage-player.ct { background:#4f8cff; }.stage-player.t { background:#ff8a1e; color:#231000; }
-.stage-smoke { position:absolute; z-index:2; width:68px; height:68px; transform:translate(-50%,-50%); border-radius:50%; background:radial-gradient(circle,rgba(210,220,228,.5),rgba(117,130,142,.2) 52%,transparent 70%); border:1px solid rgba(230,238,244,.28); }
-.stage-bomb { position:absolute; z-index:4; transform:translate(-50%,-50%); color:#130b05; background:var(--h-orange); width:22px; height:22px; display:grid; place-items:center; border-radius:3px; font:700 12px/1 "Chakra Petch",sans-serif; }
+.stage-player-name { position:absolute; z-index:1; left:0; top:0; color:#fff; white-space:nowrap; font:600 11px/1 "Anuphan",sans-serif; text-shadow:-1px -1px 0 #07101a,1px -1px 0 #07101a,-1px 1px 0 #07101a,1px 1px 0 #07101a,0 2px 4px #000; }
 .stage-timeline { list-style:none; margin:0; padding:12px; display:flex; flex-direction:column; background:#111720; }
 .stage-timeline li { display:grid; grid-template-columns:42px 8px 1fr; align-items:center; gap:7px; min-height:56px; padding:8px 6px; border-bottom:1px solid var(--h-line); color:var(--h-muted); font-size:11px; line-height:1.35; }
 .stage-timeline li.active { color:var(--h-text); background:rgba(255,107,0,.09); }
