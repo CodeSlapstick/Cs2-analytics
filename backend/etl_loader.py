@@ -43,12 +43,51 @@ def _float(v):
     return float(v) if v is not None else None
 
 
+def _player_id(value) -> int | None:
+    if isinstance(value, bool) or (isinstance(value, float) and not value.is_integer()):
+        return None
+    try:
+        steam_id = int(value)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    return steam_id if 0 < steam_id <= 2**63 - 1 else None
+
+
 async def _upsert_players(conn, players: list[dict]) -> None:
-    if players:
+    rows = [(_player_id(p.get("steam_id")), str(p.get("name") or "Unknown player")) for p in players]
+    rows = [(steam_id, name) for steam_id, name in rows if steam_id is not None]
+    if rows:
         await conn.executemany("""
             INSERT INTO players (steam_id, name) VALUES ($1, $2)
             ON CONFLICT (steam_id) DO UPDATE SET name = EXCLUDED.name;
-        """, [(int(p["steam_id"]), str(p["name"])) for p in players])
+        """, rows)
+
+
+async def _upsert_referenced_players(conn, doc: dict) -> set[int]:
+    """Register every valid player reference and return the IDs confirmed in the database."""
+    sources = (("kills", ("attacker_id", "victim_id", "assister_id")),
+               ("damages", ("attacker_id", "victim_id")),
+               ("grenades", ("thrower_id",)),
+               ("player_rounds", ("steam_id",)),
+               ("positions", ("steam_id",)))
+    all_ids = {_player_id(p.get("steam_id")) for p in doc.get("players", [])}
+    all_ids.update(_player_id(row.get(key)) for group, keys in sources
+                   for row in doc.get(group, []) for key in keys)
+    ids = sorted(all_ids - {None})
+    if not ids:
+        return set()
+    # เติม SteamID ทุกแหล่งก่อนตารางลูก แล้วอ่านยืนยันจาก DB ใน transaction เดียวกัน
+    await conn.executemany("""
+        INSERT INTO players (steam_id, name) VALUES ($1, $2)
+        ON CONFLICT (steam_id) DO NOTHING;
+    """, [(steam_id, f"Unknown player {steam_id}") for steam_id in ids])
+    records = await conn.fetch("SELECT steam_id FROM players WHERE steam_id = ANY($1::bigint[]);", ids)
+    return {int(record["steam_id"]) for record in records}
+
+
+def _known_player_id(value, known_ids: set[int] | None) -> int | None:
+    steam_id = _player_id(value)
+    return steam_id if steam_id is not None and (known_ids is None or steam_id in known_ids) else None
 
 
 # SQL ของตารางลูกแต่ละตัว — วางไว้ระดับโมดูลเพื่อให้ฟังก์ชันสร้างแถวอ่านสั้นลง
@@ -83,8 +122,8 @@ SQL_GRENADES = """
 """
 SQL_POSITIONS = """
     INSERT INTO player_positions (match_id, round_num, tick, steam_id, side, x, y, z, health, place,
-                                  active_weapon, armor, has_helmet, has_defuser)
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+                                  active_weapon, armor, has_helmet, has_defuser, yaw, flash_remaining)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
     ON CONFLICT (match_id, round_num, tick, steam_id) DO NOTHING;
 """
 
@@ -113,9 +152,10 @@ async def _insert_rounds(conn, match_id: int, rounds: list[dict]) -> dict[int, i
     return round_id_map
 
 
-def _kill_rows(kills: list[dict], rid_of) -> list[tuple]:
+def _kill_rows(kills: list[dict], rid_of, known_ids: set[int] | None = None) -> list[tuple]:
     return [
-        (rid_of(k), int(k["tick"]), _int(k.get("attacker_id")), int(k["victim_id"]), _int(k.get("assister_id")),
+        (rid_of(k), int(k["tick"]), _known_player_id(k.get("attacker_id"), known_ids),
+         _known_player_id(k.get("victim_id"), known_ids), _known_player_id(k.get("assister_id"), known_ids),
          k.get("attacker_side"), k.get("victim_side"), k.get("weapon", "unknown"),
          bool(k.get("headshot", False)), k.get("hitgroup"),
          bool(k.get("attacker_blind", False)), bool(k.get("thru_smoke", False)),
@@ -123,29 +163,31 @@ def _kill_rows(kills: list[dict], rid_of) -> list[tuple]:
          _float(k.get("distance")), _float(k.get("attacker_x")), _float(k.get("attacker_y")), _float(k.get("attacker_z")),
          k.get("attacker_place"), _float(k.get("victim_x")), _float(k.get("victim_y")), _float(k.get("victim_z")),
          k.get("victim_place"))
-        for k in kills if rid_of(k)
+        for k in kills if rid_of(k) and _known_player_id(k.get("victim_id"), known_ids) is not None
     ]
 
 
-def _damage_rows(damages: list[dict], rid_of) -> list[tuple]:
+def _damage_rows(damages: list[dict], rid_of, known_ids: set[int] | None = None) -> list[tuple]:
     return [
-        (rid_of(d), int(d["tick"]), _int(d.get("attacker_id")), int(d["victim_id"]),
+        (rid_of(d), int(d["tick"]), _known_player_id(d.get("attacker_id"), known_ids),
+         _known_player_id(d.get("victim_id"), known_ids),
          d.get("weapon"), int(d.get("damage", 0)), d.get("hitgroup"))
-        for d in damages if rid_of(d)
+        # attacker ที่ยังไม่อยู่ใน DB ใช้ NULL; victim เป็น NOT NULL จึงข้ามแถวที่อ้างไม่ได้
+        for d in damages if rid_of(d) and _known_player_id(d.get("victim_id"), known_ids) is not None
     ]
 
 
-def _player_round_rows(feats, round_id_map: dict[int, int]) -> list[tuple]:
+def _player_round_rows(feats, round_id_map: dict[int, int], known_ids: set[int] | None = None) -> list[tuple]:
     return [
         (round_id_map[f.round_num], f.steam_id, f.side, f.equip_value, f.balance, f.survived,
          f.buy_type, f.kills, f.deaths, f.assists, f.headshots, f.damage,
          f.opening_kill, f.opening_death, f.trade_kills, f.was_traded, f.clutch_vs, f.clutch_won, f.kast,
          f.features_version)
-        for f in feats if f.round_num in round_id_map
+        for f in feats if f.round_num in round_id_map and _known_player_id(f.steam_id, known_ids) is not None
     ]
 
 
-def _match_player_rows(feats, doc: dict, match_id: int) -> list[tuple]:
+def _match_player_rows(feats, doc: dict, match_id: int, known_ids: set[int] | None = None) -> list[tuple]:
     """ใครเล่นในแมตช์นี้ + อยู่ทีมไหน (ชื่อทีมคงที่ทั้งแมตช์ ไม่ใช่ side ที่สลับกันทุกครึ่ง)
 
     start_side มาจากรอบแรกสุดที่คนนั้นลงเล่น จึงต้องไล่ feats ตามลำดับ round_num
@@ -156,12 +198,13 @@ def _match_player_rows(feats, doc: dict, match_id: int) -> list[tuple]:
     for f in sorted(feats, key=lambda f: f.round_num):
         entry = played.setdefault(f.steam_id, {"start_side": f.side, "rounds": 0})
         entry["rounds"] += 1
-    return [(match_id, sid, e["start_side"], e["rounds"], team_of.get(sid)) for sid, e in played.items()]
+    return [(match_id, sid, e["start_side"], e["rounds"], team_of.get(sid))
+            for sid, e in played.items() if _known_player_id(sid, known_ids) is not None]
 
 
-def _grenade_rows(grenades: list[dict], rid_of) -> list[tuple]:
+def _grenade_rows(grenades: list[dict], rid_of, known_ids: set[int] | None = None) -> list[tuple]:
     return [
-        (rid_of(g), int(g["tick"]), _int(g.get("thrower_id")), g.get("side"), g["type"],
+        (rid_of(g), int(g["tick"]), _known_player_id(g.get("thrower_id"), known_ids), g.get("side"), g["type"],
          _float(g.get("throw_x")), _float(g.get("throw_y")), _float(g.get("land_x")), _float(g.get("land_y")),
          _int(g.get("land_tick")), _int(g.get("end_tick")),
          json.dumps(g["trajectory"], separators=(",", ":")) if g.get("trajectory") else None)
@@ -169,19 +212,22 @@ def _grenade_rows(grenades: list[dict], rid_of) -> list[tuple]:
     ]
 
 
-def _position_rows(positions: list[dict], match_id: int, round_id_map: dict[int, int]) -> list[tuple]:
+def _position_rows(positions: list[dict], match_id: int, round_id_map: dict[int, int],
+                   known_ids: set[int] | None = None) -> list[tuple]:
     rows = [
-        (match_id, int(p["round_num"]), int(p["tick"]), int(p["steam_id"]), p.get("side"),
+        (match_id, int(p["round_num"]), int(p["tick"]), _known_player_id(p.get("steam_id"), known_ids), p.get("side"),
          float(p["x"]), float(p["y"]), _float(p.get("z")), _int(p.get("health")), p.get("place"),
          p.get("active_weapon"), _int(p.get("armor")),
          bool(p["has_helmet"]) if p.get("has_helmet") is not None else None,
-         bool(p["has_defuser"]) if p.get("has_defuser") is not None else None)
+         bool(p["has_defuser"]) if p.get("has_defuser") is not None else None,
+         _float(p.get("yaw")), _float(p.get("flash_remaining")))
         for p in positions if int(p.get("round_num", 0)) in round_id_map
+        and _known_player_id(p.get("steam_id"), known_ids) is not None
     ]
     return list(dict.fromkeys(rows))
 
 
-async def _replace_children(conn, match_id: int, doc: dict) -> dict:
+async def _replace_children(conn, match_id: int, doc: dict, known_ids: set[int]) -> dict:
     """ลบลูก ๆ เดิมของแมตช์แล้วใส่ใหม่ทั้งชุด — ต้องเรียกภายใน conn.transaction()"""
     await conn.execute("DELETE FROM rounds WHERE match_id = $1;", match_id)            # cascade ไปทุกตารางลูก
     await conn.execute("DELETE FROM match_players WHERE match_id = $1;", match_id)     # สองตารางนี้ผูกกับ match ตรง ๆ
@@ -197,13 +243,14 @@ async def _replace_children(conn, match_id: int, doc: dict) -> dict:
 
     return {
         "rounds": len(round_id_map),
-        "kills": await _insert_many(conn, SQL_KILLS, _kill_rows(doc.get("kills", []), rid_of)),
-        "damages": await _insert_many(conn, SQL_DAMAGES, _damage_rows(doc.get("damages", []), rid_of)),
-        "player_rounds": await _insert_many(conn, SQL_PLAYER_ROUNDS, _player_round_rows(feats, round_id_map)),
-        "match_players": await _insert_many(conn, SQL_MATCH_PLAYERS, _match_player_rows(feats, doc, match_id)),
+        "kills": await _insert_many(conn, SQL_KILLS, _kill_rows(doc.get("kills", []), rid_of, known_ids)),
+        "damages": await _insert_many(conn, SQL_DAMAGES, _damage_rows(doc.get("damages", []), rid_of, known_ids)),
+        "player_rounds": await _insert_many(conn, SQL_PLAYER_ROUNDS, _player_round_rows(feats, round_id_map, known_ids)),
+        "match_players": await _insert_many(conn, SQL_MATCH_PLAYERS, _match_player_rows(feats, doc, match_id, known_ids)),
         # grenades / positions มีเฉพาะ schema_version >= 3 และ >= 4 — ไฟล์เก่าจะได้ list ว่างแล้วข้ามไปเอง
-        "grenades": await _insert_many(conn, SQL_GRENADES, _grenade_rows(doc.get("grenades", []), rid_of)),
-        "positions": await _insert_many(conn, SQL_POSITIONS, _position_rows(doc.get("positions", []), match_id, round_id_map)),
+        "grenades": await _insert_many(conn, SQL_GRENADES, _grenade_rows(doc.get("grenades", []), rid_of, known_ids)),
+        "positions": await _insert_many(conn, SQL_POSITIONS,
+                                         _position_rows(doc.get("positions", []), match_id, round_id_map, known_ids)),
     }
 
 
@@ -240,7 +287,9 @@ async def load_match_doc(conn, doc: dict, *, match_id: int | None = None, force:
                 UPDATE matches SET demo_file = $2, map_name = $3, tickrate = $4, team_a = $5, team_b = $6
                 WHERE id = $1;
             """, match_id, demo_file, *meta)
-        counts = await _replace_children(conn, match_id, doc)
+        # ยืนยันว่า SteamID จากทุก event อยู่ใน players ก่อนเขียน kills/damages และตารางลูกอื่น
+        known_ids = await _upsert_referenced_players(conn, doc)
+        counts = await _replace_children(conn, match_id, doc, known_ids)
 
     print(f"[SUCCESS] โหลดแมตช์ {demo_file} สำเร็จ (Match ID: {match_id}, " +
           ", ".join(f"{k}: {v}" for k, v in counts.items()) + ")")

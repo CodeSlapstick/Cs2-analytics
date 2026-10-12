@@ -62,6 +62,7 @@ EVENTS = [
     "round_officially_ended",
     "bomb_planted",           # ไม่จำเป็นต่อ kills แต่ทำให้คอลัมน์ bomb_plant ในตารางรอบไม่ว่าง
     "bomb_begindefuse", "bomb_abortdefuse", "bomb_defused", "bomb_exploded",
+    "player_blind",           # เวลาเริ่มและระยะเวลาตาบอดสำหรับวงแสงใน replay
 ]
 
 # props ของผู้เล่นที่ให้ parser แนบมากับทุก event
@@ -92,7 +93,7 @@ ROOT = Path(__file__).resolve().parent.parent
 DEMO_DIR = ROOT / "demos"
 OUT_DIR = ROOT / "output" / "json"
 
-SCHEMA_VERSION = 6      # sampling ยังใช้ JSON schema เดิมและ ETL เก่าอ่านได้
+SCHEMA_VERSION = 8      # เพิ่มเวลาตาบอดคงเหลือใน position snapshots; JSON รุ่นเก่าต้อง parse ใหม่
 POSITION_SAMPLE_HZ = 8  # ปรับความถี่ replay ได้จากจุดเดียว; tick จริงคำนวณจาก tickrate ของเดโม
 
 # ชื่อไฟล์เดโมจาก HLTV มีแบบแผน "ทีมA-vs-ทีมB-แมพ.dem" -> แกะชื่อทีมจากชื่อไฟล์
@@ -125,7 +126,7 @@ DAMAGE_COLUMNS = {
 #   คือมูลค่าจริง ซึ่งตรงกับนิยาม "equipment value at freeze-time end" ของ HLTV พอดี
 TICK_PROPS = ["team_name", "is_alive", "current_equip_value", "balance",
               "X", "Y", "Z", "last_place_name", "health",
-              "team_clan_name", "active_weapon_name", "armor_value", "has_helmet", "has_defuser"]
+              "team_clan_name", "active_weapon_name", "armor_value", "has_helmet", "has_defuser", "yaw"]
 
 for _s in (sys.stdout, sys.stderr):     # ให้คอนโซล Windows พิมพ์ไทยได้
     try:
@@ -345,6 +346,7 @@ def _position_table(all_ticks: pl.DataFrame, pos_want: dict[int, int]) -> pl.Dat
             pl.col("X").cast(pl.Float32).alias("x"),
             pl.col("Y").cast(pl.Float32).alias("y"),
             pl.col("Z").cast(pl.Float32).alias("z"),
+            pl.col("yaw").cast(pl.Float32),
             pl.col("health").cast(pl.Int16),
             pl.col("last_place_name").alias("place"),
             pl.col("active_weapon_name").cast(pl.Utf8).alias("active_weapon"),
@@ -355,6 +357,27 @@ def _position_table(all_ticks: pl.DataFrame, pos_want: dict[int, int]) -> pl.Dat
         .unique(["round_num", "tick", "steam_id"], keep="first", maintain_order=True)
         .sort(["round_num", "tick", "steam_id"])
     )
+
+
+def _add_flash_remaining(positions: pl.DataFrame, blinds: pl.DataFrame | None, tickrate: int) -> pl.DataFrame:
+    """คำนวณเวลาตาบอดคงเหลือจาก player_blind เพราะ flash_duration ใน tick ไม่ได้นับถอยหลัง"""
+    # เดโมที่ไม่มี player_blind อาจไม่มี key นี้เลย; ให้ทุก snapshot ไม่ติดแฟลช
+    if positions.is_empty() or blinds is None or blinds.is_empty() or tickrate <= 0:
+        return positions.with_columns(pl.lit(0.0, pl.Float32).alias("flash_remaining"))
+    events = (blinds.select(
+        pl.col("user_steamid").cast(pl.Int64).alias("steam_id"),
+        pl.col("tick").cast(pl.Int32).alias("blind_tick"),
+        pl.col("blind_duration").cast(pl.Float32).alias("blind_duration"),
+    ).drop_nulls().filter(pl.col("blind_duration") > 0).sort("blind_tick"))
+    if events.is_empty():
+        return positions.with_columns(pl.lit(0.0, pl.Float32).alias("flash_remaining"))
+    return (positions.sort("tick")
+            .join_asof(events, left_on="tick", right_on="blind_tick", by="steam_id",
+                       strategy="backward", check_sortedness=False)
+            .with_columns((pl.col("blind_duration") - (pl.col("tick") - pl.col("blind_tick")) / tickrate)
+                          .fill_null(0).clip(lower_bound=0).cast(pl.Float32).alias("flash_remaining"))
+            .drop("blind_tick", "blind_duration")
+            .sort(["round_num", "tick", "steam_id"]))
 
 
 def _grenade_rows(dem, tickrate: int) -> list[dict]:
@@ -432,7 +455,7 @@ def parse_demo(path: Path) -> dict:
     kills = _kill_table(dem)
     damages = _damage_table(dem)
     player_rounds = _player_round_table(at_start, at_end)
-    positions = _position_table(all_ticks, pos_want)
+    positions = _add_flash_remaining(_position_table(all_ticks, pos_want), dem.events.get("player_blind"), tickrate)
     grenades = _grenade_rows(dem, tickrate)
     players = _player_table(dem, at_start)
 
@@ -624,10 +647,15 @@ def main() -> None:
     done = failed = skipped = 0
     for i, path in enumerate(demos, 1):
         target = args.out / f"{path.stem}.json"
-        if target.exists() and not args.force:        # JSON เดิมคือแคช — เดโมไฟล์เดิมให้ผลเดิมเสมอ
-            print(f"[{i}/{len(demos)}] {path.name} — มีแล้ว ข้าม")
-            skipped += 1
-            continue
+        if target.exists() and not args.force:
+            # แคชรุ่นเก่าไม่มี yaw จึงต้องแกะใหม่ แม้ชื่อไฟล์เดโมจะเหมือนเดิม
+            with target.open(encoding="utf-8") as cached:
+                header = cached.read(256)
+            version = re.search(r'"schema_version"\s*:\s*(\d+)', header)
+            if version and int(version.group(1)) >= SCHEMA_VERSION:
+                print(f"[{i}/{len(demos)}] {path.name} — มีแล้ว ข้าม")
+                skipped += 1
+                continue
 
         t0 = time.time()
         try:

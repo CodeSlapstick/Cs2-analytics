@@ -462,29 +462,19 @@ function labelPlacer(bounds: { left: number; top: number; right: number; bottom:
   return { place, block };
 }
 
-/** ป้ายชื่อใช้ระยะเยื้องตาม slot คงที่ เพื่อลดอาการกระโดดของชื่อโดยไม่วาดเส้นเชื่อม */
+/** ป้ายชื่อผู้เล่นอยู่ใต้จุดกลางวงเสมอ ไม่หลบหรือสลับด้านเมื่อผู้เล่นอยู่ใกล้กัน */
 export function placeLivePlayerLabels(
   players: LivePlayer[],
   markerRadius: number,
-  fontSize: number,
+  offset: number,
   maxChars = 16,
 ): Map<string, LabelPos & { text: string }> {
-  const gap = fontSize * (6 / 13);
-  const offsets: readonly (readonly [number, number])[] = [
-    [-1.25, -1], [1.25, -1], [0, -2], [-1.25, 1], [1.25, 1],
-  ];
-  return new Map(players.map((p) => {
-    // หากไม่มี slot ใช้เลขจาก steamid เพื่อให้ตำแหน่งไม่เปลี่ยนตามลำดับเฟรม
-    const fallback = Array.from(p.steamid).reduce((n, c) => (n * 31 + c.charCodeAt(0)) % 5, 0);
-    const slotIndex = p.slot != null && p.slot >= 1 && p.slot <= 5 ? p.slot - 1 : fallback;
-    const [dx, row] = offsets[slotIndex];
-    return [p.steamid, {
-      x: p.px[0] + dx * fontSize,
-      y: p.px[1] + (row < 0 ? -markerRadius - gap + (row + 1) * fontSize : markerRadius + fontSize + gap),
-      anchor: "middle" as const,
-      text: truncatePlayerName(p.name, maxChars),
-    }];
-  }));
+  return new Map(players.map((p) => [p.steamid, {
+    x: p.px[0],
+    y: p.px[1] + markerRadius + offset,
+    anchor: "middle" as const,
+    text: truncatePlayerName(p.name, maxChars),
+  }]));
 }
 
 interface MapProps {
@@ -653,6 +643,7 @@ export function MapView({ radar, deaths, bomb, bombPlantedT, grenades, damages, 
     dot: 12 * U, dotSel: 15 * U, num: 12 * U, name: 13 * U,
     nade: 6 * U, nadeIco: 22 * U, nadeName: 12 * U, line: 2 * U, bomb: 10 * U,
   };
+  const liveNameSize = 12 * U;
   const halo = (size: number) => ({ fontSize: size, strokeWidth: size * 0.3 });
 
   const selT = selected === null ? null : (deaths.find((d) => d.order === selected)?.t_round ?? null);
@@ -669,7 +660,7 @@ export function MapView({ radar, deaths, bomb, bombPlantedT, grenades, damages, 
   });
   nades.forEach((n) => n.land_px && n.r_px === 0 && block(n.land_px[0], n.land_px[1], z.nadeIco / 2));
   live?.forEach((p) => block(p.px[0], p.px[1], z.dot * 0.9));   // ยังกันไม่ให้ป้ายอื่นทับตัวผู้เล่น
-  const liveLabels = placeLivePlayerLabels(live ?? [], z.dot * .9, z.name,
+  const liveLabels = placeLivePlayerLabels(live ?? [], z.dot * .9, 15 * U,
     shown > 0 && shown < 520 ? 11 : 16);
   const deathLabel = new Map<number, LabelPos>();
   deaths.forEach((d) => {
@@ -822,6 +813,9 @@ export function MapView({ radar, deaths, bomb, bombPlantedT, grenades, damages, 
           ขอบวงเป็นสีเข้มไว้ให้ยังแยกออกจากกันตอนสองคนยืนชิดกัน (สีเดียวกันทั้งทีม) */}
       {live?.map((p) => {
         const hpPct = Math.max(0, Math.min(100, p.hp ?? 100));
+        const flashOpacity = p.flashRemaining != null
+          ? Math.min(.8, Math.max(0, p.flashRemaining / 4 * .8))
+          : p.isFlashed ? .8 : 0;
         const fillId = `player-hp-${p.steamid}`;
         return <g
           key={`live-${p.steamid}`}
@@ -858,6 +852,12 @@ export function MapView({ radar, deaths, bomb, bombPlantedT, grenades, damages, 
             stroke={highlight === p.steamid ? "#fff" : "#0b1220"}
             strokeWidth={z.line * (highlight === p.steamid ? 2 : 1.2)}
           />
+          {/* วงแฟลชอยู่เหนือวงผู้เล่น แต่จางลงตามเวลาตาบอดและไม่บังการชี้เมาส์ */}
+          {flashOpacity > 0 && <circle
+            cx={p.px[0]} cy={p.px[1]}
+            r={(highlight === p.steamid ? z.dot : z.dot * .9) + 3 * U}
+            fill="none" stroke="#ffffff" strokeWidth={2.2 * U}
+            strokeOpacity={flashOpacity} pointerEvents="none" data-testid="flash-halo" />}
           <text
             x={p.px[0]}
             y={p.px[1]}
@@ -921,16 +921,16 @@ export function MapView({ radar, deaths, bomb, bombPlantedT, grenades, damages, 
           const focused = highlight === p.steamid;
           return <g key={`live-label-${p.steamid}`} opacity={!highlight || focused ? 1 : .42}
             data-testid="live-player-name" data-full-name={p.name}>
-            {/* ชื่อเยื้องตาม slot อย่างคงที่ อ่านง่ายโดยไม่มีเส้นเชื่อม */}
+            {/* ชื่ออยู่ใต้กึ่งกลางวงเสมอ ไม่หมุนตามลำกล้องและไม่สลับตำแหน่ง */}
             <text x={label.x} y={label.y} textAnchor={label.anchor}
               className={`live-player-label${focused ? " selected" : ""}`}
-              style={{ ...halo(z.name), fill: "#f8fafc" }}>
+              style={{ ...halo(liveNameSize), fill: "#f8fafc" }}>
               {label.text}
               <title>{p.name}</title>
             </text>
             {p.activeWeapon && <WeaponIcon name={p.activeWeapon}
-              x={label.anchor === "end" ? label.x - z.name * 1.55 : label.x + z.name * .25}
-              y={label.y + z.name * .2} width={z.name * 1.3} height={z.name * .48}
+              x={label.x + liveNameSize * .25}
+              y={label.y + liveNameSize * .2} width={liveNameSize * 1.3} height={liveNameSize * .48}
               className="live-weapon-icon" />}
           </g>;
         })}

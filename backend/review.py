@@ -562,7 +562,7 @@ def _round_summary(deaths: list[dict], winner: str | None) -> dict:
 
 def build_round_detail(*, match: dict, rnd: dict, roster: list[dict], in_round: list[dict], kills: list[dict],
                        frame: RadarFrame | None, model: GridModel | None, grenades: list[dict] = (),
-                       latest_damage_tick: int | None = None) -> dict:
+                       latest_damage_tick: int | None = None, damages: list[dict] = ()) -> dict:
     """payload ของหนึ่งรอบ
 
     match    {id, demo_file, map_name, tickrate, team_a, team_b}
@@ -579,6 +579,12 @@ def build_round_detail(*, match: dict, rnd: dict, roster: list[dict], in_round: 
 
     deaths = _death_rows(kills, person, start=start, tickrate=tickrate, frame=frame, model=model)
     nades = _nade_rows(grenades, person, start=start, tickrate=tickrate, frame=frame)
+    # ส่งเฉพาะดาเมจจริง; SteamID เป็น string เพื่อไม่ให้ JavaScript ปัดเลข 64 บิต
+    shots = [{"id": int(d["id"]), "tick": int(d["tick"]),
+              "attacker": str(d["attacker_id"]), "victim": str(d["victim_id"]),
+              "damage": int(d["damage"])}
+             for d in damages if d.get("attacker_id") and d.get("victim_id")
+             and d["attacker_id"] != d["victim_id"] and int(d.get("damage") or 0) > 0]
     raw_defuses = rnd.get("defuse_intervals") or []
     if isinstance(raw_defuses, str):
         raw_defuses = json.loads(raw_defuses)
@@ -591,7 +597,8 @@ def build_round_detail(*, match: dict, rnd: dict, roster: list[dict], in_round: 
 
     return {
         "match": {k: match.get(k) for k in ("id", "demo_file", "map_name", "tickrate", "team_a", "team_b")},
-        "round": {"num": rnd["round_num"], "winner_side": winner, "end_reason": rnd.get("end_reason"),
+        "round": {"num": rnd["round_num"], "start_tick": start,
+                  "winner_side": winner, "end_reason": rnd.get("end_reason"),
                   "bomb_planted_t": _t(rnd.get("bomb_plant_tick"), start, tickrate),
                   "bomb_resolved_t": _t(rnd.get("bomb_resolved_tick"), start, tickrate),
                   "bomb": _bomb_marker(rnd, frame),
@@ -602,6 +609,7 @@ def build_round_detail(*, match: dict, rnd: dict, roster: list[dict], in_round: 
             "source": model.source, "ct_win_overall": model.ct_win_overall, "min_kills": model.min_kills},
         "teams": _team_rows(side_now, info, colours, slots, deaths),
         "deaths": deaths,
+        "damages": shots,
         "grenades": nades,
         "summary": _round_summary(deaths, winner),
     }
@@ -628,6 +636,11 @@ def build_round_positions(positions: list[dict], *, start_tick, tickrate: int, f
             "side": r.get("side"),
             "place": r.get("place"),
         }
+        if r.get("yaw") is not None:
+            player["yaw"] = float(r["yaw"])
+        # ส่งเฉพาะช่วงที่มองไม่ชัด เพื่อลดขนาด payload ของ replay หลายแสน snapshot
+        if r.get("flash_remaining") is not None and float(r["flash_remaining"]) > 0:
+            player["flash_remaining"] = float(r["flash_remaining"])
         # Optional equipment is omitted for legacy parses instead of repeating four null fields
         # in every snapshot. New parses retain every real value (including false/0).
         if r.get("active_weapon") is not None:

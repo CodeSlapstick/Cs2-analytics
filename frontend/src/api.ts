@@ -233,7 +233,8 @@ export interface RoundPositions {
   t_end: number;
   note: string; // ข้อความกำกับว่าอะไรคือข้อมูลจริง — ต้องแสดงให้ผู้ใช้เห็น
   frames: { tick?: number; t: number; players: {
-    steamid: string; px: Px; hp: number; side: Side | null; place: string | null;
+    steamid: string; px: Px; hp: number; side: Side | null; place: string | null; yaw?: number | null;
+    flash_remaining?: number | null; is_flashed?: boolean | null;
     active_weapon?: string | null; armor?: number | null; has_helmet?: boolean | null; has_defuser?: boolean | null;
   }[] }[];
 }
@@ -242,6 +243,7 @@ export interface RoundDetail {
   match: { id: number; demo_file: string; map_name: string; tickrate: number; team_a: string | null; team_b: string | null };
   round: {
     num: number;
+    start_tick?: number | null;
     winner_side: Side | null;
     end_reason: string | null;
     bomb_planted_t: number | null;
@@ -255,6 +257,7 @@ export interface RoundDetail {
   grid: { source: GridSource; ct_win_overall: number; min_kills: number } | null;
   teams: ReviewTeam[];
   deaths: ReviewDeath[];
+  damages?: { id: number; tick: number; attacker: string; victim: string; damage: number }[];
   grenades: ReviewGrenade[];
   summary: {
     first_death: { order: number; name: string; side: Side; place: string | null; t_round: number | null; by: string | null } | null;
