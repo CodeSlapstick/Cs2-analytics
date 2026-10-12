@@ -5,6 +5,7 @@ import "@fontsource/anuphan/500.css";
 import "@fontsource/anuphan/600.css";
 import { Link } from "react-router-dom";
 import { LangToggle, useT } from "./i18n";
+import { ThemeToggle } from "./theme";
 import radarLines from "./assets/brief-mirage-lines.png";
 
 const COPY = {
@@ -107,6 +108,7 @@ export function HomePage() {
           <a href="#workflow">{c.navFlow}</a>
         </nav>
         <div className="home-actions">
+          <ThemeToggle />
           <LangToggle className="home-lang" />
           <Link className="home-signin" to="/login">{c.signIn}</Link>
         </div>
