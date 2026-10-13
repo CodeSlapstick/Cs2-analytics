@@ -7,7 +7,6 @@ import {
   type DeathsOverlay,
   matchesQuery,
   type Match,
-  type MatchSource,
   type PlayerBehavior,
   type PlayerBehaviorProfile,
   type ReadRound,
@@ -85,13 +84,12 @@ export function AnalysisPage() {
   const [selRounds, setSelRounds] = useState<number[] | null>(null);
   const [selPlayers, setSelPlayers] = useState<string[] | null>(null);
   const matches = useQuery(matchesQuery);
+  const referenceMaps = useQuery({ queryKey: ["analysis", "reference-maps"], queryFn: api.referenceMaps });
 
   // แมพที่ดูได้ = แมพที่มีทั้งแมตช์ของเราและชุดอ้างอิง (ไม่งั้นไม่มีอะไรให้เทียบ)
   const done = (matches.data ?? []).filter((m) => m.status === "done" && m.map_name);
-  const mapsWith = (s: MatchSource) => new Set(done.filter((m) => m.source === s).map((m) => m.map_name!));
-  const refMaps = mapsWith("reference");
-  const upMaps = mapsWith("upload");
-  const maps = [...refMaps].filter((m) => upMaps.has(m)).sort();
+  const upMaps = new Set(done.filter((m) => m.source === "upload").map((m) => m.map_name!));
+  const maps = (referenceMaps.data ?? []).filter((m) => upMaps.has(m)).sort();
   const [map, setMap] = useState<string>("");
   const activeMap = maps.includes(map) ? map : (maps[0] ?? "");
   const mine = done.filter((m) => m.source === "upload" && m.map_name === activeMap);
@@ -154,9 +152,9 @@ export function AnalysisPage() {
   // สลับโหมด/แมพ/ฝั่ง/แมตช์ = ชุดข้อมูลเปลี่ยน คีย์ที่ค้างไฮไลต์ไว้จากชุดก่อนหน้าจึงไม่มีความหมายแล้ว
   useEffect(() => setHovered(null), [mode, activeMap, side, demo]);
 
-  if (matches.isLoading) return <p className="muted">{t("กำลังโหลด…")}</p>;
-  if (matches.error) return <p className="err">{t("โหลดรายการแมตช์ไม่ได้: {msg}", { msg: (matches.error as Error).message })}</p>;
-  if (maps.length === 0) return <NothingToCompare done={done} />;
+  if (matches.isLoading || referenceMaps.isLoading) return <p className="muted">{t("กำลังโหลด…")}</p>;
+  if (matches.error || referenceMaps.error) return <p className="err">{t("โหลดรายการแมตช์ไม่ได้: {msg}", { msg: ((matches.error ?? referenceMaps.error) as Error).message })}</p>;
+  if (maps.length === 0) return <NothingToCompare done={done} referenceMaps={referenceMaps.data ?? []} />;
 
   const copy = MODES.find((m) => m.key === mode)!;
   const single = upload.data;
@@ -1095,7 +1093,7 @@ function DeathMap<T extends DeathCellCount>({
 }
 
 /** ยังไม่มีอะไรให้เทียบ — บอกตรง ๆ ว่าขาดอะไร ไม่ใช่หน้าว่าง */
-function NothingToCompare({ done }: { done: Match[] }) {
+function NothingToCompare({ done, referenceMaps }: { done: Match[]; referenceMaps: string[] }) {
   const { t } = useT();
   const uploaded = done.filter((m) => m.source === "upload");
   return (
@@ -1104,8 +1102,8 @@ function NothingToCompare({ done }: { done: Match[] }) {
       <p className="muted">
         {uploaded.length === 0
           ? t("หน้านี้เทียบแมตช์ของทีมกับเดโมทีมอาชีพบนแมพเดียวกัน — ยังไม่มีแมตช์ที่อัปโหลดเข้ามาเลย")
-          : t("หน้านี้เทียบแมตช์ของทีมกับเดโมทีมอาชีพบนแมพเดียวกัน — มีแมตช์ที่อัปโหลด {n} แมตช์ แต่ยังไม่ตรงกับแมพที่มีเดโมทีมอาชีพให้เทียบ (ตอนนี้มีแค่ de_mirage)",
-            { n: uploaded.length })}
+          : t("หน้านี้เทียบแมตช์ของทีมกับเดโมทีมอาชีพบนแมพเดียวกัน — มีแมตช์ที่อัปโหลด {n} แมตช์ แต่ยังไม่ตรงกับแมพอ้างอิง ({maps})",
+            { n: uploaded.length, maps: referenceMaps.join(", ") || "—" })}
       </p>
       <Link className="btn-primary" to="/matches">{t("ไปหน้าแมตช์")}</Link>
     </div>

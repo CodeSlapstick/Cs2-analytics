@@ -126,8 +126,8 @@ export const EN_ANALYSIS: Record<string, string> = {
   "ยังไม่มีแมตช์ให้เทียบ": "No matches to compare yet",
   "หน้านี้เทียบแมตช์ของทีมกับเดโมทีมอาชีพบนแมพเดียวกัน — ยังไม่มีแมตช์ที่อัปโหลดเข้ามาเลย":
     "This page compares the team's matches with pro demos on the same map. No matches have been uploaded yet.",
-  "หน้านี้เทียบแมตช์ของทีมกับเดโมทีมอาชีพบนแมพเดียวกัน — มีแมตช์ที่อัปโหลด {n} แมตช์ แต่ยังไม่ตรงกับแมพที่มีเดโมทีมอาชีพให้เทียบ (ตอนนี้มีแค่ de_mirage)":
-    "This page compares the team's matches with pro demos on the same map. {n} uploaded match(es), but none on a map with pro demos to compare against (currently only de_mirage).",
+  "หน้านี้เทียบแมตช์ของทีมกับเดโมทีมอาชีพบนแมพเดียวกัน — มีแมตช์ที่อัปโหลด {n} แมตช์ แต่ยังไม่ตรงกับแมพอ้างอิง ({maps})":
+    "This page compares the team's matches with pro demos on the same map. {n} uploaded match(es), but none match the reference maps ({maps}).",
   "ไปหน้าแมตช์": "Go to matches",
   "รูปแบบการเล่นของผู้เล่น": "Player behavior",
   "จัดกลุ่มพฤติกรรมแยกฝั่ง T และ CT ของแมตช์ที่เลือก โดยเทียบกับรูปแบบจากชุดอ้างอิง": "Groups T- and CT-side behavior in the selected match against patterns learned from the reference set.",

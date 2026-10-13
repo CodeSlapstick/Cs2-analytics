@@ -182,6 +182,7 @@ def nearest_within(x: float, y: float, centers: list[tuple[float, float]], radiu
 # ข้อมูลหน้ารอบ (Round Review) + grid_ml1.json
 # ==================================================================================================
 GRID_JSON = Path(os.environ.get("GRID_ML1_JSON", ROOT / "output" / "grid_ml1.json"))
+MODEL_ROOT = Path(os.environ.get("MODEL_ROOT", ROOT / "output" / "models"))
 
 # สีประจำตัวผู้เล่น — ใช้ตรงที่มี "ชื่อ" กำกับอยู่แล้ว (ไทม์ไลน์ / ตารางรายชื่อ)
 # บนแผนที่ไม่ใช้สีนี้แยกตัวคน ใช้สีของฝั่ง (CT ฟ้า / T ส้ม) + หมายเลข 1-5 จาก player_slots()
@@ -230,8 +231,14 @@ def parse_grid_model(d: dict) -> GridModel:
     )
 
 
-def load_grid_model(path: Path = GRID_JSON) -> GridModel | None:
-    """grid_ml1.json แบบ cache ในหน่วยความจำ — None ถ้ายังไม่เคยรัน research/grid_ml1.py"""
+def load_grid_model(path: Path | None = None, *, map_name: str | None = None) -> GridModel | None:
+    """โหลดโมเดลของแมพที่ขอ โดยรองรับ artifact แบบแยกแมพและไฟล์ legacy เดิม."""
+    if path is None:
+        configured = os.environ.get("GRID_ML1_JSON")
+        candidates = ([Path(configured)] if configured else []) + (
+            [MODEL_ROOT / map_name / "grid_ml1.json"] if map_name else []
+        ) + [GRID_JSON]
+        path = next((candidate for candidate in candidates if candidate.is_file()), candidates[0])
     path = Path(path)
     try:
         mtime = path.stat().st_mtime

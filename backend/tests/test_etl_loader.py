@@ -1,8 +1,15 @@
 """Foreign-key fallbacks for demo events with incomplete player rosters."""
 import asyncio
 
-from backend.etl_loader import (_damage_rows, _grenade_rows, _kill_rows, _player_id,
-                                _position_rows, _upsert_referenced_players, load_match_doc)
+from backend.etl_loader import (
+    _damage_rows,
+    _grenade_rows,
+    _kill_rows,
+    _player_id,
+    _position_rows,
+    _upsert_referenced_players,
+    load_match_doc,
+)
 
 
 class RecordingConnection:
@@ -36,7 +43,8 @@ def test_all_event_players_are_upserted_and_confirmed_before_child_rows():
 
 
 def test_invalid_event_player_ids_use_null_or_skip_required_rows():
-    rid_of = lambda row: 7
+    def rid_of(row):
+        return 7
     kill = {"tick": 10, "attacker_id": 0, "victim_id": "101", "assister_id": "invalid",
             "victim_side": "ct"}
     assert _kill_rows([kill], rid_of)[0][2:5] == (None, 101, None)

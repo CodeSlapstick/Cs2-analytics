@@ -25,6 +25,7 @@ unsupervised ไม่มีเฉลยให้เทียบ จึงต้
                          ถ้ากลุ่มที่โมเดลหาเองแยกฝั่งที่ได้เปรียบออกจากกันได้ ทั้งที่ไม่เคยเห็นฝั่ง
                          แปลว่าโครงสร้างนั้นมีความหมายจริง
 """
+import argparse
 import json
 import sys
 from pathlib import Path
@@ -44,11 +45,19 @@ from sklearn.metrics import adjusted_rand_score, silhouette_score
 from sklearn.preprocessing import StandardScaler
 
 # ===========================================================================
-# CONFIG — ปรับตรงนี้ที่เดียว
+# CONFIG
 # ===========================================================================
-MAP = "de_mirage"   # แมพที่วิเคราะห์ — csv จะถูกกรองเหลือเฉพาะแมพนี้ก่อนใช้งาน
+ROOT = Path(__file__).resolve().parent.parent
+_ap = argparse.ArgumentParser(description="Train the per-map unsupervised grid model")
+_ap.add_argument("--map", default="de_ancient", help="map name, e.g. de_ancient")
+_ap.add_argument("--csv", type=Path, default=ROOT / "data" / "all_kills.csv")
+_ap.add_argument("--output-dir", type=Path, help="default: output/models/<map>")
+_ap.add_argument("--min-kills", type=int, default=10, help="minimum duels per grid cell (default: 10)")
+_args = _ap.parse_args()
+
+MAP = _args.map       # csv จะถูกกรองเหลือเฉพาะแมพนี้ก่อนใช้งาน
 GRID_N = 32         # แบ่งแมพเป็นกี่ช่องต่อด้าน — ใช้ค่าเดียวกับ grid_ml.py ช่องจะได้ตรงกัน เทียบกันได้
-MIN_KILLS = 10      # ช่องต้องมีดวลอย่างน้อยเท่านี้ถึงจะสร้างโปรไฟล์ — สูงกว่า grid_ml.py (5)
+MIN_KILLS = _args.min_kills  # ช่องต้องมีดวลอย่างน้อยเท่านี้ถึงจะสร้างโปรไฟล์
                     #   เพราะโปรไฟล์เป็นสัดส่วน ถ้ามีแค่ 5 ดวล ค่าจะกระโดดทีละ 0.2 หยาบเกินจะจัดกลุ่ม
                     #   ที่ 10: เหลือ 192 จาก 341 ช่อง แต่ยังครอบคลุม 93% ของการดวลทั้งหมด
 
@@ -66,9 +75,8 @@ SEED = 0                # ให้รันซ้ำแล้วได้ผล
 
 SNIPERS = {"awp", "ssg08"}      # ปืนซุ่ม — ใช้แยก "เลนซุ่มระยะไกล" ออกจากพื้นที่ปะทะประชิด
 
-ROOT = Path(__file__).resolve().parent.parent
-CSV = ROOT / "data" / "all_kills.csv"     # สร้างด้วย python research/prep/demoparser.py
-OUT = ROOT / "output"
+CSV = _args.csv                              # สร้างด้วย python research/demoparser.py
+OUT = _args.output_dir or ROOT / "output" / "models" / MAP
 
 sys.path.insert(0, str(ROOT))           # ให้ import backend.* ได้เมื่อรันจากรากโปรเจกต์
 from backend.review import cells_of, radar_frame  # noqa: E402  สูตรพิกัดชุดเดียวของทั้งรีโป
@@ -261,6 +269,10 @@ def fit_kmeans(X, k):
 #   ARI         จัดกลุ่มบนชุดแมตช์ที่สุ่มใหม่ แล้วดูว่าช่องเดิมยังอยู่กลุ่มเดียวกันไหม (1 = เหมือนเดิมเป๊ะ, 0 = เท่าสุ่ม)
 boot_profiles = [cell_profiles(b) for b in boots]
 ks = sorted(set(K_RANGE) | ({K_CLUSTERS} if K_CLUSTERS else set()))   # k ที่ล็อกไว้ต้องโผล่ในตารางด้วย
+max_k = min([len(cells) - 1, *(len(bp) for bp in boot_profiles)])
+ks = [k for k in ks if k <= max_k]
+if not ks:
+    sys.exit(f"ข้อมูลไม่พอจัดกลุ่มช่องกริดของ {MAP}: {len(cells)} ช่อง; ลองลด --min-kills หรือเพิ่มเดโมอ้างอิง")
 scan = []
 for k in ks:
     km = fit_kmeans(Z, k)
@@ -450,7 +462,7 @@ fig.suptitle(f"{MAP} · unsupervised · {len(df):,} duels from {df['match_id'].n
              f"no side labels used in fitting", fontsize=13)
 fig.tight_layout()
 
-OUT.mkdir(exist_ok=True)
+OUT.mkdir(parents=True, exist_ok=True)
 fig.savefig(OUT / "grid_ml1_map.png", dpi=140)
 
 

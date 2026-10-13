@@ -442,6 +442,7 @@ export const api = {
         (rounds ? `&rounds=${rounds.join(",")}` : ""),
     ),
   // --- หน้าเครื่องมือวิเคราะห์ ---
+  referenceMaps: () => request<string[]>("/api/analysis/reference-maps"),
   readability: (demo: string) => request<Readability>(`/api/analysis/readability?demo=${enc(demo)}`),
   playerBehavior: (demo: string, players?: string[] | null) => request<PlayerBehavior>(
     `/api/analysis/player-behavior?demo=${enc(demo)}${players?.length ? `&players=${players.join(",")}` : ""}`,
@@ -456,6 +457,7 @@ export const api = {
       (players?.length ? `&players=${players.join(",")}` : ""),
     ),
   matches: () => request<Match[]>("/api/matches"),
+  deleteMatch: (id: number) => request<{ deleted: boolean; cleanup_failed: string[] }>(`/api/matches/${id}`, { method: "DELETE" }),
   match: (id: number | string) => request<MatchDetail>(`/api/matches/${id}`),
   status: (id: number | string) => request<StatusInfo>(`/api/matches/${id}/status`),
   upload: (file: File, force: boolean) => {

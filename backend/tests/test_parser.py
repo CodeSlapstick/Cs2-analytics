@@ -7,8 +7,8 @@
 import os
 from pathlib import Path
 
-import pytest
 import polars as pl
+import pytest
 
 from backend.parser import _add_flash_remaining
 
@@ -83,11 +83,12 @@ def test_every_event_belongs_to_a_round_and_a_known_player(doc):
         assert k["victim_id"] in players
     for pr in doc["player_rounds"]:
         assert pr["round_num"] in rounds and pr["steam_id"] in players and pr["side"] in ("ct", "t")
-    # 10 คนต่อรอบ (โค้ช/ผู้ชมถูกตัดออกแล้ว)
+    # เดโมที่จบก่อนกำหนดอาจมีผู้เล่นไม่ครบ 10 คนในบางรอบ (โค้ช/ผู้ชมถูกตัดออกแล้ว)
     per_round = {}
     for pr in doc["player_rounds"]:
         per_round[pr["round_num"]] = per_round.get(pr["round_num"], 0) + 1
-    assert all(n == 10 for n in per_round.values())
+    assert all(1 <= n <= 10 for n in per_round.values())
+    assert any(n == 10 for n in per_round.values())
 
 
 def test_positions_are_eight_hz_and_alive_only(doc):
@@ -127,6 +128,7 @@ def test_position_sample_ticks_are_unique_and_near_eight_hz(tickrate):
 
 def test_replay_positions_continue_after_gameplay_round_end():
     from types import SimpleNamespace
+
     import polars as pl
 
     from backend.parser import _wanted_ticks

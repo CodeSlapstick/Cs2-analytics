@@ -298,7 +298,7 @@ def main() -> None:
     ap.add_argument("--out", type=Path, default=OUT_CSV, help=f"ไฟล์ผลลัพธ์ (ค่าตั้งต้น {OUT_CSV.name})")
     args = ap.parse_args()
 
-    demos = sorted(DEMO_DIR.glob("*.dem"))      # .crdownload หรือไฟล์ดาวน์โหลดค้างจะไม่ติดมา
+    demos = sorted(DEMO_DIR.rglob("*.dem"))     # รวมโฟลเดอร์รายแมพ; .crdownload ไม่ติดมา
     if not demos:
         sys.exit(f"ไม่พบไฟล์ .dem ใน {DEMO_DIR}")
     if args.limit:

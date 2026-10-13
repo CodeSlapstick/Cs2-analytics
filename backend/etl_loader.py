@@ -279,8 +279,8 @@ async def load_match_doc(conn, doc: dict, *, match_id: int | None = None, force:
         await _upsert_players(conn, doc.get("players", []))
         if match_id is None:
             match_id = await conn.fetchval("""
-                INSERT INTO matches (demo_file, map_name, tickrate, team_a, team_b, status)
-                VALUES ($1, $2, $3, $4, $5, 'done') RETURNING id;
+                INSERT INTO matches (demo_file, map_name, tickrate, team_a, team_b, status, uploader_type)
+                VALUES ($1, $2, $3, $4, $5, 'done', 'legacy') RETURNING id;
             """, demo_file, *meta)
         else:
             await conn.execute("""
@@ -308,19 +308,19 @@ async def mark_reference(conn, folder: Path) -> int:
     """ทำเครื่องหมายว่าแมตช์ไหนคือ "ชุดอ้างอิงที่ใช้เทรนโมเดล" — ดูจากไฟล์ .dem ที่อยู่ในโฟลเดอร์นั้นจริง ๆ
 
     เดโมของผู้ใช้อยู่คนละโฟลเดอร์ (demos/uploads/) จึงไม่มีทางถูกทำเครื่องหมายเป็นชุดอ้างอิงโดยบังเอิญ
-    รันซ้ำได้ และแมตช์ที่ไม่อยู่ในโฟลเดอร์นี้จะถูกตีกลับเป็น 'upload' เสมอ
+    รันซ้ำได้ และไม่เปลี่ยน source ของแมตช์อื่น เพราะเดโมอ้างอิงที่ archive แล้วอาจไม่มีไฟล์ต้นทางในเครื่อง
     """
-    names = sorted(p.name for p in folder.glob("*.dem"))
+    names = sorted(p.name for p in folder.rglob("*.dem"))
     if not names:
         print(f"ไม่พบไฟล์ .dem ใน {folder} — ไม่ได้ทำเครื่องหมายอะไร")
         return 0
     rows = await conn.fetch("""
-        UPDATE matches SET source = CASE WHEN demo_file = ANY($1::text[]) THEN 'reference' ELSE 'upload' END
+        UPDATE matches SET source = 'reference' WHERE demo_file = ANY($1::text[])
         RETURNING demo_file, source;
     """, names)
     ref = sum(1 for r in rows if r["source"] == "reference")
     missing = sorted(set(names) - {r["demo_file"] for r in rows})
-    print(f"[SOURCE] ชุดอ้างอิง {ref} แมตช์ · ผู้ใช้อัปโหลด {len(rows) - ref} แมตช์ (จาก {len(names)} ไฟล์ใน {folder})")
+    print(f"[SOURCE] ทำเครื่องหมายชุดอ้างอิง {ref} แมตช์ (จาก {len(names)} ไฟล์ใน {folder})")
     if missing:
         print(f"[SOURCE] ไฟล์ที่ยังไม่ได้โหลดเข้าฐานข้อมูล {len(missing)} ไฟล์: {', '.join(missing[:3])}…")
     return ref

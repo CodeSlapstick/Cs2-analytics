@@ -113,7 +113,7 @@ alembic upgrade head                           # สร้าง/อัปเด
 python -m backend.auth                         # dev user
 python -m uvicorn backend.app:app --reload     # API
 python -m backend.jobs                         # worker (อีกหน้าต่าง) — บน Windows ใช้ SimpleWorker ให้เอง
-cd frontend && npm install && npm run dev      # หน้าเว็บที่ http://localhost:5173 (ส่งต่อ /api /auth /assets ไปที่ API ให้)
+cd frontend && npm install && npm run dev      # หน้าเว็บที่ http://localhost:3000 (ส่งต่อ /api /auth /assets ไปที่ API ให้)
 ```
 
 แก้แค่หน้าเว็บ ไม่อยากรัน Python: เปิดทั้งระบบด้วย `docker compose up -d` แล้ว `VITE_API_TARGET=http://127.0.0.1:3000 npm run dev`
@@ -156,7 +156,7 @@ cd frontend && npm install && npm run dev      # หน้าเว็บที�
 | GET | `/api/players/{…}/matches` · `/maps` · `/weapons` | แมตช์ล่าสุด (แพ้/ชนะ + rating) · รวมรายแมพ · อาวุธที่ฆ่าบ่อย |
 | GET | `/api/health` | DB ต่อได้ไหม คิวยาวแค่ไหน มี worker กี่ตัว |
 
-บริบทของการตายอ่านจาก `output/grid_ml1.json` (cache ในหน่วยความจำ ไม่รันโมเดลตอน request) — ยังไม่เคยรัน `python research/grid_ml1.py` หน้าเว็บจะบอกว่าไม่มีข้อมูล
+บริบทของการตายอ่านจาก `output/models/<map>/grid_ml1.json` ตามแมพของแมตช์ (cache ในหน่วยความจำ ไม่รันโมเดลตอน request) และถอยไปอ่าน `output/grid_ml1.json` สำหรับ artifact รุ่นเดิม
 พิกัดทุกจุดแปลงที่ `backend/review.py` ที่เดียว (grid_ml1.py import สูตรเดียวกัน) frontend ไม่มีสูตรแปลงพิกัดของตัวเอง
 
 มีเฉพาะ endpoint ที่หน้าเว็บเรียกจริง — endpoint ของหน้าเว็บ Sprint 1 (`/api/players` `/api/heatmap` `/api/tactical` `/api/ml/*` …) ลบไปแล้ว ดูย้อนหลังได้ใน git
@@ -204,7 +204,7 @@ Projectile trajectory ไม่เพิ่มจำนวนแถว `grenades
 
 ระหว่าง playback ผู้เล่นที่ยังมีชีวิตแสดงชื่อ roster ตลอดเวลา ป้ายชื่อวางหลบ marker แบบ deterministic และมี leader line เมื่อจำเป็น ชื่อยาวตัดด้วย `…` แต่ชื่อเต็มยังอยู่ใน tooltip/accessible label ส่วน active weapon, armor, helmet และ defuse kit แสดงเฉพาะเมื่อ parser อ่านค่าจริงได้ คอลัมน์เหล่านี้ nullable จึงไม่ทำให้ข้อมูลเก่าแตก
 
-Player Behavior บน `/analysis` โหลด `output/player_role.json` เข้า cache และทำ inference จากข้อมูลแมตช์ในฐานข้อมูลเท่านั้น ไม่ train ระหว่าง request และไม่ป้อนแมตช์ upload กลับเข้า reference model หน่วยวิเคราะห์คือผู้เล่นหนึ่งคน × หนึ่งแมตช์ × หนึ่งฝั่ง โดยต้องมีจำนวนรอบขั้นต่ำตาม artifact ชื่อ role เป็นเพียงการตีความ centroid ของ KMeans ไม่ใช่คะแนนฝีมือ บทบาทถาวร หรือ probability; ถ้า artifact หาย แมพไม่รองรับ หรือรอบไม่พอ API จะคืนสถานะ unavailable อย่างชัดเจน Endpoint คือ `GET /api/analysis/player-behavior?demo=...&players=...`
+Player Behavior บน `/analysis` โหลด `output/models/<map>/player_role.json` ตามแมพของแมตช์เข้า cache (และรองรับ `output/player_role.json` รุ่นเดิม) แล้วทำ inference จากข้อมูลในฐานข้อมูลเท่านั้น ไม่ train ระหว่าง request และไม่ป้อนแมตช์ upload กลับเข้า reference model หน่วยวิเคราะห์คือผู้เล่นหนึ่งคน × หนึ่งแมตช์ × หนึ่งฝั่ง โดยต้องมีจำนวนรอบขั้นต่ำตาม artifact ชื่อ role เป็นเพียงการตีความ centroid ของ KMeans ไม่ใช่คะแนนฝีมือ บทบาทถาวร หรือ probability; ถ้า artifact หาย แมพไม่รองรับ หรือรอบไม่พอ API จะคืนสถานะ unavailable อย่างชัดเจน Endpoint คือ `GET /api/analysis/player-behavior?demo=...&players=...`
 
 ## ทดสอบและ CI
 

@@ -309,7 +309,7 @@ def test_steam_redirects_use_frontend_origin(monkeypatch):
     monkeypatch.setattr(appmod, "FRONTEND_URL", "")
     request = _get([(b"host", b"127.0.0.1:8000")])
     assert appmod._frontend_redirect(request, "/login?err=steam").headers["location"] == \
-        "http://127.0.0.1:5173/login?err=steam"
+        "http://127.0.0.1:3000/login?err=steam"
     monkeypatch.setattr(appmod, "FRONTEND_URL", "https://frontend.example")
     assert appmod._frontend_redirect(request, "/player").headers["location"] == \
         "https://frontend.example/player"

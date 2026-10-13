@@ -3,12 +3,15 @@ from __future__ import annotations
 
 import json
 import math
-from collections import Counter, defaultdict
+import os
+from collections import Counter
+from collections.abc import Iterable
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 MODEL_PATH = Path(__file__).resolve().parent.parent / "output" / "player_role.json"
+MODEL_ROOT = Path(os.environ.get("MODEL_ROOT", MODEL_PATH.parent / "models"))
 
 
 def compatibility_reason(model: dict[str, Any] | None, map_name: str | None, source: str) -> str | None:
@@ -21,10 +24,15 @@ def compatibility_reason(model: dict[str, Any] | None, map_name: str | None, sou
     return None
 
 
-@lru_cache(maxsize=4)
-def load_role_model(path: str = str(MODEL_PATH)) -> dict[str, Any] | None:
+@lru_cache(maxsize=32)
+def load_role_model(path: str | None = None, *, map_name: str | None = None) -> dict[str, Any] | None:
+    if path is None:
+        candidates = ([MODEL_ROOT / map_name / "player_role.json"] if map_name else []) + [MODEL_PATH]
+        resolved = next((candidate for candidate in candidates if candidate.is_file()), candidates[0])
+    else:
+        resolved = Path(path)
     try:
-        model = json.loads(Path(path).read_text(encoding="utf-8"))
+        model = json.loads(resolved.read_text(encoding="utf-8"))
         if model.get("unit") != "player-match-side" or not isinstance(model.get("models"), dict):
             return None
         return model

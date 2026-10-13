@@ -50,20 +50,20 @@ def cells_csv() -> pd.DataFrame:
 
 
 @pytest.fixture(scope="module")
-def frame():
-    return radar_frame("de_mirage")
+def frame(model):
+    return radar_frame(model.map_name)
 
 
-def duels(df: pd.DataFrame) -> pd.DataFrame:
+def duels(df: pd.DataFrame, model) -> pd.DataFrame:
     """ตัวกรองเดียวกับ grid_ml1.py STEP 4: มีคนยิง และคนละฝั่ง"""
-    d = df[df["map_name"] == "de_mirage"]
+    d = df[df["map_name"] == model.map_name]
     return d[d["attacker_side"].notna() & (d["attacker_side"] != d["victim_side"])]
 
 
 def test_every_death_point_drawn_is_inside_the_radar(kills, frame):
     for who in ("victim", "attacker"):
-        d = kills.dropna(subset=[f"{who}_X", f"{who}_Y"])
-        assert len(d) > 7000
+        d = kills[kills["map_name"] == frame.map_name].dropna(subset=[f"{who}_X", f"{who}_Y"])
+        assert len(d) > 0
         outside = [(x, y) for x, y in zip(d[f"{who}_X"], d[f"{who}_Y"], strict=True) if not in_frame(x, y, frame)]
         assert outside == [], f"{who}: {len(outside)} จุดหลุดกรอบเรดาร์"
         for x, y in zip(d[f"{who}_X"], d[f"{who}_Y"], strict=True):
@@ -79,7 +79,7 @@ def test_pixel_and_extent_agree(frame):
 
 def test_cells_reproduce_grid_ml1_duel_counts(kills, cells_csv, model, frame):
     """นับดวลต่อช่องด้วย backend.review แล้วต้องได้ช่องชุดเดียวกัน จำนวนเท่ากันทุกช่องกับ grid_ml1_cells.csv"""
-    d = duels(kills)
+    d = duels(kills, model)
     cx, cy = cells_of(d["victim_X"], d["victim_Y"], frame, model.grid_n)
     counts = Counter(zip(cx.tolist(), cy.tolist(), strict=True))
     kept = {c: n for c, n in counts.items() if n >= model.min_kills}
@@ -114,7 +114,7 @@ def test_cell_with_too_few_duels_is_not_guessed_from_neighbours(cells_csv, model
 
 def test_hotspot_rule_reproduces_meanshift_membership(kills, model):
     """ยอดที่ใกล้สุดภายใน bandwidth = กฎที่ MeanShift(cluster_all=False) ใช้ — จำนวนดวลต่อ hotspot ต้องตรงกับ json"""
-    d = duels(kills)
+    d = duels(kills, model)
     centers = [(h["x"], h["y"]) for h in model.hotspots]
     got = Counter(nearest_within(x, y, centers, model.bandwidth) for x, y in zip(d["victim_X"], d["victim_Y"], strict=True))
     for i, h in enumerate(model.hotspots):

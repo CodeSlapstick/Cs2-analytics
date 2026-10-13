@@ -49,7 +49,7 @@ from backend.db import (  # noqa: F401  (load_dotenv ทำงานตอน im
     redacted_url,
 )
 from backend.features import assign_teams, rating2_approx  # ผูกคนกับทีม (Round Review) · Rating 2.0 ประมาณการ
-from backend.jobs import QueueUnavailable, enqueue_parse, job_state, queue_health  # คิวงาน parse (Sprint 2)
+from backend.jobs import JSON_DIR, QueueUnavailable, enqueue_parse, job_state, queue_health  # คิวงาน parse (Sprint 2)
 from backend.opening_routes import build_opening_rounds, match_date, select_matches
 from backend.player_role_service import build_match_profiles, compatibility_reason, infer_match, load_role_model
 from backend.review import (
@@ -267,7 +267,7 @@ def _frontend_base(request: Request) -> str:
     base = _public_base(request)
     parsed = urllib.parse.urlsplit(base)
     if parsed.hostname in ("localhost", "127.0.0.1") and parsed.port == 8000:
-        return f"{parsed.scheme}://{parsed.hostname}:5173"
+        return f"{parsed.scheme}://{parsed.hostname}:3000"
     return base
 
 
@@ -410,14 +410,45 @@ async def api_health(request: Request):
 
 @app.get("/api/matches")
 async def api_matches(_: dict = Depends(require_viewer), conn: asyncpg.Connection = Depends(db)):
-    """รายชื่อแมตช์ทั้งหมดพร้อมสรุป (จาก view match_summary)"""
-    return rows(await conn.fetch("SELECT * FROM match_summary ORDER BY id"))
+    """รายชื่อแมตช์ที่ผู้ใช้อัปโหลด; ชุดฝึกโมเดลไม่ออกผ่านหน้ารายการสาธารณะ"""
+    return rows(await conn.fetch("SELECT * FROM match_summary WHERE source = 'upload' ORDER BY id"))
+
+
+@app.delete("/api/matches/{match_id}")
+async def api_delete_match(match_id: int, viewer: dict = Depends(require_viewer), conn: asyncpg.Connection = Depends(db)):
+    """Delete an uploaded demo and its parsed data after its parser job finishes."""
+    async with conn.transaction():
+        record = await conn.fetchrow(
+            "SELECT id, demo_file, source, status, uploaded_by, uploader_guest FROM matches WHERE id = $1 FOR UPDATE",
+            match_id,
+        )
+        if not record or record["source"] != "upload":
+            raise HTTPException(404, "ไม่พบแมตช์นี้")
+        match = dict(record)
+        if not can_modify_match(match, viewer):
+            raise HTTPException(403, "ไม่มีสิทธิ์ลบแมตช์นี้")
+        if match["status"] in ("queued", "parsing"):
+            raise HTTPException(409, "รอให้แกะเดโมเสร็จก่อนจึงจะลบได้")
+        demo_file = match["demo_file"]
+        if Path(demo_file).name != demo_file or not DEMO_NAME_RE.fullmatch(demo_file):
+            raise HTTPException(409, "ชื่อไฟล์เดโมไม่ถูกต้อง ไม่สามารถลบไฟล์ได้")
+        await conn.execute("DELETE FROM matches WHERE id = $1", match_id)
+
+    # Files are confined to upload/parser-output directories. Database children cascade.
+    cleanup_failed = []
+    for path in (DEMOS_DIR / demo_file, JSON_DIR / f"{Path(demo_file).stem}.json"):
+        try:
+            path.unlink(missing_ok=True)
+        except OSError:
+            cleanup_failed.append(path.name)
+    return {"deleted": True, "cleanup_failed": cleanup_failed}
 
 
 @app.get("/api/matches/{match_id}")
 async def api_match(match_id: int, _: dict = Depends(require_viewer), conn: asyncpg.Connection = Depends(db)):
     """แมตช์เดียวแบบละเอียด: สรุป + รายรอบ + สกอร์บอร์ดของนักแข่งในแมตช์นั้น"""
-    match = await conn.fetchrow("SELECT * FROM match_summary WHERE id = $1", match_id)
+    match = await conn.fetchrow(
+        "SELECT * FROM match_summary WHERE id = $1 AND source = 'upload'", match_id)
     if not match:
         raise HTTPException(404, "ไม่พบแมตช์นี้")
     # รายรอบ + เศรษฐกิจ (มูลค่าอุปกรณ์ทั้งทีมตอน freeze จบ และ buy type) จาก view round_economy
@@ -482,7 +513,7 @@ async def api_match_status(match_id: int, _: dict = Depends(require_viewer), con
     """
     row = await conn.fetchrow("""
         SELECT id, demo_file, status, error_message, job_id, imported_at, started_at, finished_at
-        FROM matches WHERE id = $1;
+        FROM matches WHERE id = $1 AND source = 'upload';
     """, match_id)
     if not row:
         raise HTTPException(404, "ไม่พบแมตช์นี้")
@@ -785,7 +816,8 @@ async def api_upload_demo(
 # ---------------------------------------------------------------------------
 async def _review_match(conn: asyncpg.Connection, demo_file: str) -> dict:
     m = await conn.fetchrow("""
-        SELECT id, demo_file, map_name, tickrate, team_a, team_b, status FROM matches WHERE demo_file = $1""", demo_file)
+        SELECT id, demo_file, map_name, tickrate, team_a, team_b, status
+        FROM matches WHERE demo_file = $1 AND source = 'upload'""", demo_file)
     if not m:
         raise HTTPException(404, f"ไม่พบแมตช์ {demo_file}")
     if m["status"] != "done":
@@ -827,6 +859,17 @@ ANALYSIS_SCOPES = {
     "upload": "แมตช์ของทีม",
 }
 DEATH_SIDES = ("all", "ct", "t")
+
+
+@app.get("/api/analysis/reference-maps")
+async def api_analysis_reference_maps(_: dict = Depends(require_viewer),
+                                      conn: asyncpg.Connection = Depends(db)):
+    """Map availability for Analysis without exposing the reference match catalog."""
+    return [r["map_name"] for r in await conn.fetch("""
+        SELECT DISTINCT map_name FROM matches
+        WHERE source = 'reference' AND status = 'done' AND map_name IS NOT NULL
+        ORDER BY map_name
+    """)]
 
 
 def _parse_int_list(raw: str | None, *, what: str) -> list[int] | None:
@@ -912,8 +955,8 @@ async def api_player_behavior(
     conn: asyncpg.Connection = Depends(db),
 ):
     """Infer per-match, per-side behaviour from a cached reference-only KMeans artifact."""
-    model = load_role_model()
     match = await _review_match(conn, demo)
+    model = load_role_model(map_name=match.get("map_name"))
     source = await conn.fetchval("SELECT source FROM matches WHERE id = $1", match["id"])
     reason = compatibility_reason(model, match.get("map_name"), source)
     if reason:
@@ -1167,7 +1210,8 @@ async def api_review_round(demo_file: str, round_num: int, _: dict = Depends(req
         FROM damages WHERE round_id = $1 ORDER BY tick, id""", rnd["id"])
     latest_damage_tick = damages[-1]["tick"] if damages else None
     return build_round_detail(match=m, rnd=dict(rnd), roster=roster, in_round=rows(in_round), kills=rows(kills),
-                              grenades=rows(grenades), frame=radar_frame(m["map_name"]), model=load_grid_model(),
+                              grenades=rows(grenades), frame=radar_frame(m["map_name"]),
+                              model=load_grid_model(map_name=m["map_name"]),
                               damages=rows(damages), latest_damage_tick=latest_damage_tick)
 
 

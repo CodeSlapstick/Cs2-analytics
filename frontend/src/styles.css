@@ -312,11 +312,22 @@ a.badge:hover { text-decoration: none; filter: brightness(.96); }
 .filters :is(input, select):hover { border-color: #46516a; }
 .filters input::placeholder { color: #7f8999; }
 
-/* รายการแมตช์ — ทั้งแถวเป็นลิงก์เดียว ไม่มีปุ่มซ้อนในแถว */
+/* รายการแมตช์ */
 .mcard { padding-bottom: 8px; }
 .mcard .card-head { margin-bottom: 4px; }
 .mlist { list-style: none; margin: 0 -8px; padding: 0; }
 .mlist li + li { border-top: 1px solid var(--line-2); }
+.match-item { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 6px; }
+.match-item .mrow { min-width: 0; }
+.match-delete { border: 1px solid transparent; border-radius: 7px; padding: 7px 10px; margin-right: 7px; color: var(--muted); background: transparent; font: inherit; font-size: var(--fs-sm); cursor: pointer; }
+.match-delete:hover:not(:disabled), .match-delete:focus-visible { color: #ffb4b4; border-color: #8e4242; background: #44262b; }
+.match-delete:disabled { opacity: .4; cursor: not-allowed; }
+.match-delete-confirm { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 8px 12px 12px; color: var(--text); font-size: var(--fs-sm); }
+.match-delete-confirm span:first-child { flex: 1 1 250px; overflow-wrap: anywhere; }
+.match-delete-confirm-btn { border: 1px solid #a44747; border-radius: 7px; padding: 7px 12px; color: #fff; background: #923c42; font: inherit; cursor: pointer; }
+.match-delete-confirm-btn:hover:not(:disabled) { background: #ad494e; }
+.match-delete-confirm-btn:disabled { opacity: .55; cursor: wait; }
+.match-delete-warning { padding: 8px 12px; }
 .mrow {
   display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 190px) 76px 16px; gap: 14px; align-items: center;
   padding: 11px 8px; border-radius: 8px; color: var(--text);
@@ -331,11 +342,6 @@ a.badge:hover { text-decoration: none; filter: brightness(.96); }
 .chev { color: #9aa4b5; transition: transform .15s ease-out, color .15s ease-out; }
 .m-empty { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; padding: 10px 0 12px; margin: 0; }
 .m-empty p { margin: 0; }
-.more-btn {
-  display: block; width: 100%; margin: 4px 0 0; padding: 10px; border: 0; border-top: 1px solid var(--line-2);
-  background: none; color: var(--ct-ink); font: inherit; font-weight: 700; cursor: pointer; border-radius: 0 0 8px 8px;
-}
-.more-btn:hover { background: var(--card-2); }
 @media (max-width: 640px) {
   .mrow { grid-template-columns: minmax(0, 1fr) auto 16px; gap: 2px 12px; }
   .m-title { grid-column: 1; grid-row: 1; }

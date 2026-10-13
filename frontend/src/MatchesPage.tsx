@@ -12,20 +12,16 @@ import { useT } from "./i18n";
  * งานเดียวของหน้านี้คือ "หาแมตช์ให้เจอ แล้วเข้าไปดู" — กดทั้งแถวแล้วเข้าหน้ารีวิวรอบทันที (คลิกเดียว)
  * สกอร์บอร์ดทั้งแมตช์อยู่ห่างออกไปอีกคลิกจากหัวหน้ารีวิวรอบ
  *
- * แมตช์ที่ทีมอัปโหลดเองขึ้นก่อนเสมอ — ชุดอ้างอิงทีมอาชีพมีหลายสิบนัด ถ้าปนกันแมตช์ของเราจะจมหาย
+ * รายการนี้แสดงเฉพาะแมตช์ที่ผู้ใช้อัปโหลด ชุดข้อมูลฝึกโมเดลเป็นข้อมูลหลังบ้านและไม่ส่งมาที่หน้านี้
  * อัปโหลด: ปุ่มเดียวบนหัวหน้า หรือลากไฟล์มาวางตรงไหนของหน้าก็ได้ ไม่ต้องติ๊กอะไรก่อน
  * ตัวกรองทำฝั่งหน้าเว็บจาก /api/matches ชุดเดิม — จำนวนแมตช์ระดับหลักร้อย กรองในเบราว์เซอร์เร็วกว่า
  */
 const STATUS_LABEL: Record<MatchStatus, string> = { queued: "รอคิว", parsing: "กำลังแกะ", done: "พร้อม", error: "แกะไม่สำเร็จ" };
-/** ชุดอ้างอิงแสดงเท่านี้ก่อน กด "แสดงทั้งหมด" ถึงจะกางครบ — ตอนค้นหาอยู่แสดงครบเสมอ */
-const REF_PREVIEW = 8;
-
 export function MatchesPage() {
   const matches = useQuery(matchesQuery);
   const rows = useMemo(() => [...(matches.data ?? [])].sort((a, b) => b.id - a.id), [matches.data]);
   const [q, setQ] = useState("");
   const [map, setMap] = useState("");
-  const [showAllRef, setShowAllRef] = useState(false);
   const upload = useUploader();
   const { t, tn } = useT();
 
@@ -42,9 +38,7 @@ export function MatchesPage() {
     );
   }, [rows, q, map]);
   const filtering = Boolean(q.trim() || map);
-  const mine = shown.filter((m) => m.source === "upload");
-  const refs = shown.filter((m) => m.source !== "upload");
-  const refShown = filtering || showAllRef ? refs : refs.slice(0, REF_PREVIEW);
+  const mine = shown;
 
   return (
     <div className="matches-page" data-testid="matches-page" {...upload.dropHandlers}>
@@ -122,21 +116,6 @@ export function MatchesPage() {
             )}
           </section>
 
-          {refs.length > 0 && (
-            <section className="card mcard" aria-labelledby="h-ref">
-              <div className="card-head">
-                <h2 id="h-ref">{t("ชุดอ้างอิงทีมอาชีพ")}</h2>
-                <span className="muted small">{t("{n} นัด", { n: num(refs.length) })}</span>
-              </div>
-              <MatchList rows={refShown} />
-              {refShown.length < refs.length && (
-                <button type="button" className="more-btn" onClick={() => setShowAllRef(true)}>
-                  {t("แสดงทั้งหมด {n} นัด", { n: num(refs.length) })}
-                </button>
-              )}
-            </section>
-          )}
-
           {filtering && shown.length === 0 && (
             <p className="muted">{t("ไม่มีแมตช์ที่ตรงกับ \"{q}\" — ลองคำอื่น หรือกด ล้าง", { q: q.trim() || map })}</p>
           )}
@@ -158,14 +137,37 @@ export function MatchesPage() {
 /** แถวแมตช์ — ทั้งแถวเป็นลิงก์เดียว: แกะเสร็จแล้วเข้ารีวิวรอบ 1 · ยังไม่เสร็จเข้าหน้าความคืบหน้า */
 function MatchList({ rows }: { rows: Match[] }) {
   const { t } = useT();
+  const qc = useQueryClient();
+  const [confirmId, setConfirmId] = useState<number | null>(null);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [deleteError, setDeleteError] = useState("");
+  const [cleanupWarning, setCleanupWarning] = useState("");
+
+  const deleteMatch = async (m: Match) => {
+    setDeletingId(m.id);
+    setDeleteError("");
+    try {
+      const result = await api.deleteMatch(m.id);
+      qc.setQueryData<Match[]>(matchesQuery.queryKey, (current) => current?.filter((row) => row.id !== m.id));
+      setConfirmId(null);
+      await qc.invalidateQueries();
+      if (result.cleanup_failed.length) setCleanupWarning(t("ลบข้อมูลแล้ว แต่ลบไฟล์บางส่วนไม่สำเร็จ"));
+    } catch (error) {
+      setDeleteError(error instanceof Error ? error.message : t("ลบเดโมไม่สำเร็จ"));
+    } finally {
+      setDeletingId(null);
+    }
+  };
   return (
     <ul className="mlist" data-testid="match-table">
+      {cleanupWarning && <li className="match-delete-warning err" role="alert">{cleanupWarning}</li>}
       {rows.map((m) => {
         const base = `/matches/${encodeURIComponent(m.demo_file)}`;
         const done = m.status === "done";
         return (
           <li key={m.id}>
-            <Link className="mrow" to={done ? `${base}/rounds/1` : base} data-testid="match-row" data-demo={m.demo_file}
+            <div className="match-item">
+              <Link className="mrow" to={done ? `${base}/rounds/1` : base} data-testid="match-row" data-demo={m.demo_file}
               title={m.demo_file}>
               <MapThumb map={m.map_name} className="m-thumb" />
               <span className="m-title">{matchTitle(m)}</span>
@@ -183,7 +185,24 @@ function MatchList({ rows }: { rows: Match[] }) {
                 <span className={`badge b-${m.status}`}>{t(STATUS_LABEL[m.status])}</span>
               )}
               <IconChevron />
-            </Link>
+              </Link>
+              <button type="button" className="match-delete" onClick={() => { setConfirmId(m.id); setDeleteError(""); }}
+                disabled={(!done && m.status !== "error") || deletingId !== null}
+                title={!done && m.status !== "error" ? t("รอให้แกะเดโมเสร็จก่อนจึงจะลบได้") : undefined}
+                aria-label={t("ลบเดโม {name}", { name: m.demo_file })}>
+                {t("ลบ")}
+              </button>
+            </div>
+            {confirmId === m.id && (
+              <div className="match-delete-confirm" role="group" aria-label={t("ยืนยันลบเดโม")}>
+                <span>{t("ลบเดโม {name} และข้อมูลแมตช์ทั้งหมด?", { name: m.demo_file })}</span>
+                <button type="button" className="match-delete-confirm-btn" onClick={() => void deleteMatch(m)} disabled={deletingId !== null}>
+                  {deletingId === m.id ? t("กำลังลบ…") : t("ยืนยันลบ")}
+                </button>
+                <button type="button" className="btn-ghost" onClick={() => { setConfirmId(null); setDeleteError(""); }} disabled={deletingId !== null}>{t("ยกเลิก")}</button>
+                {deleteError && <span className="err" role="alert">{deleteError}</span>}
+              </div>
+            )}
           </li>
         );
       })}
