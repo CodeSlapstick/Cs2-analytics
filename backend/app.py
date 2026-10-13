@@ -1162,10 +1162,13 @@ async def api_review_round(demo_file: str, round_num: int, _: dict = Depends(req
                p.name AS thrower_name
         FROM grenades g LEFT JOIN players p ON p.steam_id = g.thrower_id
         WHERE g.round_id = $1 ORDER BY g.tick, g.id""", rnd["id"])
-    latest_damage_tick = await conn.fetchval("SELECT MAX(tick) FROM damages WHERE round_id = $1", rnd["id"])
+    damages = await conn.fetch("""
+        SELECT id, tick, attacker_id, victim_id, damage
+        FROM damages WHERE round_id = $1 ORDER BY tick, id""", rnd["id"])
+    latest_damage_tick = damages[-1]["tick"] if damages else None
     return build_round_detail(match=m, rnd=dict(rnd), roster=roster, in_round=rows(in_round), kills=rows(kills),
                               grenades=rows(grenades), frame=radar_frame(m["map_name"]), model=load_grid_model(),
-                              latest_damage_tick=latest_damage_tick)
+                              damages=rows(damages), latest_damage_tick=latest_damage_tick)
 
 
 @app.get("/api/review/{demo_file}/rounds/{round_num}/positions")
@@ -1177,10 +1180,11 @@ async def api_review_positions(demo_file: str, round_num: int, _: dict = Depends
         "SELECT id, round_num, start_tick FROM rounds WHERE match_id = $1 AND round_num = $2", m["id"], round_num)
     if not rnd:
         raise HTTPException(404, f"แมตช์นี้ไม่มีรอบที่ {round_num}")
-    equipment = ("active_weapon", "armor", "has_helmet", "has_defuser")
+    equipment = ("active_weapon", "armor", "has_helmet", "has_defuser", "yaw", "flash_remaining")
     available = await _optional_columns(conn, "player_positions", equipment)
     defaults = {"active_weapon": "NULL::text", "armor": "NULL::integer",
-                "has_helmet": "NULL::boolean", "has_defuser": "NULL::boolean"}
+                "has_helmet": "NULL::boolean", "has_defuser": "NULL::boolean", "yaw": "NULL::real",
+                "flash_remaining": "NULL::real"}
     equipment_sql = ", ".join(name if name in available else f"{defaults[name]} AS {name}"
                               for name in equipment)
     pos = await conn.fetch(f"""

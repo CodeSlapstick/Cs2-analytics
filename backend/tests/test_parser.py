@@ -8,8 +8,27 @@ import os
 from pathlib import Path
 
 import pytest
+import polars as pl
+
+from backend.parser import _add_flash_remaining
 
 ROOT = Path(__file__).resolve().parent.parent.parent
+
+
+def test_flash_remaining_counts_down_from_blind_event():
+    positions = pl.DataFrame({"round_num": [1, 1, 1, 1], "tick": [100, 164, 228, 100],
+                              "steam_id": [1, 1, 1, 2]})
+    blinds = pl.DataFrame({"user_steamid": [1], "tick": [100], "blind_duration": [2.0]})
+    result = _add_flash_remaining(positions, blinds, 64)
+    assert result.filter(pl.col("steam_id") == 1)["flash_remaining"].to_list() == [2.0, 1.0, 0.0]
+    assert result.filter(pl.col("steam_id") == 2)["flash_remaining"].to_list() == [0.0]
+
+
+def test_flash_remaining_defaults_to_zero_without_blind_events():
+    positions = pl.DataFrame({"round_num": [1, 1], "tick": [100, 108], "steam_id": [1, 2]})
+    for events in ({}, {"player_blind": pl.DataFrame()}):
+        result = _add_flash_remaining(positions, events.get("player_blind"), 64)
+        assert result["flash_remaining"].to_list() == [0.0, 0.0]
 
 
 def _demo_path() -> Path | None:
@@ -80,6 +99,7 @@ def test_positions_are_eight_hz_and_alive_only(doc):
     for p in pos:
         by_round.setdefault(p["round_num"], set()).add(p["tick"])
         assert p["side"] in ("ct", "t") and p["health"] > 0
+        assert p["yaw"] is None or -180 <= p["yaw"] <= 180
     for n, ticks in by_round.items():
         ts = sorted(ticks)
         gaps = [b - a for a, b in zip(ts, ts[1:], strict=False)]

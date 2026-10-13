@@ -260,6 +260,8 @@ class PlayerPosition(Base):
     x: Mapped[float] = mapped_column(REAL, nullable=False)
     y: Mapped[float] = mapped_column(REAL, nullable=False)
     z: Mapped[float | None] = mapped_column(REAL)
+    yaw: Mapped[float | None] = mapped_column(REAL)
+    flash_remaining: Mapped[float | None] = mapped_column(REAL)
     health: Mapped[int | None] = mapped_column(SmallInteger)
     place: Mapped[str | None] = mapped_column(Text)
     active_weapon: Mapped[str | None] = mapped_column(Text)

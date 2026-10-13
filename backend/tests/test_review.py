@@ -155,6 +155,20 @@ def detail(doc, n, model, frame):
     return build_round_detail(match=match, rnd=rnd, roster=roster, in_round=in_round, kills=kills, frame=frame, model=model)
 
 
+def test_round_detail_exposes_compact_damage_shots(sample_doc, model, frame):
+    match, rnd, roster, in_round, kills = as_db_rows(sample_doc, 1)
+    damages = [{"id": 1, "tick": rnd["start_tick"] + 8, "attacker_id": 76561198033024570,
+                "victim_id": 76561197982141573, "damage": 20},
+               {"id": 2, "tick": rnd["start_tick"] + 9, "attacker_id": None,
+                "victim_id": 76561197982141573, "damage": 20}]
+    result = build_round_detail(match=match, rnd=rnd, roster=roster, in_round=in_round,
+                                kills=kills, frame=frame, model=model, damages=damages)
+    assert result["round"]["start_tick"] == rnd["start_tick"]
+    assert result["damages"] == [{"id": 1, "tick": rnd["start_tick"] + 8,
+                                  "attacker": "76561198033024570", "victim": "76561197982141573",
+                                  "damage": 20}]
+
+
 def test_round_detail_exposes_post_round_duration_and_latest_event(sample_doc, model, frame):
     match, rnd, roster, in_round, kills = as_db_rows(sample_doc, 1)
     start, rate = rnd["start_tick"], match["tickrate"]
@@ -470,3 +484,25 @@ def test_economy_follows_the_team_across_the_side_swap():
     assert r1["winner_team"] == "Bravo" and r1["teams"]["Alpha"]["side"] == "ct"
     assert r13["teams"]["Alpha"] == {"side": "t", "equip": 4200, "buy_type": "eco", "won": False}
     assert r13["teams"]["Bravo"]["buy_type"] == "full" and r13["winner_team"] == "Bravo"
+
+
+def test_round_positions_include_yaw_when_available(frame):
+    from backend.review import build_round_positions
+    row = {"tick": 1000, "steam_id": 42, "side": "ct", "x": 0, "y": 0,
+           "health": 100, "place": "A", "yaw": -179.5}
+    player = build_round_positions([row], start_tick=1000, tickrate=128, frame=frame)["frames"][0]["players"][0]
+    assert player["yaw"] == -179.5
+    del row["yaw"]
+    legacy = build_round_positions([row], start_tick=1000, tickrate=128, frame=frame)["frames"][0]["players"][0]
+    assert "yaw" not in legacy
+
+
+def test_round_positions_include_remaining_flash_time(frame):
+    from backend.review import build_round_positions
+    row = {"tick": 1000, "steam_id": 1, "x": 0, "y": 0, "health": 100,
+           "side": "ct", "place": None, "flash_remaining": 1.5}
+    player = build_round_positions([row], start_tick=1000, tickrate=128, frame=frame)["frames"][0]["players"][0]
+    assert player["flash_remaining"] == 1.5
+    del row["flash_remaining"]
+    legacy = build_round_positions([row], start_tick=1000, tickrate=128, frame=frame)["frames"][0]["players"][0]
+    assert "flash_remaining" not in legacy

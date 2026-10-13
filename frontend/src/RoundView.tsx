@@ -1,4 +1,4 @@
-import { type KeyboardEvent, type MouseEvent as ReactMouseEvent, type ReactNode, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { type KeyboardEvent, type MouseEvent as ReactMouseEvent, type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   api,
@@ -7,6 +7,7 @@ import {
   type ReviewGrenade,
   type ReviewTeam,
   type RoundDetail,
+  type RoundPositions,
 } from "./api";
 import {
   clampZoom,
@@ -25,7 +26,7 @@ import {
   weaponLabel,
 } from "./utils";
 import { useT } from "./i18n";
-import { playersAt, type LivePlayer } from "./playback";
+import { activeDamageTracers, playersAt, resolveDamageTracers, type LivePlayer } from "./playback";
 import { effectAt, nadeVisibleAt, projectileAt, projectileTrailAt } from "./grenadePlayback";
 import { EquipmentIcon, UtilityIcon, WeaponIcon } from "./gameIcons";
 
@@ -274,6 +275,10 @@ export function RoundView({ demo, roundNum, view, setView, roundSelector }: Roun
                 bomb={shownBomb}
                 bombPlantedT={plantT}
                 grenades={shownNades}
+                damages={d.damages}
+                positions={pos}
+                startTick={d.round.start_tick}
+                tickrate={d.match.tickrate}
                 live={live}
                 defusingPlayer={defusingPlayer}
                 playbackTime={view.playback ? time : null}
@@ -421,7 +426,6 @@ interface LabelPos {
   x: number;
   y: number;
   anchor: Anchor;
-  leader?: [number, number];
 }
 
 export function truncatePlayerName(name: string, max = 16): string {
@@ -458,27 +462,26 @@ function labelPlacer(bounds: { left: number; top: number; right: number; bottom:
   return { place, block };
 }
 
-/** Pure and deterministic: identical snapshots keep identical label directions between animation frames. */
+/** ป้ายชื่อผู้เล่นอยู่ใต้จุดกลางวงเสมอ ไม่หลบหรือสลับด้านเมื่อผู้เล่นอยู่ใกล้กัน */
 export function placeLivePlayerLabels(
   players: LivePlayer[],
-  bounds: { left: number; top: number; right: number; bottom: number },
   markerRadius: number,
-  fontSize: number,
-  highlighted: string | null,
+  offset: number,
   maxChars = 16,
 ): Map<string, LabelPos & { text: string }> {
-  const placer = labelPlacer(bounds);
-  players.forEach((p) => placer.block(p.px[0], p.px[1], markerRadius));
-  const ordered = [...players].sort((a, b) =>
-    Number(b.steamid === highlighted) - Number(a.steamid === highlighted) || a.steamid.localeCompare(b.steamid));
-  const out = new Map<string, LabelPos & { text: string }>();
-  ordered.forEach((p) => {
-    const text = truncatePlayerName(p.name, maxChars);
-    const pos = placer.place(p.px[0], p.px[1], markerRadius, text, fontSize);
-    const far = Math.hypot(pos.x - p.px[0], pos.y - p.px[1]) > markerRadius + fontSize * 1.5;
-    out.set(p.steamid, { ...pos, text, leader: far ? [p.px[0], p.px[1]] : undefined });
-  });
-  return out;
+  return new Map(players.map((p) => [p.steamid, {
+    x: p.px[0],
+    y: p.px[1] + markerRadius + offset,
+    anchor: "middle" as const,
+    text: truncatePlayerName(p.name, maxChars),
+  }]));
+}
+
+function playerDirectionPointerPoints(cx: number, cy: number, radius: number, unit: number): string {
+  const baseX = cx + radius - unit;
+  const tipX = cx + radius + 7 * unit;
+  const halfBase = 3.25 * unit;
+  return `${baseX},${cy - halfBase} ${baseX},${cy + halfBase} ${tipX},${cy}`;
 }
 
 interface MapProps {
@@ -487,6 +490,10 @@ interface MapProps {
   bomb: RoundDetail["round"]["bomb"];
   bombPlantedT: number | null;
   grenades: ReviewGrenade[];
+  damages?: RoundDetail["damages"];
+  positions?: RoundPositions;
+  startTick?: number | null;
+  tickrate?: number;
   live?: LivePlayer[] | null; // โหมดเล่นย้อน: คนที่ยังไม่ตาย ณ วินาทีที่ดู (null = ปิดโหมด)
   defusingPlayer?: LivePlayer | null;
   playbackTime: number | null;
@@ -579,7 +586,8 @@ function clampRadarCenter(center: [number, number] | null, size: number, zoom: n
  * โหมดเล่นย้อน (prop live) เพิ่มตัวผู้เล่น ณ วินาทีที่ดู — ไม่มีเส้นทางเดินย้อนหลัง
  * เลือกการตายแล้ว ระเบิดที่แสดงเหลือเฉพาะลูกที่มีผลอยู่ ณ วินาทีนั้น (ควัน/ไฟที่ยังไม่หมด แฟลช/HE ที่เพิ่งแตก)
  */
-export function MapView({ radar, deaths, bomb, bombPlantedT, grenades, live, defusingPlayer, playbackTime, reducedMotion,
+export function MapView({ radar, deaths, bomb, bombPlantedT, grenades, damages, positions, startTick, tickrate,
+                          live, defusingPlayer, playbackTime, reducedMotion,
                           zoom, center, onView, highlight, onHover, selected, onSelect }: MapProps) {
   const s = radar.size;
   // ---- ซูม/เลื่อนดู: viewBox คือกรอบที่มองอยู่ · เก็บบน URL เพื่อให้รีเฟรช/แชร์ลิงก์แล้วเห็นกรอบเดิม
@@ -589,6 +597,14 @@ export function MapView({ radar, deaths, bomb, bombPlantedT, grenades, live, def
   const y0 = cy - span / 2;
   const drag = useRef<{ x: number; y: number; cx: number; cy: number; moved: number } | null>(null);
   const { t } = useT();
+  const resolvedTracers = useMemo(() =>
+    positions && startTick != null && tickrate
+      ? resolveDamageTracers(damages ?? [], positions, startTick, tickrate) : [],
+  [damages, positions, startTick, tickrate]);
+  const liveById = new Map((live ?? []).map((player) => [player.steamid, player]));
+  const activeTracers = playbackTime != null && startTick != null && tickrate
+    ? activeDamageTracers(resolvedTracers, startTick + playbackTime * tickrate,
+      Math.min(5, Math.max(3, Math.round(tickrate * .1)))) : [];
 
   /** พิกัดบนจอ -> พิกัดในภาพเรดาร์ (ใช้ตอนซูมที่ตำแหน่งเมาส์) */
   const toMap = (clientX: number, clientY: number) => {
@@ -631,9 +647,10 @@ export function MapView({ radar, deaths, bomb, bombPlantedT, grenades, live, def
   }, []);
   const U = shown > 0 ? (span / shown) * Math.min(1.35, Math.max(1, shown / 620)) : 1; // หน่วยภาพต่อ 1 px บนจอ (ตามกรอบที่ซูมอยู่)
   const z = {
-    dot: 12 * U, dotSel: 15 * U, num: 12 * U, name: 13 * U, atk: 5 * U, atkName: 12 * U,
+    dot: 12 * U, dotSel: 15 * U, num: 12 * U, name: 13 * U,
     nade: 6 * U, nadeIco: 22 * U, nadeName: 12 * U, line: 2 * U, bomb: 10 * U,
   };
+  const liveNameSize = 12 * U;
   const halo = (size: number) => ({ fontSize: size, strokeWidth: size * 0.3 });
 
   const selT = selected === null ? null : (deaths.find((d) => d.order === selected)?.t_round ?? null);
@@ -644,16 +661,14 @@ export function MapView({ radar, deaths, bomb, bombPlantedT, grenades, live, def
   const nadeFocus = (n: ReviewGrenade) => !highlight || n.thrower?.steamid === highlight;
   const dotR = (d: ReviewDeath) => (selected === d.order ? z.dotSel : z.dot);
   const { place, block } = labelPlacer({ left: x0 + 4 * U, top: y0 + 4 * U, right: x0 + span - 4 * U, bottom: y0 + span - 4 * U });
-  // วงทุกวงเป็นสิ่งกีดขวางของป้าย (ควัน/ไฟเป็นวงโปร่ง ป้ายทับได้)
+  // กันป้ายชื่อจากจุดตายและจุด utility ที่มองเห็นบนแผนที่
   deaths.forEach((d) => {
     if (d.victim_px) block(d.victim_px[0], d.victim_px[1], dotR(d));
-    if (d.attacker_px) block(d.attacker_px[0], d.attacker_px[1], z.atk);
   });
   nades.forEach((n) => n.land_px && n.r_px === 0 && block(n.land_px[0], n.land_px[1], z.nadeIco / 2));
   live?.forEach((p) => block(p.px[0], p.px[1], z.dot * 0.9));   // ยังกันไม่ให้ป้ายอื่นทับตัวผู้เล่น
-  const liveLabels = placeLivePlayerLabels(live ?? [],
-    { left: x0 + 4 * U, top: y0 + 4 * U, right: x0 + span - 4 * U, bottom: y0 + span - 4 * U },
-    z.dot * .9, z.name, highlight, shown > 0 && shown < 520 ? 11 : 16);
+  const liveLabels = placeLivePlayerLabels(live ?? [], z.dot * .9, 15 * U,
+    shown > 0 && shown < 520 ? 11 : 16);
   const deathLabel = new Map<number, LabelPos>();
   deaths.forEach((d) => {
     if (d.victim_px) deathLabel.set(d.order, place(d.victim_px[0], d.victim_px[1], dotR(d), d.victim.name, z.name));
@@ -783,42 +798,31 @@ export function MapView({ radar, deaths, bomb, bombPlantedT, grenades, live, def
         })}
       </g>
 
-      {/* เส้นทิศทางการยิง: จากคนยิงไปคนตาย */}
-      {deaths.map(
-        (d) =>
-          d.attacker_px &&
-          d.victim_px && (
-            <line
-              key={`l${d.order}`}
-              x1={d.attacker_px[0]}
-              y1={d.attacker_px[1]}
-              x2={d.victim_px[0]}
-              y2={d.victim_px[1]}
-              stroke={d.attacker?.color ?? "#fff"}
-              strokeWidth={z.line * 1.2}
-              opacity={focus(d) ? 0.9 : 0.1}
-            />
-          ),
-      )}
-      {deaths.map(
-        (d) =>
-          d.attacker_px && (
-            <g key={`a${d.order}`} opacity={focus(d) ? 1 : 0.15}>
-              <circle cx={d.attacker_px[0]} cy={d.attacker_px[1]} r={z.atk} fill={d.attacker?.color ?? "#fff"} stroke="#0b1220" strokeWidth={z.line * 0.8} />
-              {d.attacker && (selected === d.order || (highlight && focus(d))) && (
-                <text x={d.attacker_px[0]} y={d.attacker_px[1] - z.atk - 4 * U} textAnchor="middle" className="dot-name atk" style={halo(z.atkName)}>
-                  {d.attacker.name}
-                </text>
-              )}
-            </g>
-          ),
-      )}
+      {/* เส้นกระสุนสีขาวบาง ๆ กะพริบเพียง 3–5 tick; เริ่มที่ขอบวงและไม่มีจุดปลาย */}
+      <g data-layer="damage-tracers" pointerEvents="none">
+        {activeTracers.map((shot) => {
+          if (!liveById.has(shot.attacker) || !liveById.has(shot.victim)) return null;
+          const dx = shot.to[0] - shot.from[0];
+          const dy = shot.to[1] - shot.from[1];
+          const distance = Math.hypot(dx, dy);
+          const radius = highlight === shot.attacker ? z.dot : z.dot * .9;
+          if (distance <= radius) return null;
+          return <line key={shot.id} data-testid="damage-tracer"
+            x1={shot.from[0] + dx / distance * radius} y1={shot.from[1] + dy / distance * radius}
+            x2={shot.to[0]} y2={shot.to[1]}
+            stroke="#fff" strokeWidth={1.1 * U} strokeDasharray={`${4 * U} ${3 * U}`}
+            opacity={shot.opacity * .8} />;
+        })}
+      </g>
 
       {/* โหมดเล่นย้อน: ตัวผู้เล่นที่ยังไม่ตาย ณ วินาทีนั้น
           วงทึบสีของฝั่ง (CT ฟ้า / T ส้ม) + หมายเลข 1-5 ในวง — ไม่มีชื่อบนแผนที่ ชื่ออยู่ในตารางข้างแผนที่
           ขอบวงเป็นสีเข้มไว้ให้ยังแยกออกจากกันตอนสองคนยืนชิดกัน (สีเดียวกันทั้งทีม) */}
       {live?.map((p) => {
         const hpPct = Math.max(0, Math.min(100, p.hp ?? 100));
+        const flashOpacity = p.flashRemaining != null
+          ? Math.min(.8, Math.max(0, p.flashRemaining / 4 * .8))
+          : p.isFlashed ? .8 : 0;
         const fillId = `player-hp-${p.steamid}`;
         return <g
           key={`live-${p.steamid}`}
@@ -840,6 +844,14 @@ export function MapView({ radar, deaths, bomb, bombPlantedT, grenades, live, def
             <stop offset={`${hpPct}%`} stopColor={playerFill(p.side)} style={{ transition: "offset 0.2s ease" }} />
             <stop offset={`${hpPct}%`} stopColor="#111827" style={{ transition: "offset 0.2s ease" }} />
           </linearGradient>
+          {/* สามเหลี่ยมชี้ทิศหมุนรอบจุดกลาง; วงและเลขยังตั้งตรง */}
+          {p.yaw != null && <polygon
+            points={playerDirectionPointerPoints(p.px[0], p.px[1],
+              highlight === p.steamid ? z.dot : z.dot * .9, U)}
+            fill={playerFill(p.side)} stroke="#ffffff" strokeWidth={.8 * U}
+            strokeLinejoin="round"
+            transform={`rotate(${-p.yaw} ${p.px[0]} ${p.px[1]})`}
+            pointerEvents="none" data-testid="player-direction-pointer" />}
           <circle
             cx={p.px[0]}
             cy={p.px[1]}
@@ -848,6 +860,12 @@ export function MapView({ radar, deaths, bomb, bombPlantedT, grenades, live, def
             stroke={highlight === p.steamid ? "#fff" : "#0b1220"}
             strokeWidth={z.line * (highlight === p.steamid ? 2 : 1.2)}
           />
+          {/* วงแฟลชอยู่เหนือวงผู้เล่น แต่จางลงตามเวลาตาบอดและไม่บังการชี้เมาส์ */}
+          {flashOpacity > 0 && <circle
+            cx={p.px[0]} cy={p.px[1]}
+            r={(highlight === p.steamid ? z.dot : z.dot * .9) + 3 * U}
+            fill="none" stroke="#ffffff" strokeWidth={2.2 * U}
+            strokeOpacity={flashOpacity} pointerEvents="none" data-testid="flash-halo" />}
           <text
             x={p.px[0]}
             y={p.px[1]}
@@ -911,17 +929,16 @@ export function MapView({ radar, deaths, bomb, bombPlantedT, grenades, live, def
           const focused = highlight === p.steamid;
           return <g key={`live-label-${p.steamid}`} opacity={!highlight || focused ? 1 : .42}
             data-testid="live-player-name" data-full-name={p.name}>
-            {label.leader && <line x1={p.px[0]} y1={p.px[1]} x2={label.x} y2={label.y - z.name * .35}
-              className="player-label-leader" stroke={playerFill(p.side)} strokeWidth={z.line * .55} />}
+            {/* ชื่ออยู่ใต้กึ่งกลางวงเสมอ ไม่หมุนตามลำกล้องและไม่สลับตำแหน่ง */}
             <text x={label.x} y={label.y} textAnchor={label.anchor}
               className={`live-player-label${focused ? " selected" : ""}`}
-              style={{ ...halo(z.name), fill: "#f8fafc" }}>
+              style={{ ...halo(liveNameSize), fill: "#f8fafc" }}>
               {label.text}
               <title>{p.name}</title>
             </text>
             {p.activeWeapon && <WeaponIcon name={p.activeWeapon}
-              x={label.anchor === "end" ? label.x - z.name * 1.55 : label.x + z.name * .25}
-              y={label.y + z.name * .2} width={z.name * 1.3} height={z.name * .48}
+              x={label.x + liveNameSize * .25}
+              y={label.y + liveNameSize * .2} width={liveNameSize * 1.3} height={liveNameSize * .48}
               className="live-weapon-icon" />}
           </g>;
         })}
