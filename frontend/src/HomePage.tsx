@@ -5,7 +5,7 @@ import "@fontsource/anuphan/500.css";
 import "@fontsource/anuphan/600.css";
 import { Link } from "react-router-dom";
 import { LangToggle, useT } from "./i18n";
-import radarLines from "./assets/brief-mirage-lines.png";
+import { ThemeToggle } from "./theme";
 
 const COPY = {
   th: {
@@ -91,8 +91,16 @@ function Arrow() {
 }
 
 const players = [
-  ["ct", 21, 68, "1"], ["ct", 28, 61, "2"], ["ct", 38, 72, "3"],
-  ["t", 68, 30, "1"], ["t", 75, 38, "2"], ["t", 61, 43, "3"],
+  { side: "ct", x: 31, y: 72, slot: "1", name: "TeSeS", labelX: -14, labelY: -19 },
+  { side: "ct", x: 28, y: 78, slot: "2", name: "kyousuke", labelX: -46, labelY: 1 },
+  { side: "ct", x: 34, y: 79, slot: "3", name: "NiKo", labelX: -39, labelY: 21 },
+  { side: "ct", x: 32, y: 83, slot: "4", name: "m0NESY", labelX: 26, labelY: 8 },
+  { side: "ct", x: 30, y: 86, slot: "5", name: "karrigan", labelX: -25, labelY: 28 },
+  { side: "t", x: 78, y: 30, slot: "1", name: "FalleN", labelX: -42, labelY: 4 },
+  { side: "t", x: 82, y: 25, slot: "2", name: "YEKINDAR", labelX: -15, labelY: -25 },
+  { side: "t", x: 80, y: 33, slot: "3", name: "molodoy", labelX: -47, labelY: 21 },
+  { side: "t", x: 84, y: 26, slot: "4", name: "yuurih", labelX: -49, labelY: -4 },
+  { side: "t", x: 83, y: 36, slot: "5", name: "KSCERATO", labelX: -7, labelY: 34 },
 ] as const;
 
 export function HomePage() {
@@ -107,6 +115,7 @@ export function HomePage() {
           <a href="#workflow">{c.navFlow}</a>
         </nav>
         <div className="home-actions">
+          <ThemeToggle />
           <LangToggle className="home-lang" />
           <Link className="home-signin" to="/login">{c.signIn}</Link>
         </div>
@@ -127,13 +136,13 @@ export function HomePage() {
             <div className="stage-head"><b>{c.stageRound}</b><span className="stage-live"><i /> LIVE REVIEW</span></div>
             <div className="stage-body">
               <div className="stage-map">
-                <img src={radarLines} alt="" draggable={false} />
-                <svg className="stage-path" viewBox="0 0 100 100" aria-hidden="true">
-                  <path d="M23 67 C36 58 48 49 66 32" /><path d="M31 63 C43 66 55 55 72 39" />
-                </svg>
-                {players.map(([side, x, y, n]) => <span key={`${side}-${n}`} className={`stage-player ${side}`} style={{ left: `${x}%`, top: `${y}%` }}>{n}</span>)}
-                <span className="stage-smoke" style={{ left: "51%", top: "48%" }} />
-                <span className="stage-bomb" style={{ left: "70%", top: "33%" }}>B</span>
+                <img src="/assets/maps/de_mirage.png" alt="Mirage radar" draggable={false} />
+                {players.map(({ side, x, y, slot, name, labelX, labelY }) => (
+                  <span key={`${side}-${slot}`} className="stage-player-wrap" style={{ left: `${x}%`, top: `${y}%` }}>
+                    <span className={`stage-player ${side}`}>{slot}</span>
+                    <span className="stage-player-name" style={{ translate: `${labelX}px ${labelY}px` }}>{name}</span>
+                  </span>
+                ))}
               </div>
               <ol className="stage-timeline">
                 <li><time>00:12</time><i className="ct" />{c.stageUtility}</li>

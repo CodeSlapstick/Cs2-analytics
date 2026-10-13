@@ -16,6 +16,7 @@ import { EconomyPage } from "./EconomyPage";
 import { HomePage } from "./HomePage";
 import { NotFound } from "./utils";
 import { LangProvider, LangToggle, tr, useT } from "./i18n";
+import { ThemeProvider, ThemeToggle } from "./theme";
 import "./styles.css";
 
 // ================================================================================================
@@ -226,6 +227,7 @@ function TopBar() {
           </NavLink>
         ))}
       </nav>
+      <ThemeToggle />
       <LangToggle />
       <UserMenu />
     </header>
@@ -266,7 +268,9 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <QueryClientProvider client={queryClient}>
       <LangProvider>
-        <App />
+        <ThemeProvider>
+          <App />
+        </ThemeProvider>
       </LangProvider>
     </QueryClientProvider>
   </React.StrictMode>,
