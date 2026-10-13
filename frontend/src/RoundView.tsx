@@ -28,6 +28,7 @@ import { useT } from "./i18n";
 import { playersAt, type LivePlayer } from "./playback";
 import { effectAt, nadeVisibleAt, projectileAt, projectileTrailAt } from "./grenadePlayback";
 import { EquipmentIcon, UtilityIcon, WeaponIcon } from "./gameIcons";
+import { ReviewNotes } from "./ReviewNotes";
 
 /** แถวที่กดได้ (li ในไทม์ไลน์ / บริบท) — คลิก หรือ Enter / Space จากคีย์บอร์ด */
 const pressable = (fn: () => void) => ({
@@ -383,6 +384,16 @@ export function RoundView({ demo, roundNum, view, setView, roundSelector }: Roun
             onSelect={(o) => setView({ death: o })}
             bombPlantedT={d.round.bomb_planted_t}
             grenades={shownNades}
+          />
+          <ReviewNotes
+            demo={demo}
+            round={roundNum}
+            playbackTime={view.playback ? time : null}
+            onSeek={(noteTime) => {
+              setPlaying(false);
+              setTime(noteTime);
+              setView({ playback: true, time: noteTime });
+            }}
           />
           <RoundSummary summary={d.summary} winner={d.round.winner_side} />
         </aside>
