@@ -477,6 +477,13 @@ export function placeLivePlayerLabels(
   }]));
 }
 
+function playerDirectionPointerPoints(cx: number, cy: number, radius: number, unit: number): string {
+  const baseX = cx + radius - unit;
+  const tipX = cx + radius + 7 * unit;
+  const halfBase = 3.25 * unit;
+  return `${baseX},${cy - halfBase} ${baseX},${cy + halfBase} ${tipX},${cy}`;
+}
+
 interface MapProps {
   radar: NonNullable<RoundDetail["radar"]>;
   deaths: ReviewDeath[];
@@ -837,13 +844,14 @@ export function MapView({ radar, deaths, bomb, bombPlantedT, grenades, damages, 
             <stop offset={`${hpPct}%`} stopColor={playerFill(p.side)} style={{ transition: "offset 0.2s ease" }} />
             <stop offset={`${hpPct}%`} stopColor="#111827" style={{ transition: "offset 0.2s ease" }} />
           </linearGradient>
-          {/* ลำกล้องหมุนตาม yaw ในพิกัดเรดาร์ (แกน Y กลับด้าน) โดยวงและเลขไม่หมุน */}
-          {p.yaw != null && <rect
-            x={p.px[0] + z.dot * .48} y={p.px[1] - z.dot * .18}
-            width={z.dot * .95} height={z.dot * .36} rx={z.dot * .08}
-            fill="#1f2937" stroke="#0b1220" strokeWidth={z.line * .45}
+          {/* สามเหลี่ยมชี้ทิศหมุนรอบจุดกลาง; วงและเลขยังตั้งตรง */}
+          {p.yaw != null && <polygon
+            points={playerDirectionPointerPoints(p.px[0], p.px[1],
+              highlight === p.steamid ? z.dot : z.dot * .9, U)}
+            fill={playerFill(p.side)} stroke="#ffffff" strokeWidth={.8 * U}
+            strokeLinejoin="round"
             transform={`rotate(${-p.yaw} ${p.px[0]} ${p.px[1]})`}
-            pointerEvents="none" data-testid="player-gun-barrel" />}
+            pointerEvents="none" data-testid="player-direction-pointer" />}
           <circle
             cx={p.px[0]}
             cy={p.px[1]}

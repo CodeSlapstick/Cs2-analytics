@@ -80,7 +80,11 @@ describe("defuse map effect", () => {
       onView: vi.fn(), highlight: null, selected: null, onSelect: vi.fn() };
     const { rerender } = render(<LangProvider><MapView {...props} defusingPlayer={player} /></LangProvider>);
     const effect = screen.getByTestId("defuse-effect");
-    expect(screen.getByTestId("player-gun-barrel").getAttribute("transform")).toBe("rotate(-90 100 100)");
+    const pointer = screen.getByTestId("player-direction-pointer");
+    expect(pointer.tagName.toLowerCase()).toBe("polygon");
+    expect(pointer.getAttribute("points")).toBe("109.8,96.75 109.8,103.25 117.8,100");
+    expect(pointer.getAttribute("transform")).toBe("rotate(-90 100 100)");
+    expect(screen.queryByTestId("player-gun-barrel")).toBeNull();
     expect(screen.getByTestId("live-player").querySelector(".slot-num")?.getAttribute("transform")).toBeNull();
     expect(effect.querySelector("line")?.getAttribute("stroke")).toBe("#38bdf8");
     expect(effect.querySelector("circle")).toBeTruthy();
