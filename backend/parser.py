@@ -93,7 +93,7 @@ ROOT = Path(__file__).resolve().parent.parent
 DEMO_DIR = ROOT / "demos"
 OUT_DIR = ROOT / "output" / "json"
 
-SCHEMA_VERSION = 8      # เพิ่มเวลาตาบอดคงเหลือใน position snapshots; JSON รุ่นเก่าต้อง parse ใหม่
+SCHEMA_VERSION = 9      # เพิ่ม has_kit ในช่วงกู้บอมบ์; JSON รุ่นเก่าต้อง parse ใหม่
 POSITION_SAMPLE_HZ = 8  # ปรับความถี่ replay ได้จากจุดเดียว; tick จริงคำนวณจาก tickrate ของเดโม
 
 # ชื่อไฟล์เดโมจาก HLTV มีแบบแผน "ทีมA-vs-ทีมB-แมพ.dem" -> แกะชื่อทีมจากชื่อไฟล์
@@ -180,16 +180,21 @@ def _round_table(dem) -> pl.DataFrame:
 
 def _defuse_intervals(events: dict[str, pl.DataFrame], rounds: list[dict]) -> dict[int, list[dict]]:
     """Pair real begin/abort/completion events; never guess a missing start time."""
+    def has_kit(value: object) -> bool:
+        if isinstance(value, str):
+            return value.strip().lower() in {"true", "1", "yes"}
+        return value is True or value == 1
+
     names = ("bomb_begindefuse", "bomb_abortdefuse", "bomb_defused")
     timeline = sorted(
-        ((int(row["tick"]), name, str(row["user_steamid"]))
+        ((int(row["tick"]), name, str(row["user_steamid"]), has_kit(row.get("haskit")))
          for name in names for row in events.get(name, pl.DataFrame()).iter_rows(named=True)
          if row.get("tick") is not None and row.get("user_steamid") is not None),
         key=lambda item: item[0],
     )
-    active: dict[tuple[int, str], int] = {}
+    active: dict[tuple[int, str], tuple[int, bool]] = {}
     intervals: dict[int, list[dict]] = {}
-    for tick, name, steamid in timeline:
+    for tick, name, steamid, haskit in timeline:
         rnd = next((r for r in rounds if r["start_tick"] is not None and r["end_tick"] is not None
                     and r["start_tick"] <= tick <= r["end_tick"]
                     and r.get("bomb_plant_tick") is not None and r["bomb_plant_tick"] <= tick), None)
@@ -197,12 +202,13 @@ def _defuse_intervals(events: dict[str, pl.DataFrame], rounds: list[dict]) -> di
             continue
         key = (int(rnd["round_num"]), steamid)
         if name == "bomb_begindefuse":
-            active[key] = tick
+            active[key] = (tick, haskit)
         else:
-            start = active.pop(key, None)
-            if start is not None and tick > start:
+            previous = active.pop(key, None)
+            if previous is not None and tick > previous[0]:
+                start, kit = previous
                 intervals.setdefault(key[0], []).append({"start_tick": start, "end_tick": tick,
-                                                           "steam_id": steamid})
+                                                           "steam_id": steamid, "has_kit": kit})
     return intervals
 
 
@@ -361,23 +367,40 @@ def _position_table(all_ticks: pl.DataFrame, pos_want: dict[int, int]) -> pl.Dat
 
 def _add_flash_remaining(positions: pl.DataFrame, blinds: pl.DataFrame | None, tickrate: int) -> pl.DataFrame:
     """คำนวณเวลาตาบอดคงเหลือจาก player_blind เพราะ flash_duration ใน tick ไม่ได้นับถอยหลัง"""
-    # เดโมที่ไม่มี player_blind อาจไม่มี key นี้เลย; ให้ทุก snapshot ไม่ติดแฟลช
-    if positions.is_empty() or blinds is None or blinds.is_empty() or tickrate <= 0:
-        return positions.with_columns(pl.lit(0.0, pl.Float32).alias("flash_remaining"))
+    original_columns = [name for name in positions.columns if name != "flash_remaining"]
+    base = positions.select(original_columns)
+    zero = lambda: base.with_columns(pl.lit(0.0, pl.Float32).alias("flash_remaining"))
+    victim_candidates = ("user_steamid", "victim_steamid", "target_steamid", "steam_id", "user_steam_id")
+    victim_column = next((name for name in victim_candidates if blinds is not None and name in blinds.columns), None)
+    if (base.is_empty() or blinds is None or blinds.is_empty() or tickrate <= 0
+            or not {"steam_id", "tick"}.issubset(base.columns)
+            or not {"tick", "blind_duration"}.issubset(blinds.columns) or victim_column is None):
+        return zero()
+
+    # เรียงตามผู้เล่นและ tick ทั้งสองฝั่งก่อน join แล้วคืนลำดับ/คอลัมน์เดิมภายหลัง
+    snapshots = (base.with_row_index("__flash_row")
+                 .with_columns(
+                     pl.col("steam_id").cast(pl.Int64, strict=False).alias("__flash_steam_id"),
+                     pl.col("tick").cast(pl.Int64, strict=False).alias("__flash_tick"),
+                 ).sort(["__flash_steam_id", "__flash_tick"]))
     events = (blinds.select(
-        pl.col("user_steamid").cast(pl.Int64).alias("steam_id"),
-        pl.col("tick").cast(pl.Int32).alias("blind_tick"),
-        pl.col("blind_duration").cast(pl.Float32).alias("blind_duration"),
-    ).drop_nulls().filter(pl.col("blind_duration") > 0).sort("blind_tick"))
+        pl.col(victim_column).cast(pl.Int64, strict=False).alias("__flash_steam_id"),
+        pl.col("tick").cast(pl.Int64, strict=False).alias("__blind_tick"),
+        pl.col("blind_duration").cast(pl.Float32, strict=False).alias("__blind_duration"),
+    ).drop_nulls().filter(pl.col("__blind_duration").is_finite() & (pl.col("__blind_duration") > 0))
+        .sort(["__flash_steam_id", "__blind_tick"]))
     if events.is_empty():
-        return positions.with_columns(pl.lit(0.0, pl.Float32).alias("flash_remaining"))
-    return (positions.sort("tick")
-            .join_asof(events, left_on="tick", right_on="blind_tick", by="steam_id",
-                       strategy="backward", check_sortedness=False)
-            .with_columns((pl.col("blind_duration") - (pl.col("tick") - pl.col("blind_tick")) / tickrate)
-                          .fill_null(0).clip(lower_bound=0).cast(pl.Float32).alias("flash_remaining"))
-            .drop("blind_tick", "blind_duration")
-            .sort(["round_num", "tick", "steam_id"]))
+        return zero()
+
+    elapsed = (pl.col("__flash_tick") - pl.col("__blind_tick")) / tickrate
+    return (snapshots.join_asof(
+        events, left_on="__flash_tick", right_on="__blind_tick",
+        by="__flash_steam_id", strategy="backward", check_sortedness=False,
+    ).with_columns(
+        pl.when((elapsed >= 0) & (elapsed <= pl.col("__blind_duration")))
+        .then(pl.col("__blind_duration") - elapsed).otherwise(0.0)
+        .fill_null(0.0).cast(pl.Float32).alias("flash_remaining")
+    ).sort("__flash_row").select([*original_columns, "flash_remaining"]))
 
 
 def _grenade_rows(dem, tickrate: int) -> list[dict]:
@@ -435,7 +458,7 @@ def _player_table(dem, at_start: pl.DataFrame) -> pl.DataFrame:
 def parse_demo(path: Path) -> dict:
     """อ่านเดโมหนึ่งไฟล์ คืน dict โครง normalized พร้อม json.dumps"""
     dem = Demo(path)
-    dem.events = dem.parse_events([*EVENTS, "player_hurt"], player_props=PLAYER_PROPS)
+    dem.events = dem.parse_events([*EVENTS, "player_hurt", "player_blind"], player_props=PLAYER_PROPS)
     dem.rounds = create_round_df(dem.events)
     tickrate = int(dem.tickrate)
 

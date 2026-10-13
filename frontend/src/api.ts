@@ -129,6 +129,13 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 export type Side = "ct" | "t";
 export type Px = [number, number];
 
+export interface ReviewDefuse {
+  steamid: string;
+  start_t: number;
+  end_t: number;
+  has_kit?: boolean | null; // null for older parsed rounds
+}
+
 export interface ReviewPerson {
   steamid: string;
   name: string;
@@ -251,7 +258,7 @@ export interface RoundDetail {
     bomb: { x: number; y: number; px: Px | null; site: string | null } | null;
     duration?: number | null;
     latest_event_t?: number | null;
-    defuses?: { steamid: string; start_t: number; end_t: number }[];
+    defuses?: ReviewDefuse[];
   };
   radar: { image: string; size: number; map: string } | null;
   grid: { source: GridSource; ct_win_overall: number; min_kills: number } | null;

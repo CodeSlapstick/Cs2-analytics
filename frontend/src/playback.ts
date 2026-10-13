@@ -1,4 +1,42 @@
-import type { RoundDetail, RoundPositions } from "./api";
+import type { ReviewDefuse, RoundDetail, RoundPositions } from "./api";
+
+/** ช่วงสำเร็จยึด tick ที่บอมบ์ถูกกู้; ช่วงยกเลิกหยุดทันทีที่ end_t */
+export function defuseAt(
+  events: ReviewDefuse[] | undefined, time: number, resolvedT: number | null | undefined,
+  endReason: string | null, tickrate: number,
+): { event: ReviewDefuse; completed: boolean } | null {
+  if (!events?.length) return null;
+  const tolerance = tickrate > 0 ? 2 / tickrate : .05;
+  const completedEvent = endReason === "bomb_defused"
+    ? resolvedT != null
+      ? events.find((event) => Math.abs(event.end_t - resolvedT) <= tolerance)
+      : events.reduce((latest, event) => event.end_t > latest.end_t ? event : latest)
+    : null;
+  const active = events.find((event) => event.start_t <= time && time < event.end_t);
+  if (active) return { event: active, completed: active === completedEvent };
+  // แสดง 0.0s สั้น ๆ หลังสำเร็จเพื่อให้เห็นวงเต็ม แม้ requestAnimationFrame ข้าม tick สุดท้าย
+  if (completedEvent && completedEvent.end_t <= time && time < completedEvent.end_t + .2) {
+    return { event: completedEvent, completed: true };
+  }
+  return null;
+}
+
+/** ใช้เวลาสำเร็จจริงแก้ข้อมูลคิทที่ขาด/ขัดกัน โดยไม่เดาคิทจากการกู้ที่ยกเลิกเร็ว */
+export function defuseHasKit(event: ReviewDefuse, completed: boolean, playerHasDefuser: boolean | null | undefined): boolean {
+  const actualDuration = event.end_t - event.start_t;
+  if (completed && actualDuration > 0 && actualDuration <= 5.5) return true;
+  if (completed && actualDuration >= 8) return false;
+  return event.has_kit ?? playerHasDefuser ?? false;
+}
+
+/** ค่าเดียวกันสำหรับ HUD และวงบนแผนที่; การกู้สำเร็จจบที่ end_t จริงของเดโม */
+export function defuseCountdown(event: ReviewDefuse, time: number, hasKit: boolean, completed = false) {
+  const duration = hasKit ? 5 : 10;
+  const actualDuration = event.end_t - event.start_t;
+  const elapsed = Math.max(0, time - event.start_t);
+  const progress = Math.min(1, elapsed / (completed && actualDuration > 0 ? actualDuration : duration));
+  return { duration, remaining: duration * (1 - progress), progress };
+}
 
 export interface LivePlayer {
   steamid: string;

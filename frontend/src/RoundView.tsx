@@ -26,7 +26,7 @@ import {
   weaponLabel,
 } from "./utils";
 import { useT } from "./i18n";
-import { activeDamageTracers, playersAt, resolveDamageTracers, type LivePlayer } from "./playback";
+import { activeDamageTracers, defuseAt, defuseCountdown, defuseHasKit, playersAt, resolveDamageTracers, type LivePlayer } from "./playback";
 import { effectAt, nadeVisibleAt, projectileAt, projectileTrailAt } from "./grenadePlayback";
 import { EquipmentIcon, UtilityIcon, WeaponIcon } from "./gameIcons";
 
@@ -158,8 +158,16 @@ export function RoundView({ demo, roundNum, view, setView, roundSelector }: Roun
   const deadIds = new Set(d.deaths.filter((death) => death.t_round != null && death.t_round >= 0 && death.t_round <= time)
     .map((death) => death.victim.steamid));
   const live = view.playback && pos ? playersAt(pos, time, roster).filter((player) => !deadIds.has(player.steamid)) : null;
-  const activeDefuse = view.playback ? d.round.defuses?.find((event) => event.start_t <= time && time < event.end_t) : null;
+  const defuseState = view.playback
+    ? defuseAt(d.round.defuses, time, d.round.bomb_resolved_t, d.round.end_reason, d.match.tickrate) : null;
+  const activeDefuse = defuseState?.event ?? null;
   const defusingPlayer = activeDefuse ? live?.find((player) => player.steamid === activeDefuse.steamid && player.side === "ct") : null;
+  const hasKit = activeDefuse
+    ? defuseHasKit(activeDefuse, defuseState?.completed ?? false, defusingPlayer?.hasDefuser) : false;
+  const defuseTimer = activeDefuse
+    ? defuseCountdown(activeDefuse, time, hasKit, defuseState?.completed) : null;
+  const defuseRemaining = defuseTimer?.remaining ?? null;
+  const defuseProgressPercent = defuseTimer ? defuseTimer.progress * 100 : null;
   // บางรอบในเดโมมีการตายที่บันทึกไว้ก่อนรอบเริ่ม (t_round ติดลบ — ส่วนใหญ่คือตกที่สูงตอนสลับรอบ)
   // โหมดเล่นย้อนนับเฉพาะการตายที่อยู่ในช่วงเวลาของรอบจริง ไม่งั้นคนคนเดียวจะโผล่ทั้งแบบยังไม่ตายและตายแล้วพร้อมกัน
   // (การตายเหล่านั้นยังอยู่ครบในแผนที่ปกติและในไทม์ไลน์ ไม่ได้ถูกซ่อนจากผู้ใช้)
@@ -247,6 +255,8 @@ export function RoundView({ demo, roundNum, view, setView, roundSelector }: Roun
                 </span>
               </div>
             )}
+            {defuseRemaining != null && defuseProgressPercent != null &&
+              <DefuseHud remaining={defuseRemaining} progressPercent={defuseProgressPercent} />}
             <div className="map-zoom" role="group" aria-label={t("ซูมแผนที่")}>
               <button type="button" onClick={() => {
                 const next = clampZoom(view.zoom * 1.4);
@@ -273,6 +283,7 @@ export function RoundView({ demo, roundNum, view, setView, roundSelector }: Roun
                 radar={d.radar}
                 deaths={shownDeaths}
                 bomb={shownBomb}
+                defuseBombPx={d.round.bomb?.px}
                 bombPlantedT={plantT}
                 grenades={shownNades}
                 damages={d.damages}
@@ -281,6 +292,7 @@ export function RoundView({ demo, roundNum, view, setView, roundSelector }: Roun
                 tickrate={d.match.tickrate}
                 live={live}
                 defusingPlayer={defusingPlayer}
+                defuseProgressPercent={defuseProgressPercent}
                 playbackTime={view.playback ? time : null}
                 reducedMotion={reducedMotion}
                 zoom={view.zoom}
@@ -488,6 +500,7 @@ interface MapProps {
   radar: NonNullable<RoundDetail["radar"]>;
   deaths: ReviewDeath[];
   bomb: RoundDetail["round"]["bomb"];
+  defuseBombPx?: [number, number] | null;
   bombPlantedT: number | null;
   grenades: ReviewGrenade[];
   damages?: RoundDetail["damages"];
@@ -496,6 +509,7 @@ interface MapProps {
   tickrate?: number;
   live?: LivePlayer[] | null; // โหมดเล่นย้อน: คนที่ยังไม่ตาย ณ วินาทีที่ดู (null = ปิดโหมด)
   defusingPlayer?: LivePlayer | null;
+  defuseProgressPercent?: number | null;
   playbackTime: number | null;
   reducedMotion: boolean;
   onHover?: (steamid: string | null) => void; // ชี้เมาส์ที่ตัวผู้เล่น -> ไฮไลต์แถวในตารางข้างแผนที่
@@ -505,6 +519,17 @@ interface MapProps {
   highlight: string | null; // steamid ที่ถูกกดในรายชื่อ
   selected: number | null; // ลำดับการตายที่ถูกเลือก
   onSelect: (order: number | null) => void;
+}
+
+export function DefuseHud({ remaining, progressPercent }: { remaining: number; progressPercent: number }) {
+  return <div className="defuse-hud" data-testid="defuse-countdown"
+    aria-label={`Defuse ${remaining.toFixed(1)}s`}>
+    <EquipmentIcon kind="defuser" className="defuse-hud-icon" />
+    <span className="defuse-hud-time">{remaining.toFixed(1)}s</span>
+    <span className="defuse-hud-track" aria-hidden="true">
+      <span style={{ width: `${progressPercent}%` }} />
+    </span>
+  </div>;
 }
 
 export function PlantedBomb({ x, y, radius, site, plantTime, playbackTime, label }: {
@@ -586,8 +611,8 @@ function clampRadarCenter(center: [number, number] | null, size: number, zoom: n
  * โหมดเล่นย้อน (prop live) เพิ่มตัวผู้เล่น ณ วินาทีที่ดู — ไม่มีเส้นทางเดินย้อนหลัง
  * เลือกการตายแล้ว ระเบิดที่แสดงเหลือเฉพาะลูกที่มีผลอยู่ ณ วินาทีนั้น (ควัน/ไฟที่ยังไม่หมด แฟลช/HE ที่เพิ่งแตก)
  */
-export function MapView({ radar, deaths, bomb, bombPlantedT, grenades, damages, positions, startTick, tickrate,
-                          live, defusingPlayer, playbackTime, reducedMotion,
+export function MapView({ radar, deaths, bomb, defuseBombPx, bombPlantedT, grenades, damages, positions, startTick, tickrate,
+                          live, defusingPlayer, defuseProgressPercent, playbackTime, reducedMotion,
                           zoom, center, onView, highlight, onHover, selected, onSelect }: MapProps) {
   const s = radar.size;
   // ---- ซูม/เลื่อนดู: viewBox คือกรอบที่มองอยู่ · เก็บบน URL เพื่อให้รีเฟรช/แชร์ลิงก์แล้วเห็นกรอบเดิม
@@ -605,6 +630,7 @@ export function MapView({ radar, deaths, bomb, bombPlantedT, grenades, damages, 
   const activeTracers = playbackTime != null && startTick != null && tickrate
     ? activeDamageTracers(resolvedTracers, startTick + playbackTime * tickrate,
       Math.min(5, Math.max(3, Math.round(tickrate * .1)))) : [];
+  const defuseTarget = defuseBombPx ?? bomb?.px;
 
   /** พิกัดบนจอ -> พิกัดในภาพเรดาร์ (ใช้ตอนซูมที่ตำแหน่งเมาส์) */
   const toMap = (clientX: number, clientY: number) => {
@@ -714,14 +740,19 @@ export function MapView({ radar, deaths, bomb, bombPlantedT, grenades, damages, 
     >
       <image href={radar.image} x={0} y={0} width={s} height={s} />
 
-      {/* ช่วงที่ CT กำลังกู้บอมบ์ เส้นประเชื่อมผู้เล่นกับ C4 และวงแสงเต้นรอบทั้งสองตำแหน่ง */}
-      {bomb?.px && defusingPlayer && (
+      {/* กู้บอมบ์: วงสีน้ำเงินเติมตามเวลาที่ผ่านไป และเส้นประเชื่อม CT กับ C4 */}
+      {defuseTarget && defuseProgressPercent != null && (
         <g pointerEvents="none" data-testid="defuse-effect">
-          <line x1={defusingPlayer.px[0]} y1={defusingPlayer.px[1]} x2={bomb.px[0]} y2={bomb.px[1]}
+          {defusingPlayer && <line x1={defusingPlayer.px[0]} y1={defusingPlayer.px[1]} x2={defuseTarget[0]} y2={defuseTarget[1]}
             stroke="#38bdf8" strokeWidth={z.line} strokeDasharray={`${4 * U} ${2 * U}`}
-            className={reducedMotion ? undefined : "defuse-beam"} />
-          <circle cx={bomb.px[0]} cy={bomb.px[1]} r={z.bomb * 1.9} fill="none"
-            stroke="#7dd3fc" strokeWidth={z.line} className={reducedMotion ? undefined : "defuse-ring"} />
+            className={reducedMotion ? undefined : "defuse-beam"} />}
+          <circle cx={defuseTarget[0]} cy={defuseTarget[1]} r={z.bomb * 2.05} fill="none"
+            stroke="rgba(56, 189, 248, .22)" strokeWidth={z.line * 1.1} />
+          <circle cx={defuseTarget[0]} cy={defuseTarget[1]} r={z.bomb * 2.05} fill="none"
+            stroke="#38bdf8" strokeWidth={z.line * 1.1} strokeLinecap="round"
+            strokeDasharray={2 * Math.PI * z.bomb * 2.05}
+            strokeDashoffset={2 * Math.PI * z.bomb * 2.05 * (1 - defuseProgressPercent / 100)}
+            transform={`rotate(-90 ${defuseTarget[0]} ${defuseTarget[1]})`} data-testid="defuse-timer-ring" />
         </g>
       )}
 
@@ -835,10 +866,6 @@ export function MapView({ radar, deaths, bomb, bombPlantedT, grenades, damages, 
           role="img"
           aria-label={`${p.name}, ${p.hp} HP`}
         >
-          {defusingPlayer?.steamid === p.steamid && (
-            <circle cx={p.px[0]} cy={p.px[1]} r={z.dot * 1.5} fill="none" stroke="#7dd3fc"
-              strokeWidth={z.line} pointerEvents="none" className={reducedMotion ? undefined : "defuse-ring"} />
-          )}
           {/* SVG linear-gradient แทนระดับ HP ที่เติมจากล่างขึ้นบน จึงไม่ต้องเพิ่มแถบเลือดบนแผนที่ */}
           <linearGradient id={fillId} x1="0%" y1="100%" x2="0%" y2="0%">
             <stop offset={`${hpPct}%`} stopColor={playerFill(p.side)} style={{ transition: "offset 0.2s ease" }} />
