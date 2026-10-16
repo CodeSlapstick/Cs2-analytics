@@ -30,6 +30,7 @@ import { activeDamageTracers, defuseAt, defuseCountdown, defuseHasKit, playersAt
 import { effectAt, nadeVisibleAt, projectileAt, projectileTrailAt } from "./grenadePlayback";
 import { EquipmentIcon, UtilityIcon, WeaponIcon } from "./gameIcons";
 import { ReviewNotes } from "./ReviewNotes";
+import { RoundExportButton } from "./RoundExport";
 
 /** แถวที่กดได้ (li ในไทม์ไลน์ / บริบท) — คลิก หรือ Enter / Space จากคีย์บอร์ด */
 const pressable = (fn: () => void) => ({
@@ -222,6 +223,7 @@ export function RoundView({ demo, roundNum, view, setView, roundSelector }: Roun
             </button>
             {anyNadeOn && view.death != null && <span className="muted">· {t("เฉพาะที่มีผลตอนการตาย #{n}", { n: view.death })}</span>}
           </span>
+          <RoundExportButton data={d} />
         </div>
       </div>
 

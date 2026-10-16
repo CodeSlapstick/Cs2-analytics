@@ -9,7 +9,6 @@ import { MatchPage } from "./MatchPage";
 import { RoundPage } from "./RoundPage";
 import { PlayerPage } from "./PlayerPage";
 import { AnalysisPage } from "./AnalysisPage";
-import { OpeningRoutePage } from "./OpeningRoutePage";
 import { CoachPage } from "./CoachPage";
 import { HeatmapPage } from "./HeatmapPage";
 import { EconomyPage } from "./EconomyPage";
@@ -181,7 +180,6 @@ const NAV = [
   { to: "/player", label: "สถิติของฉัน", end: false, steamOnly: true },
   { to: "/matches", label: "แมตช์", end: false, steamOnly: false },
   { to: "/analysis", label: "เครื่องมือวิเคราะห์", end: false, steamOnly: false },
-  { to: "/opening-route", label: "Opening Route", end: false, steamOnly: false },
   { to: "/coach", label: "Coach", end: false, steamOnly: false },
 ];
 
@@ -252,7 +250,7 @@ function App() {
             <Route path="/matches/:demo/heatmap" element={<HeatmapPage />} />
             <Route path="/matches/:demo/economy" element={<EconomyPage />} />
             <Route path="/analysis" element={<AnalysisPage />} />
-            <Route path="/opening-route" element={<OpeningRoutePage />} />
+            <Route path="/opening-route" element={<Navigate to="/analysis?tool=opening-route" replace />} />
             <Route path="/coach" element={<CoachPage />} />
             <Route path="/player" element={<PlayerPage />} />
             <Route path="/player/:steamId" element={<PlayerPage />} />

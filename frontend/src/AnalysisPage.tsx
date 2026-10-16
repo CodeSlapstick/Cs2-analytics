@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import {
   api,
   type DeathCellCount,
@@ -27,13 +27,14 @@ import {
 import { useT } from "./i18n";
 import { PlayerIcon } from "./icons/player-icon";
 import { DatabaseSearchIcon } from "./icons/database-search-icon";
+import { OpeningRoutePage } from "./OpeningRoutePage";
+import { AnalysisReportExport } from "./AnalysisReportExport";
 
 /**
- * หน้าเครื่องมือวิเคราะห์ — สามคำถามเกี่ยวกับแมตช์ของทีมตัวเอง
+ * หน้าเครื่องมือวิเคราะห์ — รวมเครื่องมือทบทวนแมตช์ของทีมไว้ในหน้าเดียว
  *
  *   ทีมเราตายตรงไหน    จุดตายในแมตช์ที่อัปโหลด นับลงกริด 32×32
- *   เทียบกับทีมอาชีพ    ช่องไหนเราตายบ่อยกว่าชุดอ้างอิง (คิดเป็นสัดส่วน)
- *   อ่านทางเราออกไหม   ทายไซต์ที่ทีมจะเข้าจากตำแหน่งที่ยืน แล้วดูว่าอ่านออกเร็วแค่ไหน
+ *   Opening Route       เส้นทางและ Utility ช่วง 30 วินาทีแรกของหลายรอบบนเวลาเดียวกัน
  *
  * ผลจากโมเดลอยู่เฉพาะหน้า Analysis และต้องบอกแหล่งที่มา/ข้อจำกัดชัดเจน
  * หน้า Round Review ยังคงแสดงข้อเท็จจริงจากเดโมเท่านั้น
@@ -41,11 +42,10 @@ import { DatabaseSearchIcon } from "./icons/database-search-icon";
  * ประเด็นสำคัญ: เดโมที่ผู้ใช้อัปโหลดไม่เคยถูกใช้เทรนโมเดล (คนละโฟลเดอร์ คนละ source ในฐานข้อมูล)
  * หน้านี้จึงเป็นการ "วัดของเราเทียบกับชุดอ้างอิง" ไม่ใช่การเอาข้อมูลตัวเองไปสอนแล้ววัดกับตัวเอง
  */
-type Mode = "upload" | "diff" | "read";
+type Mode = "upload" | "diff" | "read" | "opening";
 type Side = "all" | "ct" | "t";
 
-// สามโหมดเป็นแท็บแถวเดียว — ชื่อโหมดอยู่ที่แท็บที่เดียว ใต้แท็บมีประโยคเดียวบอกว่าโหมดนี้ตอบคำถามอะไร
-// (เดิมชื่อโหมดโผล่สองที่: หัวเรื่องใหญ่ + การ์ดปุ่ม และคำอธิบายซ้ำกันสองชั้น)
+// เครื่องมือเป็นแท็บแถวเดียว ชื่ออยู่ที่แท็บที่เดียว และมีประโยคสั้นใต้แท็บบอกหน้าที่ของเครื่องมือนั้น
 const MODES: { key: Mode; label: string; blurb: string }[] = [
   {
     key: "upload",
@@ -53,14 +53,9 @@ const MODES: { key: Mode; label: string; blurb: string }[] = [
     blurb: "จุดที่ผู้เล่นในแมตช์ของทีมตาย ยิ่งแดงเข้มยิ่งตายบ่อย — เลือกฝั่ง รอบ หรือผู้เล่นได้จากแผงซ้าย",
   },
   {
-    key: "diff",
-    label: "เทียบกับทีมอาชีพ",
-    blurb: "ตรงไหนที่ทีมเราเสียคนบ่อยกว่าทีมอาชีพ เทียบเป็นสัดส่วนของจุดตายทั้งหมด เพราะสองชุดมีจำนวนแมตช์ไม่เท่ากัน",
-  },
-  {
-    key: "read",
-    label: "อ่านทางเราออกไหม",
-    blurb: "ดูจากตำแหน่งผู้เล่นฝั่ง T ทีละวินาที ว่าเดาได้เร็วแค่ไหนว่าทีมจะเข้าไซต์ไหน — เดาออกเร็ว คู่แข่งที่ดูเทปก็อ่านทางออกเร็ว",
+    key: "opening",
+    label: "Opening Route",
+    blurb: "เปรียบเทียบเส้นทางและ Utility ของผู้เล่นใน 30 วินาทีแรกของหลายรอบบน radar เดียวกัน",
   },
 ];
 const SIDES: { key: Side; label: string }[] = [
@@ -71,7 +66,17 @@ const SIDES: { key: Side; label: string }[] = [
 
 export function AnalysisPage() {
   const { t } = useT();
-  const [mode, setMode] = useState<Mode>("upload");
+  const [params, setParams] = useSearchParams();
+  const [mode, setModeState] = useState<Mode>(() => params.get("tool") === "opening-route" ? "opening" : "upload");
+  function setMode(nextMode: Mode) {
+    setModeState(nextMode);
+    const next = new URLSearchParams(params);
+    if (nextMode === "opening") next.set("tool", "opening-route");
+    else {
+      for (const key of ["tool", "player", "map", "side", "scope"]) next.delete(key);
+    }
+    setParams(next, { replace: true });
+  }
   const [side, setSide] = useState<Side>("all");
   const [demo, setDemo] = useState<string>(""); // "" = ทุกแมตช์ที่อัปโหลด
   // ชี้เมาส์ที่แถวในตาราง (หรือช่องบนแผนที่) = ไฮไลต์อีกฝั่งให้เห็นทันที — คีย์เดียวกับที่ groupByPlace() ใช้จัดกลุ่ม
@@ -152,6 +157,25 @@ export function AnalysisPage() {
   // สลับโหมด/แมพ/ฝั่ง/แมตช์ = ชุดข้อมูลเปลี่ยน คีย์ที่ค้างไฮไลต์ไว้จากชุดก่อนหน้าจึงไม่มีความหมายแล้ว
   useEffect(() => setHovered(null), [mode, activeMap, side, demo]);
 
+  if (mode === "opening") {
+    const copy = MODES.find((m) => m.key === mode)!;
+    return (
+      <div className="analysis" data-testid="analysis-page">
+        <header className="an-head">
+          <h1>{t("เครื่องมือวิเคราะห์")}</h1>
+          <div className="an-tabs" role="tablist" aria-label={t("สิ่งที่ดู")}>{MODES.map((m) => (
+            <button key={m.key} type="button" role="tab" className={`an-tab${mode === m.key ? " on" : ""}`}
+              aria-selected={mode === m.key} onClick={() => setMode(m.key)} data-testid={`mode-${m.key}`}>
+              {t(m.label)}
+            </button>
+          ))}</div>
+          <p className="muted an-blurb">{t(copy.blurb)}</p>
+        </header>
+        <OpeningRoutePage embedded />
+      </div>
+    );
+  }
+
   if (matches.isLoading || referenceMaps.isLoading) return <p className="muted">{t("กำลังโหลด…")}</p>;
   if (matches.error || referenceMaps.error) return <p className="err">{t("โหลดรายการแมตช์ไม่ได้: {msg}", { msg: ((matches.error ?? referenceMaps.error) as Error).message })}</p>;
   if (maps.length === 0) return <NothingToCompare done={done} referenceMaps={referenceMaps.data ?? []} />;
@@ -204,6 +228,16 @@ export function AnalysisPage() {
           </select>
         </label>
       </div>
+
+      <AnalysisReportExport
+        match={activeMatch}
+        heatmap={activeMatch && upload.data?.demo === activeMatch.demo_file ? upload.data : undefined}
+        behavior={activeMatch && behaviorQ.data?.demo === activeMatch.demo_file ? behaviorQ.data : undefined}
+        scoreboard={activeMatch ? roster.data?.scoreboard : undefined}
+        side={side}
+        selectedRounds={selRounds}
+        selectedPlayers={selPlayers}
+      />
 
       {error && <p className="err">{t("โหลดข้อมูลไม่ได้: {msg}", { msg: error.message })}</p>}
       {loading && <p className="muted">{mode === "read" ? t("กำลังอ่านทีละรอบ…") : t("กำลังนับจุดตาย…")}</p>}

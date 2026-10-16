@@ -253,6 +253,8 @@ Solid, weighty, one per view.
 - **Form plate:** Slate Plate, 1px Steel Rule border, 6px corners, plate-lift shadow, orange corner brackets. One per view.
 - **Stat chip:** 78% Slate Plate over the briefing, 1px steel border, 4px corners, a tabular numeral over a muted caption, min 132px wide.
 - **Operate panel:** Field Well or Slate Plate with a 1px Steel Rule border and 6px corners. Use compact internal spacing and tonal separation; reserve decorative brackets and strong lift for a view's primary plate.
+- **Round PNG report:** A fixed 1200px tactical document generated from Round Review. It carries the real radar, event markers, a ruled stat band, key facts, rosters, and the death timeline; controls and transient UI chrome never appear in the export.
+- **Full analysis report:** A fixed four-page A4-proportioned tactical document generated from Analysis for one selected match. Pages are Overview, Death Heatmap, Economy, and Tactic & Player Stats. PNG exports the complete vertical document; PDF preserves the four-page structure. The orange-bracket export panel is the sole primary action on Analysis, while PDF is a quieter secondary action.
 
 ### Inputs / Fields
 - **Style:** 54px Field Well box, 1px steel border, 4px corners, leading 20px line icon in muted steel, Chakra Petch label above (8px gap). Autofill is painted back to the well color.
@@ -263,6 +265,7 @@ Solid, weighty, one per view.
 ### Navigation
 - **Links:** Anuphan 600 15px in Reticle Cyan, underline on hover (3px offset). The quiet variant is 14px 500 muted steel and brightens to white on hover or when expanded.
 - **Inline note:** disclosed help appears as a 6% cyan-tinted block with a 28% cyan border, 4px corners, fading down 4px in.
+- **Analysis ownership:** Opening Route lives as a tab inside `/analysis`, beside "ทีมเราตายตรงไหน". It is not a separate top-level navigation item. The comparison and site-readability tabs are intentionally absent.
 
 ### Briefing Radar (signature)
 The real de_mirage radar as a cyan wireframe raster at 80% opacity, masked to a circle and faded toward the text side, overlaid with eight range rings and a crosshair at 14–16% cyan, and a conic sweep rotating every 7s linear. Under `prefers-reduced-motion` the sweep is removed and all entrance animations and transitions are off.

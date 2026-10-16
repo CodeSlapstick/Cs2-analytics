@@ -43,7 +43,7 @@ export function CoachPage() {
       : !coach.data?.available ? <div className="card"><h2>{t("ยังแนะนำ tactic ไม่ได้")}</h2><p>{t(REASONS[coach.data?.reason ?? "model_unavailable"])}</p></div>
       : !round ? <div className="card">{t("ไม่มีรอบที่ตรงกับตัวกรอง")}</div>
       : <>
-        <div className="coach-round-heading"><h2>R{round.round_num} · {side.toUpperCase()}</h2><Link to={`/matches/${encodeURIComponent(match.demo_file)}/rounds/${round.round_num}`}>{t("ดูรอบนี้")}</Link><Link to="/opening-route">Opening Route</Link></div>
+        <div className="coach-round-heading"><h2>R{round.round_num} · {side.toUpperCase()}</h2><Link to={`/matches/${encodeURIComponent(match.demo_file)}/rounds/${round.round_num}`}>{t("ดูรอบนี้")}</Link><Link to="/analysis?tool=opening-route">Opening Route</Link></div>
         {!round.available ? <div className="card"><p>{t(REASONS[round.reason ?? "insufficient_support"])}</p></div> : <>
           {round.experimental && <p className="coach-disclosure">{t("ผลทดสอบยังไม่ดีกว่า baseline จึงใช้สำรวจตัวเลือกเท่านั้น")}</p>}
           <div className="coach-options">{round.options.map((option, index) => <article className="card" key={option.id}>

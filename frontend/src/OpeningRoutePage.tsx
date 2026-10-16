@@ -9,7 +9,7 @@ import "./opening-route.css";
 const TYPES = ["flash", "smoke", "molotov", "he", "decoy"] as const;
 const LABELS = { flash: "Flash", smoke: "Smoke", molotov: "Molotov / Incendiary", he: "HE", decoy: "Decoy" };
 
-export function OpeningRoutePage() {
+export function OpeningRoutePage({ embedded = false }: { embedded?: boolean }) {
   const { t } = useT();
   const [params, setParams] = useSearchParams();
   const catalog = useQuery({ queryKey: ["opening-catalog"], queryFn: api.openingCatalog });
@@ -43,10 +43,10 @@ export function OpeningRoutePage() {
     if (key === "player") next.delete("map");
     setParams(next);
   }
-  return <section className="opening-page">
-    <header className="opening-heading"><h1>Opening Route</h1>
+  return <section className={`opening-page${embedded ? " opening-page-embedded" : ""}`}>
+    {!embedded && <header className="opening-heading"><h1>Opening Route</h1>
       <p className="muted">{t("เปรียบเทียบเส้นทางและ Utility ของผู้เล่นใน 30 วินาทีแรกของหลายรอบบน radar เดียวกัน")}</p>
-    </header>
+    </header>}
     <div className="opening-filters filters card">
       <label>{t("ผู้เล่น")}<select value={player?.id ?? ""} onChange={(e) => change("player", e.target.value)} disabled={!players.length}>
         {!players.length && <option value="">—</option>}
