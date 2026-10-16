@@ -145,15 +145,36 @@ def test_defuse_intervals_use_real_start_abort_and_completion_events():
     from backend.parser import _defuse_intervals
     rounds = [{"round_num": 1, "start_tick": 100, "bomb_plant_tick": 200, "end_tick": 500}]
     events = {
-        "bomb_begindefuse": pl.DataFrame({"tick": [220, 300], "user_steamid": ["42", "42"]}),
+        "bomb_begindefuse": pl.DataFrame({"tick": [220, 300], "user_steamid": ["42", "42"],
+                                           "haskit": [True, False]}),
         "bomb_abortdefuse": pl.DataFrame({"tick": [240], "user_steamid": ["42"]}),
         "bomb_defused": pl.DataFrame({"tick": [330], "user_steamid": ["42"]}),
     }
     assert _defuse_intervals(events, rounds) == {1: [
-        {"steam_id": "42", "start_tick": 220, "end_tick": 240},
-        {"steam_id": "42", "start_tick": 300, "end_tick": 330},
+        {"steam_id": "42", "start_tick": 220, "end_tick": 240, "has_kit": True},
+        {"steam_id": "42", "start_tick": 300, "end_tick": 330, "has_kit": False},
     ]}
     assert _defuse_intervals({"bomb_defused": events["bomb_defused"]}, rounds) == {}
+
+
+def test_defuse_intervals_cover_full_no_kit_defuse_and_fake_tap():
+    import polars as pl
+
+    from backend.parser import _defuse_intervals
+
+    rounds = [{"round_num": 1, "start_tick": 0, "bomb_plant_tick": 100,
+               "end_tick": 2000}]
+    events = {
+        "bomb_begindefuse": pl.DataFrame({"tick": [150, 300],
+                                            "user_steamid": ["42", "42"],
+                                            "haskit": ["true", "false"]}),
+        "bomb_abortdefuse": pl.DataFrame({"tick": [278], "user_steamid": ["42"]}),
+        "bomb_defused": pl.DataFrame({"tick": [1580], "user_steamid": ["42"]}),
+    }
+    assert _defuse_intervals(events, rounds) == {1: [
+        {"steam_id": "42", "start_tick": 150, "end_tick": 278, "has_kit": True},
+        {"steam_id": "42", "start_tick": 300, "end_tick": 1580, "has_kit": False},
+    ]}
 
 
 def test_bomb_resolution_uses_recorded_defuse_or_explosion_tick():

@@ -184,10 +184,20 @@ def test_round_detail_converts_defuse_ticks_for_playback(sample_doc, model, fram
     match, rnd, roster, in_round, kills = as_db_rows(sample_doc, 1)
     start, rate = rnd["start_tick"], match["tickrate"]
     rnd = {**rnd, "defuse_intervals": json.dumps([{"steam_id": "42", "start_tick": start + 10 * rate,
-                                                    "end_tick": start + 15 * rate}])}
+                                                    "end_tick": start + 15 * rate, "has_kit": True}])}
     result = build_round_detail(match=match, rnd=rnd, roster=roster, in_round=in_round,
                                 kills=kills, frame=frame, model=model)
-    assert result["round"]["defuses"] == [{"steamid": "42", "start_t": 10, "end_t": 15}]
+    assert result["round"]["defuses"] == [{"steamid": "42", "start_t": 10, "end_t": 15, "has_kit": True}]
+
+
+def test_round_detail_defaults_legacy_defuse_kit_to_false(sample_doc, model, frame):
+    match, rnd, roster, in_round, kills = as_db_rows(sample_doc, 1)
+    start, rate = rnd["start_tick"], match["tickrate"]
+    rnd = {**rnd, "defuse_intervals": json.dumps([{"steam_id": "42", "start_tick": start + 10 * rate,
+                                                    "end_tick": start + 20 * rate}])}
+    result = build_round_detail(match=match, rnd=rnd, roster=roster, in_round=in_round,
+                                kills=kills, frame=frame, model=model)
+    assert result["round"]["defuses"] == [{"steamid": "42", "start_t": 10, "end_t": 20, "has_kit": False}]
 
 
 def test_round_detail_exposes_bomb_resolution_time(sample_doc, model, frame):

@@ -2,7 +2,7 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
-import { MapView, PlantedBomb, placeLivePlayerLabels, PlaybackDeathMarker, truncatePlayerName } from "./RoundView";
+import { DefuseHud, MapView, PlantedBomb, placeLivePlayerLabels, PlaybackDeathMarker, truncatePlayerName } from "./RoundView";
 import type { ReviewDeath } from "./api";
 import type { LivePlayer } from "./playback";
 import { LangProvider } from "./i18n";
@@ -65,7 +65,7 @@ describe("live player labels", () => {
 });
 
 describe("defuse map effect", () => {
-  it("shows the beam and rings only while a live CT is defusing", () => {
+  it("fills the ring during a kit defuse and removes it at abort", () => {
     vi.stubGlobal("ResizeObserver", class {
       observe() {}
       disconnect() {}
@@ -76,7 +76,8 @@ describe("defuse map effect", () => {
     const props = { radar: { image: "/radar.png", size: 1024, map: "de_ancient" }, deaths: [],
       bomb: { x: 0, y: 0, px: [120, 110] as [number, number], site: "A" }, grenades: [],
       bombPlantedT: 5,
-      live: [player], playbackTime: 10, reducedMotion: false, zoom: 1, center: null,
+      live: [player], playbackTime: 10, defuseProgressPercent: 20,
+      reducedMotion: false, zoom: 1, center: null,
       onView: vi.fn(), highlight: null, selected: null, onSelect: vi.fn() };
     const { rerender } = render(<LangProvider><MapView {...props} defusingPlayer={player} /></LangProvider>);
     const effect = screen.getByTestId("defuse-effect");
@@ -87,10 +88,26 @@ describe("defuse map effect", () => {
     expect(screen.queryByTestId("player-gun-barrel")).toBeNull();
     expect(screen.getByTestId("live-player").querySelector(".slot-num")?.getAttribute("transform")).toBeNull();
     expect(effect.querySelector("line")?.getAttribute("stroke")).toBe("#38bdf8");
-    expect(effect.querySelector("circle")).toBeTruthy();
-    expect(screen.getByTestId("live-player").querySelector(".defuse-ring")).toBeTruthy();
-    rerender(<LangProvider><MapView {...props} defusingPlayer={null} /></LangProvider>);
+    const ring = screen.getByTestId("defuse-timer-ring");
+    const circumference = Number(ring.getAttribute("stroke-dasharray"));
+    expect(Number(ring.getAttribute("stroke-dashoffset"))).toBeCloseTo(circumference * .8);
+    expect(ring.getAttribute("transform")).toBe("rotate(-90 120 110)");
+    rerender(<LangProvider><MapView {...props} bomb={null} defuseBombPx={[120, 110]}
+      defuseProgressPercent={100} defusingPlayer={null} /></LangProvider>);
+    expect(Number(screen.getByTestId("defuse-timer-ring").getAttribute("stroke-dashoffset"))).toBe(0);
+    expect(screen.queryByTestId("bomb-icon")).toBeNull();
+    rerender(<LangProvider><MapView {...props} playbackTime={12} defuseProgressPercent={null} defusingPlayer={null} /></LangProvider>);
     expect(screen.queryByTestId("defuse-effect")).toBeNull();
+  });
+});
+
+describe("defuse HUD", () => {
+  it("shows kit countdown and elapsed progress beside the map", () => {
+    const { container } = render(<DefuseHud remaining={4.2} progressPercent={16} />);
+    const hud = container.querySelector('[data-testid="defuse-countdown"]')!;
+    expect(hud.getAttribute("aria-label")).toBe("Defuse 4.2s");
+    expect(hud.querySelector(".defuse-hud-icon")).toBeTruthy();
+    expect(hud.querySelector(".defuse-hud-track > span")?.getAttribute("style")).toContain("16%");
   });
 });
 

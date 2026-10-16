@@ -488,7 +488,7 @@ svg.radar.zoomed:active { cursor: grabbing; }
 .map-zoom button:hover:not(:disabled) { border-color: #7fb0ff; color: #fff; }
 .map-zoom button:disabled { opacity: .35; cursor: default; }
 .map-zoom .mz-reset { font-size: var(--fs-xs); font-weight: 600; }
-.c4-hud {
+.c4-hud, .defuse-hud {
   pointer-events: none;
   display: grid; grid-template-columns: 16px auto; align-items: center; gap: 3px 7px;
   min-width: 84px; padding: 6px 10px; border: 1px solid rgba(239, 68, 68, .4);
@@ -499,6 +499,11 @@ svg.radar.zoomed:active { cursor: grabbing; }
 .c4-hud-time { font: 700 var(--fs-sm)/1.1 monospace; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .c4-hud-track { grid-column: 1 / -1; height: 3px; overflow: hidden; border-radius: 3px; background: rgba(239, 68, 68, .18); }
 .c4-hud-track > span { display: block; height: 100%; border-radius: inherit; background: #ef4444; }
+.defuse-hud { border-color: rgba(56, 189, 248, .5); }
+.defuse-hud-icon { width: 16px; height: 16px; fill: #38bdf8; }
+.defuse-hud-time { font: 700 var(--fs-sm)/1.1 monospace; font-variant-numeric: tabular-nums; white-space: nowrap; color: #e0f2fe; }
+.defuse-hud-track { grid-column: 1 / -1; height: 3px; overflow: hidden; border-radius: 3px; background: rgba(56, 189, 248, .18); }
+.defuse-hud-track > span { display: block; height: 100%; border-radius: inherit; background: #38bdf8; }
 .c4-hud.critical .c4-hud-time { color: #fca5a5; animation: c4-hud-pulse 1s ease-in-out infinite; }
 @keyframes c4-hud-pulse { 50% { opacity: .55; } }
 @media (prefers-reduced-motion: reduce) { .c4-hud.critical .c4-hud-time { animation: none; } }
@@ -569,9 +574,7 @@ svg.radar.zoomed:active { cursor: grabbing; }
 .live-weapon-icon, .map-utility-icon, .map-equipment-icon { fill: #f8fafc; filter: drop-shadow(0 1px 1px #050a12); }
 .map-bomb-icon { fill: #ef4444; filter: drop-shadow(0 0 3px rgba(239, 68, 68, .85)); }
 .defuse-beam { animation: defuse-flow .8s linear infinite; }
-.defuse-ring { animation: defuse-pulse 1.2s ease-in-out infinite; }
 @keyframes defuse-flow { to { stroke-dashoffset: -12px; } }
-@keyframes defuse-pulse { 50% { opacity: .45; stroke-width: 4px; } }
 .nade-label { font-size: 16px; font-weight: 700; paint-order: stroke; stroke: #0b1220; stroke-width: 4px; pointer-events: none; }
 
 /* ---- ไทม์ไลน์ + บริบท ---- */

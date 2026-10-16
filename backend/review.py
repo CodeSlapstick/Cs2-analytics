@@ -596,7 +596,8 @@ def build_round_detail(*, match: dict, rnd: dict, roster: list[dict], in_round: 
     if isinstance(raw_defuses, str):
         raw_defuses = json.loads(raw_defuses)
     defuses = [{"steamid": str(item["steam_id"]), "start_t": _t(item["start_tick"], start, tickrate),
-                "end_t": _t(item["end_tick"], start, tickrate)} for item in raw_defuses]
+                "end_t": _t(item["end_tick"], start, tickrate),
+                "has_kit": bool(item.get("has_kit", False))} for item in raw_defuses]
     event_ticks = [k["tick"] for k in kills]
     event_ticks.extend(t for t in (rnd.get("bomb_plant_tick"), rnd.get("bomb_resolved_tick"), latest_damage_tick) if t is not None)
     event_ticks.extend(item["end_tick"] for item in raw_defuses)
