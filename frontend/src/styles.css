@@ -600,6 +600,34 @@ svg.radar.zoomed:active { cursor: grabbing; }
 .who { white-space: nowrap; }
 .who .pdot { width: 8px; height: 8px; margin-right: 3px; }
 .nade-dot { width: 16px; height: 16px; align-self: center; justify-self: center; display: inline-grid; place-items: center; }
+.review-notes { border-top: 1px solid var(--line); padding-top: 12px; margin-top: 8px; }
+.rn-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+.rn-head .panel-h { margin: 0; }
+.rn-form textarea, .rn-edit textarea {
+  width: 100%; resize: vertical; min-height: 58px; padding: 8px 10px; border: 1px solid var(--line);
+  border-radius: 6px; background: var(--bg); color: var(--text); font: inherit; font-size: var(--fs-sm); line-height: 1.45;
+}
+.rn-form textarea:focus, .rn-edit textarea:focus { border-color: var(--ct); outline: 2px solid rgba(79, 140, 255, .2); outline-offset: 1px; }
+.rn-form-actions { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 6px; }
+.rn-add { padding: 6px 11px; border: 0; border-radius: 6px; background: var(--accent); color: #291200; font: inherit; font-size: var(--fs-xs); font-weight: 800; cursor: pointer; }
+.rn-add:disabled { opacity: .42; cursor: default; }
+.rn-empty { margin: 10px 0 2px; }
+.rn-list { list-style: none; padding: 0; margin: 10px 0 0; display: grid; gap: 7px; }
+.rn-list > li { padding: 8px 9px; border: 1px solid var(--line-2); border-radius: 7px; background: var(--bg); }
+.rn-note-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.rn-round-label, .rn-time { font-size: var(--fs-xs); font-weight: 700; font-variant-numeric: tabular-nums; }
+.rn-round-label { color: var(--muted); }
+.rn-time { border: 0; padding: 2px 5px; border-radius: 4px; background: rgba(79, 140, 255, .13); color: var(--ct-ink); cursor: pointer; }
+.rn-time:hover { background: rgba(79, 140, 255, .22); }
+.rn-note-actions { display: inline-flex; gap: 8px; }
+.rn-note-actions button, .rn-edit button { border: 0; padding: 2px; background: none; color: var(--muted); font: inherit; font-size: var(--fs-xs); cursor: pointer; }
+.rn-note-actions button:hover, .rn-edit button:hover { color: var(--text); }
+.rn-note-actions button.danger:hover { color: var(--err); }
+.rn-list p { margin: 5px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; font-size: var(--fs-sm); line-height: 1.45; }
+.rn-edit { margin-top: 6px; }
+.rn-edit > div { display: flex; justify-content: flex-end; gap: 10px; margin-top: 5px; }
+.rn-edit button[type="submit"] { color: var(--ct-ink); font-weight: 700; }
+.rn-edit button:disabled { opacity: .4; cursor: default; }
 .summary { border-top: 1px solid var(--line); padding-top: 10px; margin-top: 4px; font-size: var(--fs-sm); }
 .summary p { margin: 4px 0; }
 
