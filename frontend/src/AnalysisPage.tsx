@@ -5,8 +5,8 @@ import {
   api,
   type DeathCellCount,
   type DeathsOverlay,
-  matchesQuery,
   type Match,
+  matchesQuery,
   type PlayerBehavior,
   type PlayerBehaviorProfile,
   type ReadRound,
@@ -28,7 +28,6 @@ import { useT } from "./i18n";
 import { PlayerIcon } from "./icons/player-icon";
 import { DatabaseSearchIcon } from "./icons/database-search-icon";
 import { OpeningRoutePage } from "./OpeningRoutePage";
-import { AnalysisReportExport } from "./AnalysisReportExport";
 
 /**
  * หน้าเครื่องมือวิเคราะห์ — รวมเครื่องมือทบทวนแมตช์ของทีมไว้ในหน้าเดียว
@@ -88,17 +87,26 @@ export function AnalysisPage() {
   // null = ไม่กรอง (ทุกรอบ/ทุกคน) — ต่างจาก [] ที่แปลว่า "ไม่เลือกเลย" (ปุ่ม "ไม่เอาเลย")
   const [selRounds, setSelRounds] = useState<number[] | null>(null);
   const [selPlayers, setSelPlayers] = useState<string[] | null>(null);
+  const [ourTeam, setOurTeam] = useState<string>(() => params.get("team") ?? "");
+  function selectOurTeam(team: string) {
+    setOurTeam(team);
+    const next = new URLSearchParams(params);
+    if (team) next.set("team", team);
+    else next.delete("team");
+    setParams(next, { replace: true });
+  }
   const matches = useQuery(matchesQuery);
-  const referenceMaps = useQuery({ queryKey: ["analysis", "reference-maps"], queryFn: api.referenceMaps });
-
-  // แมพที่ดูได้ = แมพที่มีทั้งแมตช์ของเราและชุดอ้างอิง (ไม่งั้นไม่มีอะไรให้เทียบ)
+  // การวิเคราะห์แมตช์ที่อัปโหลดใช้ข้อมูลของแมตช์นั้นโดยตรง ไม่ควรถูกซ่อนเพียงเพราะ
+  // ไม่มีชุดอ้างอิง ML สำหรับแผนที่นั้น ชุดอ้างอิงจำเป็นเฉพาะโหมดเปรียบเทียบเท่านั้น
+  // (ซึ่งไม่ได้อยู่ใน navigation ปัจจุบัน)
   const done = (matches.data ?? []).filter((m) => m.status === "done" && m.map_name);
   const upMaps = new Set(done.filter((m) => m.source === "upload").map((m) => m.map_name!));
-  const maps = (referenceMaps.data ?? []).filter((m) => upMaps.has(m)).sort();
+  const maps = [...upMaps].sort();
   const [map, setMap] = useState<string>("");
   const activeMap = maps.includes(map) ? map : (maps[0] ?? "");
   const mine = done.filter((m) => m.source === "upload" && m.map_name === activeMap);
-  const activeMatch = mine.find((m) => m.demo_file === demo);
+  const selectedDemo = mine.some((m) => m.demo_file === demo) ? demo : (mine[0]?.demo_file ?? "");
+  const activeMatch = mine.find((m) => m.demo_file === selectedDemo);
 
   // รอสเตอร์ (ชื่อ + SteamID64) ของแมตช์ที่เลือก — ไว้ทำปุ่มเลือกผู้เล่น เอาจาก endpoint แมตช์เดี่ยวที่มีอยู่แล้ว
   // (ไม่ต้องเพิ่ม endpoint ใหม่) จำนวนรอบทั้งหมดก็มีอยู่แล้วใน match_summary (activeMatch.rounds)
@@ -113,7 +121,7 @@ export function AnalysisPage() {
   useEffect(() => {
     setSelRounds(null);
     setSelPlayers(null);
-  }, [demo]);
+  }, [selectedDemo]);
 
   // [] (เลือก "ไม่เอาเลย") ต่างจาก null (ไม่กรอง) — [] แปลว่าต้องไม่แสดงอะไรเลย ไม่ใช่แสดงทุกอย่าง
   // ต้องกันไว้เอง เพราะ API มองพารามิเตอร์ว่างเป็น "ไม่กรอง" (ดู backend/app.py _parse_int_list)
@@ -122,13 +130,12 @@ export function AnalysisPage() {
 
   const enabled = !!activeMap && !noRoundsPicked && !noPlayersPicked;
   const upload = useQuery({
-    queryKey: ["analysis", activeMap, "upload", side, demo, selRounds, selPlayers],
-    queryFn: () => api.analysisDeaths(activeMap, "upload", side, demo || null, selRounds, selPlayers),
+    queryKey: ["analysis", activeMap, "upload", side, selectedDemo, selRounds, selPlayers],
+    queryFn: () => api.analysisDeaths(activeMap, "upload", side, selectedDemo || null, selRounds, selPlayers),
     enabled,
     staleTime: 5 * 60_000,
     // เปลี่ยนตัวกรอง (รอบ/คน/ฝั่ง/แมตช์) = queryKey ใหม่ที่ยังไม่เคยแคช — ถ้าไม่กัน isLoading จะ true ชั่วขณะ
     // จนทั้งแผนที่+แผงควบคุมหายวับไปเหลือแค่ข้อความโหลด หน้าเว็บยุบสั้นลงมากจน scroll เด้งขึ้นบนเอง
-    placeholderData: keepPreviousData,
   });
   const reference = useQuery({
     queryKey: ["analysis", activeMap, "reference", side],
@@ -138,7 +145,7 @@ export function AnalysisPage() {
     placeholderData: keepPreviousData,
   });
   // โหมด "อ่านทางเราออกไหม" ดูได้ทีละแมตช์ — ไม่ได้เลือกไว้ก็ใช้แมตช์แรกของแมพนั้น
-  const target = demo || mine[0]?.demo_file || "";
+  const target = selectedDemo;
   const readQ = useQuery({
     queryKey: ["readability", target],
     queryFn: () => api.readability(target),
@@ -151,11 +158,10 @@ export function AnalysisPage() {
     queryFn: () => api.playerBehavior(target, selPlayers),
     enabled: !!target && !noPlayersPicked,
     staleTime: 5 * 60_000,
-    placeholderData: keepPreviousData,
   });
 
   // สลับโหมด/แมพ/ฝั่ง/แมตช์ = ชุดข้อมูลเปลี่ยน คีย์ที่ค้างไฮไลต์ไว้จากชุดก่อนหน้าจึงไม่มีความหมายแล้ว
-  useEffect(() => setHovered(null), [mode, activeMap, side, demo]);
+  useEffect(() => setHovered(null), [mode, activeMap, side, selectedDemo]);
 
   if (mode === "opening") {
     const copy = MODES.find((m) => m.key === mode)!;
@@ -176,9 +182,16 @@ export function AnalysisPage() {
     );
   }
 
-  if (matches.isLoading || referenceMaps.isLoading) return <p className="muted">{t("กำลังโหลด…")}</p>;
-  if (matches.error || referenceMaps.error) return <p className="err">{t("โหลดรายการแมตช์ไม่ได้: {msg}", { msg: ((matches.error ?? referenceMaps.error) as Error).message })}</p>;
-  if (maps.length === 0) return <NothingToCompare done={done} referenceMaps={referenceMaps.data ?? []} />;
+  if (matches.isLoading) return <p className="muted">{t("กำลังโหลด…")}</p>;
+  if (matches.error) return <p className="err">{t("โหลดรายการแมตช์ไม่ได้: {msg}", { msg: (matches.error as Error).message })}</p>;
+  if (maps.length === 0) return <div className="analysis" data-testid="analysis-page">
+    <header className="an-head"><h1>{t("เครื่องมือวิเคราะห์")}</h1></header>
+    <section className="card an-no-match" role="status">
+      <DatabaseSearchIcon />
+      <div><h2>ยังไม่มีแมตช์ที่พร้อมวิเคราะห์</h2><p className="muted">เลือกแมตช์ที่ประมวลผลเสร็จแล้วจากหน้า Matches เพื่อดูผลวิเคราะห์ ข้อมูลอัปโหลดเดโมยังอยู่ที่หน้าหลักของระบบ</p></div>
+      <Link className="btn-primary" to="/matches">ไปหน้า Matches</Link>
+    </section>
+  </div>;
 
   const copy = MODES.find((m) => m.key === mode)!;
   const single = upload.data;
@@ -220,8 +233,7 @@ export function AnalysisPage() {
 
         <label className="an-select">
           {t("แมตช์ของทีม")}
-          <select value={demo} onChange={(e) => setDemo(e.target.value)}>
-            <option value="">{t("ทุกแมตช์ที่อัปโหลด ({n})", { n: mine.length })}</option>
+          <select value={selectedDemo} onChange={(e) => setDemo(e.target.value)}>
             {mine.map((m) => (
               <option key={m.demo_file} value={m.demo_file}>{matchLabel(m)}</option>
             ))}
@@ -229,15 +241,13 @@ export function AnalysisPage() {
         </label>
       </div>
 
-      <AnalysisReportExport
-        match={activeMatch}
-        heatmap={activeMatch && upload.data?.demo === activeMatch.demo_file ? upload.data : undefined}
-        behavior={activeMatch && behaviorQ.data?.demo === activeMatch.demo_file ? behaviorQ.data : undefined}
-        scoreboard={activeMatch ? roster.data?.scoreboard : undefined}
-        side={side}
-        selectedRounds={selRounds}
-        selectedPlayers={selPlayers}
-      />
+      {activeMatch && (
+        <div className="analysis-context" aria-label={t("แมตช์ที่กำลังวิเคราะห์")}>
+          <span><small>{t("แมตช์")}</small><strong>{matchLabel(activeMatch)}</strong></span>
+          <span><small>{t("แผนที่")}</small><strong>{activeMatch.map_name}</strong></span>
+          <span><small>{t("ทีม")}</small><strong>{activeMatch.team_a || t("ไม่ทราบทีม")} vs {activeMatch.team_b || t("ไม่ทราบทีม")}</strong></span>
+        </div>
+      )}
 
       {error && <p className="err">{t("โหลดข้อมูลไม่ได้: {msg}", { msg: error.message })}</p>}
       {loading && <p className="muted">{mode === "read" ? t("กำลังอ่านทีละรอบ…") : t("กำลังนับจุดตาย…")}</p>}
@@ -298,7 +308,8 @@ export function AnalysisPage() {
           )}
         </div>
       )}
-      <PlayerBehaviorSection data={behaviorQ.data} loading={behaviorQ.isLoading} error={behaviorQ.error as Error | null} />
+      <PlayerBehaviorSection data={behaviorQ.data} loading={behaviorQ.isLoading} error={behaviorQ.error as Error | null}
+        ourTeam={ourTeam} onOurTeam={selectOurTeam} />
     </div>
   );
 }
@@ -328,8 +339,16 @@ function roleLabel(role: string): string {
   return names[role] ?? role;
 }
 
-export function PlayerBehaviorSection({ data, loading, error }: { data?: PlayerBehavior; loading: boolean; error: Error | null }) {
+export function PlayerBehaviorSection({ data, loading, error, ourTeam = "", onOurTeam = () => undefined }: {
+  data?: PlayerBehavior; loading: boolean; error: Error | null; ourTeam?: string; onOurTeam?: (team: string) => void;
+}) {
   const { t } = useT();
+  const teams = data?.teams ?? [...new Set((data?.players ?? []).map((player) => player.team).filter((team): team is string => !!team))];
+  const teamGroups = teams.length > 0
+    ? teams.map((team) => ({ team, profiles: (data?.players ?? []).filter((player) => player.team === team) }))
+    : (["t", "ct"] as const).map((side) => ({ team: `${side.toUpperCase()} side`, profiles: (data?.players ?? []).filter((player) => player.side === side) }));
+  const teamNames = teamGroups.map((group) => group.team);
+  const selectedTeam = teamNames.includes(ourTeam) ? ourTeam : (teamNames[0] ?? "");
   return <section className="behavior" aria-labelledby="behavior-title" data-testid="player-behavior">
     <header className="behavior-head">
       <div className="behavior-title-icon"><PlayerIcon /></div>
@@ -344,9 +363,15 @@ export function PlayerBehaviorSection({ data, loading, error }: { data?: PlayerB
       <DatabaseSearchIcon /><div><b>{t("ยังแสดงรูปแบบการเล่นไม่ได้")}</b><p className="muted">{t(`player_behavior_${data.reason ?? "unavailable"}`)}</p></div>
     </div>}
     {!loading && !error && data?.available && <>
+      {teams.length > 0 && <div className="team-identity" role="group" aria-label="เลือกทีมเรา">
+        <span>ทีมเรา</span>
+        {teams.map((team) => <button type="button" key={team} className={selectedTeam === team ? "on" : ""} aria-pressed={selectedTeam === team} onClick={() => onOurTeam(team)}>{team}</button>)}
+        {teams.length > 1 && <small>คู่แข่ง: {teams.find((team) => team !== selectedTeam)}</small>}
+      </div>}
       <div className="behavior-grid">
-        {(["t", "ct"] as const).map((side) => <BehaviorSide key={side} side={side} profiles={(data.players ?? []).filter((p) => p.side === side)} />)}
+        {teamGroups.map((group) => <BehaviorTeam key={group.team} team={group.team} ours={group.team === selectedTeam} profiles={group.profiles} />)}
       </div>
+      {teamGroups.length === 2 && <TeamBehaviorComparison groups={teamGroups} />}
       <footer className="behavior-note muted">
         {t("ชื่อบทบาทเป็นคำอธิบาย centroid ของโมเดล unsupervised ไม่ใช่ระดับฝีมือหรือบทบาทถาวร คะแนนระยะและ margin ไม่ใช่ความน่าจะเป็น")}
         {data.source && <> · {t("ชุดอ้างอิง {n} แมตช์ · โมเดล v{v}", { n: data.source.matches, v: data.source.version })}</>}
@@ -355,20 +380,41 @@ export function PlayerBehaviorSection({ data, loading, error }: { data?: PlayerB
   </section>;
 }
 
-function BehaviorSide({ side, profiles }: { side: "ct" | "t"; profiles: PlayerBehaviorProfile[] }) {
+function TeamBehaviorComparison({ groups }: { groups: { team: string; profiles: PlayerBehaviorProfile[] }[] }) {
+  const metrics = [
+    ["opening_attempt_rate", "เปิดไฟต์"], ["trade_kills_per_round", "เทรดคิล"],
+    ["flash_assists_per_round", "Flash assist"], ["place_diversity", "การกระจายพื้นที่"],
+  ] as const;
+  const average = (profiles: PlayerBehaviorProfile[], key: string) => {
+    const values = profiles.flatMap((profile) => profile.available && profile.metrics?.[key] != null ? [profile.metrics[key]] : []);
+    return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : null;
+  };
+  return <section className="team-comparison" aria-labelledby="team-comparison-title">
+    <h3 id="team-comparison-title">ภาพรวมเปรียบเทียบจากข้อมูลจริง</h3>
+    <div className="team-comparison-grid">
+      <span />{groups.map((group) => <b key={group.team}>{group.team}</b>)}
+      {metrics.flatMap(([key, label]) => [
+        <span key={`${key}-label`}>{label}</span>,
+        ...groups.map((group) => <strong key={`${key}-${group.team}`}>{average(group.profiles, key)?.toFixed(2) ?? "ข้อมูลไม่เพียงพอ"}</strong>),
+      ])}
+    </div>
+    <p className="muted">ค่าเฉลี่ยต่อผู้เล่น–แมตช์–ฝั่งจาก event ใน demo; เป็นสถิติเชิงพรรณนา ไม่ใช่ความน่าจะเป็นจากโมเดล</p>
+  </section>;
+}
+
+function BehaviorTeam({ team, ours, profiles }: { team: string; ours: boolean; profiles: PlayerBehaviorProfile[] }) {
   const { t } = useT();
-  return <div className={`behavior-side side-${side}`}>
-    <h3><span className={`badge b-${side}`}>{sideLabel(side)}</span> {t("พฤติกรรมตามฝั่ง")}</h3>
+  return <div className={`behavior-side${ours ? " is-ours" : " is-opponent"}`}>
+    <h3>{team} <span className="team-kind">{ours ? "ทีมเรา" : "คู่แข่ง"}</span></h3>
     {profiles.length === 0 ? <p className="muted">{t("ไม่มีผู้เล่นจากฝั่งนี้ในตัวกรอง")}</p> : profiles.map((p) =>
-      <article className="behavior-card" key={`${p.steamid}-${p.side}`} data-available={p.available}>
-        <div className="behavior-player"><b title={p.name}>{p.name}</b><span className="muted">{t("{n} รอบ", { n: p.rounds })}</span></div>
+      <article className={`behavior-card side-${p.side}`} key={`${p.steamid}-${p.side}`} data-available={p.available}>
+        <div className="behavior-player"><b title={p.name}>{p.name}</b><span><span className={`badge b-${p.side}`}>{sideLabel(p.side)}</span> <span className="muted">{t("{n} รอบ", { n: p.rounds })}</span></span></div>
         {!p.available ? <p className="muted">{t("ข้อมูลยังไม่พอ ต้องมีอย่างน้อย {n} รอบในฝั่งนี้", { n: p.minimum_rounds ?? 5 })}</p> : <>
           <strong className="behavior-role">{roleLabel(p.role ?? "Hybrid / Unresolved")}</strong>
           <ul className="behavior-signals">{(p.signals ?? []).map((signal) => <li key={signal.feature}>
             <span>{t(FEATURE_LABELS[signal.feature] ?? signal.feature)}</span>
-            <small>{signal.direction === "higher" ? t("พบมากกว่าค่ากลางอ้างอิง") : t("พบน้อยกว่าค่ากลางอ้างอิง")}</small>
+            <small><span>{signal.value.toFixed(2)} · </span><span>{signal.direction === "higher" ? t("พบมากกว่าค่ากลางอ้างอิง") : t("พบน้อยกว่าค่ากลางอ้างอิง")}</span></small>
           </li>)}</ul>
-          <p className="behavior-margin muted">{t("ระยะ {d} · ส่วนต่างจากกลุ่มถัดไป {m}", { d: p.distance ?? 0, m: p.margin ?? 0 })}</p>
         </>}
       </article>)}
   </div>;
@@ -1123,24 +1169,6 @@ function DeathMap<T extends DeathCellCount>({
         </text>
       ))}
     </svg>
-  );
-}
-
-/** ยังไม่มีอะไรให้เทียบ — บอกตรง ๆ ว่าขาดอะไร ไม่ใช่หน้าว่าง */
-function NothingToCompare({ done, referenceMaps }: { done: Match[]; referenceMaps: string[] }) {
-  const { t } = useT();
-  const uploaded = done.filter((m) => m.source === "upload");
-  return (
-    <div className="pl-empty" data-testid="analysis-empty">
-      <h1>{t("ยังไม่มีแมตช์ให้เทียบ")}</h1>
-      <p className="muted">
-        {uploaded.length === 0
-          ? t("หน้านี้เทียบแมตช์ของทีมกับเดโมทีมอาชีพบนแมพเดียวกัน — ยังไม่มีแมตช์ที่อัปโหลดเข้ามาเลย")
-          : t("หน้านี้เทียบแมตช์ของทีมกับเดโมทีมอาชีพบนแมพเดียวกัน — มีแมตช์ที่อัปโหลด {n} แมตช์ แต่ยังไม่ตรงกับแมพอ้างอิง ({maps})",
-            { n: uploaded.length, maps: referenceMaps.join(", ") || "—" })}
-      </p>
-      <Link className="btn-primary" to="/matches">{t("ไปหน้าแมตช์")}</Link>
-    </div>
   );
 }
 

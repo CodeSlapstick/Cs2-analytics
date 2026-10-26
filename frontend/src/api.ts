@@ -107,7 +107,7 @@ export class ApiError extends Error {
 /** event ที่ยิงเมื่อ API ตอบ 401 (token หมดอายุระหว่างใช้งาน) — ProtectedRoute ฟังแล้วพาไปหน้า login */
 export const UNAUTHORIZED_EVENT = "cs2:unauthorized";
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+export async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const r = await fetch(path, { credentials: "same-origin", ...init });
   if (!r.ok) {
     if (r.status === 401 && !path.startsWith("/auth/")) window.dispatchEvent(new Event(UNAUTHORIZED_EVENT));
@@ -243,6 +243,7 @@ export interface RoundPositions {
     steamid: string; px: Px; hp: number; side: Side | null; place: string | null; yaw?: number | null;
     flash_remaining?: number | null; is_flashed?: boolean | null;
     active_weapon?: string | null; armor?: number | null; has_helmet?: boolean | null; has_defuser?: boolean | null;
+    money?: number | null; has_bomb?: boolean | null;
   }[] }[];
 }
 
@@ -344,6 +345,7 @@ export interface PlayerBehaviorProfile {
   steamid: string;
   name: string;
   side: Side;
+  team?: string | null;
   rounds: number;
   available: boolean;
   reason?: string;
@@ -351,6 +353,7 @@ export interface PlayerBehaviorProfile {
   role?: string;
   distance?: number;
   margin?: number;
+  metrics?: Record<string, number>;
   signals?: PlayerBehaviorSignal[];
 }
 export interface PlayerBehavior {
@@ -362,6 +365,7 @@ export interface PlayerBehavior {
   unit?: string;
   minimum_rounds?: number;
   players?: PlayerBehaviorProfile[];
+  teams?: string[];
   source?: { kind: "reference_only"; matches: number; version: number; model: string };
   note?: string;
 }

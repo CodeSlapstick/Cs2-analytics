@@ -86,7 +86,7 @@ export function LoginPage() {
   return (
     <div className="login-shell">
       {/* แผงบรีฟฝั่งซ้าย: เรดาร์ de_mirage จริงจาก assets + ตัวเลขจริงของระบบ */}
-      <section className="brief" aria-label="CS2 SCOUTING">
+      <section className="brief" aria-label="CS2 UNTITLED">
         <div className="brief-radar" aria-hidden="true">
           <img src={radarLines} alt="" draggable={false} />
           <div className="brief-sweep" />
@@ -94,7 +94,7 @@ export function LoginPage() {
 
         <div className="brief-brand">
           <LogoMark />
-          <span>CS2 SCOUTING</span>
+          <span>CS2 UNTITLED</span>
         </div>
 
         <div className="brief-copy">

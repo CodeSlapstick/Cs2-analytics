@@ -193,7 +193,7 @@ export function MatchScoreboard({ matchId }: { matchId: number }) {
             const f = features[p.steam_id];
             return (
               <tr key={p.steam_id}>
-                <td><Link to={`/player/${p.steam_id}`} className="row-title">{p.name}</Link></td>
+                <td><Link to={`/matches/${encodeURIComponent(q.data.match.demo_file)}/rounds/1?p=${encodeURIComponent(p.steam_id)}`} className="row-title">{p.name}</Link></td>
                 <td>{p.start_side ? <span className={`badge b-${p.start_side}`}>{sideLabel(p.start_side)}</span> : "—"}</td>
                 <td className="num">{p.kills}</td>
                 <td className="num">{p.deaths}</td>

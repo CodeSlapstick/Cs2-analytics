@@ -4,7 +4,6 @@ export const EN_COACH: Record<string, string> = {
   "ทีมเรา": "Our team",
   "ฝั่ง": "Side",
   "รอบ": "Round",
-  "เป็นคำแนะนำเชิงทดลองจากข้อมูลย้อนหลัง ไม่ใช่ tactic ที่ดีที่สุดหรือโอกาสชนะ โมเดลเลียนแบบ pattern ของรอบที่ชนะ ไม่ได้พิสูจน์ว่า tactic ทำให้ชนะ": "Experimental suggestions from historical data, not an optimal tactic or win probability. The model imitates patterns from winning rounds; it does not prove the tactic caused a win.",
   "โหลด Coach ไม่สำเร็จ": "Could not load Coach",
   "กำลังวิเคราะห์ tactic…": "Analyzing tactic candidates…",
   "ยังไม่มีแมตช์ที่พร้อมวิเคราะห์": "No matches ready for analysis",

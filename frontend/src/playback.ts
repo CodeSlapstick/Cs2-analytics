@@ -54,6 +54,8 @@ export interface LivePlayer {
   armor: number | null;
   hasHelmet: boolean | null;
   hasDefuser: boolean | null;
+  money?: number | null;
+  hasBomb?: boolean | null;
 }
 
 /** มุมสั้นสุดข้ามรอยต่อ 0°/360° เพื่อให้ลำกล้องหมุนต่อเนื่อง */
@@ -181,6 +183,8 @@ export function playersAt(pos: RoundPositions, t: number, roster: PlaybackRoster
         armor: p.armor ?? null,
         hasHelmet: p.has_helmet ?? null,
         hasDefuser: p.has_defuser ?? null,
+        money: p.money ?? null,
+        hasBomb: p.has_bomb ?? null,
       } as LivePlayer;
     });
 }

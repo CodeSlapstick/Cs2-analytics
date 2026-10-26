@@ -122,8 +122,8 @@ SQL_GRENADES = """
 """
 SQL_POSITIONS = """
     INSERT INTO player_positions (match_id, round_num, tick, steam_id, side, x, y, z, health, place,
-                                  active_weapon, armor, has_helmet, has_defuser, yaw, flash_remaining)
-    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+                                  active_weapon, armor, has_helmet, has_defuser, money, has_bomb, yaw, flash_remaining)
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
     ON CONFLICT (match_id, round_num, tick, steam_id) DO NOTHING;
 """
 
@@ -220,6 +220,7 @@ def _position_rows(positions: list[dict], match_id: int, round_id_map: dict[int,
          p.get("active_weapon"), _int(p.get("armor")),
          bool(p["has_helmet"]) if p.get("has_helmet") is not None else None,
          bool(p["has_defuser"]) if p.get("has_defuser") is not None else None,
+         _int(p.get("money")), bool(p["has_bomb"]) if p.get("has_bomb") is not None else None,
          _float(p.get("yaw")), _float(p.get("flash_remaining")))
         for p in positions if int(p.get("round_num", 0)) in round_id_map
         and _known_player_id(p.get("steam_id"), known_ids) is not None

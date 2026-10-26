@@ -93,7 +93,7 @@ async def main(args):
         await conn.close()
     if any(r["source"] != "reference" for r in data["facts"]):
         raise ValueError("Uploaded matches must never enter Coach training")
-    samples = [r for r in build_coach_samples(data) if r["opening"] is not None and r["won"] is not None]
+    samples = [r for r in build_coach_samples(data, args.map) if r["opening"] is not None and r["won"] is not None]
     sides = {s: train_side([r for r in samples if r["side"] == s]) for s in ("t", "ct")}
     sides = {s: model for s, model in sides.items() if model is not None}
     if not sides:
@@ -102,14 +102,15 @@ async def main(args):
              "source": "reference_only", "context_features": CONTEXT_FEATURES, "opening_features": OPENING_FEATURES,
              "training_match_ids": sorted({r["match_id"] for r in samples}), "sides": sides,
              "clock_provenance": "stored_start_tick_unverified"}
-    args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(json.dumps(model, ensure_ascii=False, allow_nan=False), encoding="utf-8")
-    print(json.dumps({"artifact": str(args.output), "reference_matches": len(model["training_match_ids"]),
+    output = args.output or ROOT / "output" / "models" / args.map / "coach_model.json"
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(json.dumps(model, ensure_ascii=False, allow_nan=False), encoding="utf-8")
+    print(json.dumps({"artifact": str(output), "reference_matches": len(model["training_match_ids"]),
                       "sides": {s: {"rounds": m["training_rounds"], **m["validation"]} for s, m in sides.items()}}, ensure_ascii=False))
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--map", default="de_mirage", choices=["de_mirage"])
-    parser.add_argument("--output", type=Path, default=ROOT / "output" / "coach_model.json")
+    parser.add_argument("--map", default="de_mirage")
+    parser.add_argument("--output", type=Path)
     asyncio.run(main(parser.parse_args()))

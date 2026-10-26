@@ -433,10 +433,11 @@ def test_round_positions_include_only_real_equipment_fields(frame):
     from backend.review import build_round_positions
     row = {"tick": 1000, "steam_id": 1, "side": "ct", "x": -1000.0, "y": 500.0,
            "health": 100, "place": "A", "active_weapon": "M4A1-S", "armor": 87,
-           "has_helmet": True, "has_defuser": False}
+           "has_helmet": True, "has_defuser": False, "money": 3250, "has_bomb": True}
     player = build_round_positions([row], start_tick=1000, tickrate=128, frame=frame)["frames"][0]["players"][0]
     assert player["active_weapon"] == "M4A1-S" and player["armor"] == 87
     assert player["has_helmet"] is True and player["has_defuser"] is False
+    assert player["money"] == 3250 and player["has_bomb"] is True
 
 
 def test_round_positions_deduplicate_same_player_tick(frame):

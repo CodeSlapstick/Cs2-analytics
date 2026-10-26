@@ -4,6 +4,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import pytest
 
 from research.player_role import (
     FACTS_SQL,
@@ -11,6 +12,7 @@ from research.player_role import (
     KILLS_SQL,
     POSITIONS_SQL,
     ROLE_ORDER,
+    _resolve_team_round_sides,
     assign_role_names,
     build_profiles,
     build_profiles_from_kills,
@@ -18,6 +20,20 @@ from research.player_role import (
 )
 
 ROOT = Path(__file__).resolve().parent.parent.parent
+
+
+def test_team_round_side_resolution_repairs_only_clear_roster_majority():
+    rows = pd.DataFrame([
+        {"demo_file": "ref.dem", "round_num": 1, "team": "A", "steam_id": sid,
+         "side": "ct" if sid == 5 else "t"}
+        for sid in range(1, 6)
+    ])
+    assert set(_resolve_team_round_sides(rows)["side"]) == {"t"}
+
+    ambiguous = rows.copy()
+    ambiguous.loc[ambiguous["steam_id"].isin([4, 5]), "side"] = "ct"
+    with pytest.raises(ValueError, match="roster"):
+        _resolve_team_round_sides(ambiguous)
 
 
 def test_every_role_training_query_is_reference_only():

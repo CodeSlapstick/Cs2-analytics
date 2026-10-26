@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link, Navigate, useNavigate, useParams } from "react-router-dom";
 import { api, matchesQuery, type Match, type RoundListItem } from "./api";
 import { RoundView } from "./RoundView";
-import { endReasonLabel, MatchTabs, matchTitle, NotFound, roundUrl, sideLabel, useViewState } from "./utils";
+import { endReasonLabel, matchTitle, NotFound, roundUrl, sideLabel, useViewState } from "./utils";
 import { useT } from "./i18n";
 
 // ================================================================================================
@@ -38,7 +38,6 @@ export function RoundPage() {
   return (
     <div className="round-page" data-testid="round-page">
       <MatchHeader current={entry} all={list} params={params} />
-      <MatchTabs demo={entry.demo_file} />
       <RoundBody entry={entry} roundNum={roundNum} view={view} setView={setView} params={params} />
     </div>
   );
@@ -96,22 +95,10 @@ interface BodyProps {
 
 /** แถบรอบ + เนื้อหาของรอบ — คีย์ ← → เปลี่ยนรอบ (ผูกไว้ที่นี่เพราะเป็นการนำทางระดับหน้า) */
 function RoundBody({ entry, roundNum, view, setView, params }: BodyProps) {
-  const navigate = useNavigate();
   const rounds = useQuery({ queryKey: ["review-rounds", entry.demo_file], queryFn: () => api.reviewRounds(entry.demo_file) });
   const list = rounds.data ?? [];
   const idx = list.findIndex((r) => r.round_num === roundNum);
-  const go = (to: number) => navigate(roundUrl(entry.demo_file, to, params, ["d", "z", "c"]));
   const { t } = useT();
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
-      if (e.key === "ArrowLeft" && idx > 0) go(list[idx - 1].round_num);
-      if (e.key === "ArrowRight" && idx >= 0 && idx < list.length - 1) go(list[idx + 1].round_num);
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  });
 
   if (rounds.error) return <p className="err">{t("โหลดรายการรอบไม่ได้: {msg}", { msg: (rounds.error as Error).message })}</p>;
   if (rounds.data && idx < 0) {
@@ -120,6 +107,7 @@ function RoundBody({ entry, roundNum, view, setView, params }: BodyProps) {
 
   return (
     <RoundView demo={entry.demo_file} roundNum={roundNum} view={view} setView={setView}
+      scores={{ ct: entry.ct_rounds, t: entry.t_rounds }}
       roundSelector={<RoundStrip demo={entry.demo_file} rounds={list} current={roundNum} params={params} />} />
   );
 }
@@ -141,7 +129,9 @@ const halfBreakAfter = (n: number) => n === 12 || (n > 24 && (n - 24) % 3 === 0)
 function RoundStrip({ demo, rounds, current, params }: StripProps) {
   // ลูกศรซ้าย/ขวาและล้อเมาส์ใช้ ref นี้เลื่อนรายการรอบแนวนอนบนคอมพิวเตอร์
   const scrollRef = useRef<HTMLDivElement>(null);
+  const navigate = useNavigate();
   const { t } = useT();
+  const activeIndex = rounds.findIndex((round) => round.round_num === current);
   useEffect(() => {
     const box = scrollRef.current;
     const el = box?.querySelector<HTMLElement>('[aria-current="page"]');
@@ -155,8 +145,9 @@ function RoundStrip({ demo, rounds, current, params }: StripProps) {
   const last = rounds[rounds.length - 1]?.round_num;
   return (
     <nav className="round-strip" data-testid="round-strip" aria-label={t("เลือกรอบ")}>
-      <button type="button" onClick={() => scrollRef.current?.scrollBy({ left: -160, behavior: "smooth" })}
-        aria-label={t("เลื่อนรอบไปทางซ้าย")} title={t("เลื่อนรอบไปทางซ้าย")}>
+      <button type="button" disabled={activeIndex <= 0}
+        onClick={() => activeIndex > 0 && navigate(roundUrl(demo, rounds[activeIndex - 1].round_num, params, ["d", "z", "c"]))}
+        aria-label={t("รอบก่อนหน้า")} title={t("รอบก่อนหน้า")}>
         ‹
       </button>
       {/* รอบอยู่บรรทัดเดียว; รอบต่อเวลาเลื่อนในกรอบนี้โดยไม่ดันลูกศรออกจากขอบ */}
@@ -175,8 +166,9 @@ function RoundStrip({ demo, rounds, current, params }: StripProps) {
           </Fragment>
         ))}
       </div>
-      <button type="button" onClick={() => scrollRef.current?.scrollBy({ left: 160, behavior: "smooth" })}
-        title={t("เลื่อนรอบไปทางขวา")} aria-label={t("เลื่อนรอบไปทางขวา")}>
+      <button type="button" disabled={activeIndex < 0 || activeIndex >= rounds.length - 1}
+        onClick={() => activeIndex >= 0 && activeIndex < rounds.length - 1 && navigate(roundUrl(demo, rounds[activeIndex + 1].round_num, params, ["d", "z", "c"]))}
+        title={t("รอบถัดไป")} aria-label={t("รอบถัดไป")}>
         ›
       </button>
     </nav>

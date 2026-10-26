@@ -2,11 +2,12 @@ import { useQuery } from "@tanstack/react-query";
 import { Link, useSearchParams } from "react-router-dom";
 import { api, matchesQuery, type Side } from "./api";
 import { useT } from "./i18n";
+import { AnalysisReportExport } from "./AnalysisReportExport";
 import "./coach.css";
 
 const REASONS: Record<string, string> = {
   model_unavailable: "ยังไม่มีโมเดล Coach ที่เทรนแล้ว",
-  unsupported_map: "โมเดล Coach รุ่นนี้รองรับ Mirage เท่านั้น",
+  unsupported_map: "ยังไม่มีโมเดล Coach สำหรับแมพนี้",
   missing_economy: "รอบนี้ไม่มีข้อมูลอุปกรณ์ก่อนเริ่มรอบครบ 5 คน จึงยังเสนอ tactic ไม่ได้",
   training_match: "แมตช์นี้อยู่ในชุดเทรน เลือกแมตช์ที่อัปโหลดเพื่อดูคำแนะนำที่ไม่ประเมินข้อมูลเทรนซ้ำ",
   insufficient_support: "ยังไม่มี pattern ที่มีหลักฐานพอสำหรับรอบนี้",
@@ -20,6 +21,7 @@ export function CoachPage() {
   const match = ready.find((m) => m.demo_file === params.get("demo")) ?? ready.find((m) => m.source === "upload" && m.map_name === "de_mirage") ?? ready.find((m) => m.source === "upload") ?? ready[0];
   const side: Side = params.get("side") === "ct" ? "ct" : "t";
   const coach = useQuery({ queryKey: ["coach", match?.demo_file, side], queryFn: () => api.coach(match!.demo_file, side), enabled: !!match });
+  const reportMatch = match?.source === "upload" ? match : undefined;
   const round = coach.data?.rounds.find((r) => String(r.round_num) === params.get("round")) ?? coach.data?.rounds[0];
   function change(key: string, value: string) {
     const next = new URLSearchParams(params); next.set(key, value);
@@ -36,7 +38,6 @@ export function CoachPage() {
       <label>{t("รอบ")}<select value={round?.round_num ?? ""} disabled={!coach.data?.rounds.length} onChange={(e) => change("round", e.target.value)}>{coach.data?.rounds.map((r) => <option key={r.round_num} value={r.round_num}>R{r.round_num}</option>)}</select></label>
     </div>
     {match && <p className="coach-match-summary small"><span title={match.demo_file}>{match.demo_file}</span> · {match.map_name ?? "—"} · {match.source === "upload" ? t("ทีมเรา") : t("ทีมอาชีพ")}</p>}
-    <p className="coach-disclosure">{t("เป็นคำแนะนำเชิงทดลองจากข้อมูลย้อนหลัง ไม่ใช่ tactic ที่ดีที่สุดหรือโอกาสชนะ โมเดลเลียนแบบ pattern ของรอบที่ชนะ ไม่ได้พิสูจน์ว่า tactic ทำให้ชนะ")}</p>
     {matches.isError || coach.isError ? <div className="card" role="alert">{t("โหลด Coach ไม่สำเร็จ")}<button type="button" className="btn-ghost" onClick={() => { void matches.refetch(); if (match) void coach.refetch(); }}>{t("ลองอีกครั้ง")}</button></div>
       : matches.isPending || (match && coach.isPending) ? <div className="card" role="status">{t("กำลังวิเคราะห์ tactic…")}</div>
       : !match ? <div className="card"><p>{t("ยังไม่มีแมตช์ที่พร้อมวิเคราะห์")}</p><Link to="/matches">{t("แมตช์")}</Link></div>
@@ -65,5 +66,9 @@ export function CoachPage() {
       <p className="small muted">{t("แยก train/test ตามแมตช์ และ fit scaler กับ cluster เฉพาะ train ในการวัดผล Input คำแนะนำใช้เฉพาะอุปกรณ์ก่อนเริ่มรอบและสถานะ pistol ไม่ใช้ผลรอบหรือตำแหน่งอนาคต")}</p>
       <p className="small muted">{t("เวลาเปิดรอบเดิมอาจ fallback เป็น round start และข้อมูล Utility ไม่รับรองว่าครบ ใช้ผลนี้เป็นจุดเริ่มต้นสำหรับ review กับทีม")}</p>
     </div>}
+    {reportMatch ? <AnalysisReportExport
+      match={reportMatch}
+      initialSide={side}
+    /> : match ? <p className="coach-report-reference muted small">CS2 Performance Report ใช้ได้กับแมตช์ที่ทีมอัปโหลดเท่านั้น ชุดอ้างอิงใช้สำหรับฝึกโมเดล</p> : null}
   </section>;
 }

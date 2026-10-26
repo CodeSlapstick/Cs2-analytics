@@ -149,9 +149,6 @@ export function UserMenu() {
             </>
           ) : (
             <>
-              <Link className="um-item" role="menuitem" to="/player" onClick={() => setOpen(false)}>
-                {t("ดูสถิติของฉัน")}
-              </Link>
               <button type="button" className="um-item" role="menuitem" onClick={leave}>
                 {t("ออกจากระบบ")}
               </button>
@@ -177,7 +174,6 @@ const queryClient = new QueryClient({
  * (เคยมีหน้า "ภาพรวม" ที่ / — ตัดออกแล้ว เพราะซ้ำกับตัวเลขที่หน้าแมตช์มีอยู่แล้ว)
  */
 const NAV = [
-  { to: "/player", label: "สถิติของฉัน", end: false, steamOnly: true },
   { to: "/matches", label: "แมตช์", end: false, steamOnly: false },
   { to: "/analysis", label: "เครื่องมือวิเคราะห์", end: false, steamOnly: false },
   { to: "/coach", label: "Coach", end: false, steamOnly: false },
@@ -214,9 +210,9 @@ function TopBar() {
   if (pathname === "/" || pathname === "/login") return null;
   return (
     <header className="topbar">
-      <Link className="home-brand" to="/" aria-label="CS2 SCOUTING home">
+      <Link className="home-brand" to="/" aria-label="CS2 UNTITLED home">
         <Mark />
-        <span>CS2 SCOUTING</span>
+        <span>CS2 UNTITLED</span>
       </Link>
       <nav ref={navRef} aria-label={t("เมนูหลัก")}>
         {NAV.filter((n) => !(guest && n.steamOnly)).map((n) => (

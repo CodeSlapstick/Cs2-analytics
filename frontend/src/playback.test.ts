@@ -43,6 +43,14 @@ const roster = new Map([["1", { name: "One", color: "#fff", slot: 1 }], ["2", { 
 const player = (steamid: string, x: number) => ({ steamid, px: [x, 0] as [number, number], hp: 100, side: "ct" as const, place: null });
 
 describe("playersAt", () => {
+  it("uses recorded money and transfers C4 state at the frame boundary", () => {
+    const pos: RoundPositions = { step: 1, t_end: 1, note: "", frames: [
+      { t: 0, players: [{ ...player("1", 0), money: 3250, has_bomb: true }, { ...player("2", 5), money: 800, has_bomb: false }] },
+      { t: 1, players: [{ ...player("1", 1), money: 3250, has_bomb: false }, { ...player("2", 6), money: 800, has_bomb: true }] },
+    ] };
+    expect(playersAt(pos, .9, roster).find((p) => p.steamid === "1")).toMatchObject({ money: 3250, hasBomb: true });
+    expect(playersAt(pos, 1, roster).find((p) => p.steamid === "2")).toMatchObject({ money: 800, hasBomb: true });
+  });
   it("interpolates yaw across the 360-degree boundary", () => {
     expect(interpolateYaw(350, 10, 0.5)).toBeCloseTo(0);
     expect(interpolateYaw(10, 350, 0.5)).toBeCloseTo(0);

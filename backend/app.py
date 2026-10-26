@@ -52,6 +52,7 @@ from backend.features import assign_teams, rating2_approx  # ผูกคนก�
 from backend.jobs import JSON_DIR, QueueUnavailable, enqueue_parse, job_state, queue_health  # คิวงาน parse (Sprint 2)
 from backend.opening_routes import build_opening_rounds, match_date, select_matches
 from backend.player_role_service import build_match_profiles, compatibility_reason, infer_match, load_role_model
+from backend.report_routes import create_report_router
 from backend.review import (
     HEATMAP_EVENTS,
     build_economy,
@@ -983,6 +984,14 @@ async def api_player_behavior(
     profiles = await run_in_threadpool(build_match_profiles, round_rows, kill_rows, match.get("tickrate") or 128)
     results = await run_in_threadpool(infer_match, profiles, model,
                                       {str(p) for p in selected} if selected is not None else None)
+    identities = await conn.fetch("""
+        SELECT steam_id::text AS steamid, team_clan
+        FROM match_players WHERE match_id = $1
+    """, match["id"])
+    team_by_player = {row["steamid"]: row["team_clan"] for row in identities}
+    for result in results:
+        result["team"] = team_by_player.get(result["steamid"])
+    teams = sorted({team for team in team_by_player.values() if team})
     return {
         "available": True,
         "demo": demo,
@@ -990,6 +999,7 @@ async def api_player_behavior(
         "unit": model.get("unit"),
         "minimum_rounds": model.get("min_rounds_per_profile", 5),
         "players": results,
+        "teams": teams,
         "source": {
             "kind": "reference_only",
             "matches": model.get("source_matches"),
@@ -1084,11 +1094,11 @@ async def api_coach(demo_file: str, side: str = "t", _: dict = Depends(require_v
     if side not in ("t", "ct"):
         raise HTTPException(422, "ฝั่งต้องเป็น T หรือ CT")
     match = await _review_match(conn, demo_file)
-    model = load_coach_model()
+    model = load_coach_model(map_name=match["map_name"])
     if not model or model.get("map") != match["map_name"]:
         return {"available": False, "reason": "model_unavailable" if not model else "unsupported_map", "rounds": []}
     data = await load_coach_facts(conn, match["map_name"], match_id=match["id"])
-    samples = [s for s in build_coach_samples(data) if s["side"] == side]
+    samples = [s for s in build_coach_samples(data, match["map_name"]) if s["side"] == side]
     return {"available": True, "map": match["map_name"], "side": side,
             "model": {"version": model["version"], "trained_at": model["trained_at"],
                       "reference_matches": len(model["training_match_ids"]),
@@ -1224,11 +1234,11 @@ async def api_review_positions(demo_file: str, round_num: int, _: dict = Depends
         "SELECT id, round_num, start_tick FROM rounds WHERE match_id = $1 AND round_num = $2", m["id"], round_num)
     if not rnd:
         raise HTTPException(404, f"แมตช์นี้ไม่มีรอบที่ {round_num}")
-    equipment = ("active_weapon", "armor", "has_helmet", "has_defuser", "yaw", "flash_remaining")
+    equipment = ("active_weapon", "armor", "has_helmet", "has_defuser", "yaw", "flash_remaining", "money", "has_bomb")
     available = await _optional_columns(conn, "player_positions", equipment)
     defaults = {"active_weapon": "NULL::text", "armor": "NULL::integer",
                 "has_helmet": "NULL::boolean", "has_defuser": "NULL::boolean", "yaw": "NULL::real",
-                "flash_remaining": "NULL::real"}
+                "flash_remaining": "NULL::real", "money": "NULL::integer", "has_bomb": "NULL::boolean"}
     equipment_sql = ", ".join(name if name in available else f"{defaults[name]} AS {name}"
                               for name in equipment)
     pos = await conn.fetch(f"""
@@ -1330,3 +1340,7 @@ async def api_review_economy(demo_file: str, _: dict = Depends(require_viewer), 
         JOIN rounds r ON r.id = pr.round_id WHERE r.match_id = $1""", m["id"])
     roster = await _review_roster(conn, m["id"])
     return {"demo": demo_file, "map": m["map_name"], **build_economy(rows(econ), rows(sides), roster)}
+
+
+# Report routes are kept in their own module; app.py only supplies the shared auth and DB dependencies.
+app.include_router(create_report_router(require_viewer, db))

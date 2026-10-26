@@ -1,6 +1,6 @@
-import { useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Navigate, useParams } from "react-router-dom";
+import { Navigate, useNavigate, useParams } from "react-router-dom";
 import { toBlob } from "html-to-image";
 import { api, matchesQuery, type MatchEconomy, type TeamBuy } from "./api";
 import { useT } from "./i18n";
@@ -44,6 +44,7 @@ export function EconomyPage() {
   const [side, setSide] = useState<Side>("all");
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState(false);
+  const [buyTypes, setBuyTypes] = useState<TeamBuy[]>(["pistol", "eco", "semi_eco", "semi_buy", "full"]);
   const reportRef = useRef<HTMLDivElement>(null);
   const { demo } = useParams();
   const matches = useQuery(matchesQuery);
@@ -130,9 +131,15 @@ export function EconomyPage() {
             <section className="card">
               <div className="card-head">
                 <h2>{t("มูลค่าอุปกรณ์ทั้งทีม")}</h2>
-                <span className="muted small">{t("ตอนหมดเวลาซื้อของ · แถบล่างคือทีมที่ชนะรอบนั้น")}</span>
+                <span className="muted small">{t("มูลค่าอุปกรณ์ ณ tick สิ้นสุด freeze time หลังซื้อ · ช่องว่างหมายถึงไม่มีข้อมูล")}</span>
               </div>
-              <EquipLines data={d} />
+              <div className="econ-buy-filters" role="group" aria-label={t("กรองประเภทการซื้อ")}>
+                {d.buy_types.map((type) => <button key={type} type="button" className={buyTypes.includes(type) ? "on" : ""}
+                  aria-pressed={buyTypes.includes(type)} onClick={() => setBuyTypes((selected) => selected.includes(type) ? selected.filter((item) => item !== type) : [...selected, type])}>
+                  <i style={{ background: BUY_FILL[type] }} />{t(BUY_LABEL[type])}
+                </button>)}
+              </div>
+              <EquipmentValueChart data={d} buyTypes={buyTypes} demo={entry.demo_file} />
             </section>
             <section className="card">
               <div className="card-head">
@@ -243,7 +250,76 @@ const tickEvery = (n: number, w: number) => Math.max(1, Math.ceil((n * 22) / Mat
 const halfIndex = (data: MatchEconomy) => data.rounds.findIndex((r) => r.round_num === 13);
 
 // ------------------------------------------------------------------ 2. มูลค่าอุปกรณ์ (เส้น)
-function EquipLines({ data }: { data: MatchEconomy }) {
+function EquipmentValueChart({ data, buyTypes, demo }: { data: MatchEconomy; buyTypes: TeamBuy[]; demo: string }) {
+  const rootRef = useRef<HTMLDivElement>(null);
+  const navigate = useNavigate();
+  const { t } = useT();
+  useEffect(() => {
+    const root = rootRef.current;
+    if (!root) return;
+    let disposed = false;
+    let chart: import("echarts").ECharts | null = null;
+    let observer: ResizeObserver | null = null;
+    void import("echarts").then((echarts) => {
+      if (disposed || !rootRef.current) return;
+      chart = echarts.init(rootRef.current, undefined, { renderer: "canvas" });
+      const styles = getComputedStyle(document.documentElement);
+      const text = styles.getPropertyValue("--text").trim() || "#17202c";
+      const muted = styles.getPropertyValue("--muted").trim() || "#596575";
+      const line = styles.getPropertyValue("--line").trim() || "#c9d1dc";
+      const card = styles.getPropertyValue("--card").trim() || "#fff";
+      const rounds = data.rounds.map((round) => String(round.round_num));
+      chart.setOption({
+        animationDuration: 280,
+        color: TEAM_COLOR,
+        textStyle: { color: text, fontFamily: "Anuphan, sans-serif" },
+        legend: { top: 0, data: data.teams, textStyle: { color: text }, selectedMode: true },
+        grid: { left: 68, right: 24, top: 50, bottom: 48, containLabel: false },
+        xAxis: { type: "category", name: t("รอบ"), nameLocation: "middle", nameGap: 30, data: rounds, axisLine: { lineStyle: { color: line } }, axisLabel: { color: muted }, axisPointer: { show: true, type: "line", lineStyle: { color: muted, type: "dashed" } } },
+        yAxis: { type: "value", name: t("มูลค่าอุปกรณ์ ($)"), nameGap: 44, nameLocation: "middle", axisLabel: { color: muted, formatter: (value: number) => `$${value / 1000}k` }, splitLine: { lineStyle: { color: line, opacity: .65 } } },
+        tooltip: {
+          trigger: "axis",
+          axisPointer: { type: "line" },
+          backgroundColor: card,
+          borderColor: line,
+          textStyle: { color: text },
+          formatter: (params: Array<{ dataIndex: number; marker: string; seriesName: string; value: number | null }>) => {
+            const index = params[0]?.dataIndex ?? 0;
+            const round = data.rounds[index];
+            const values = params.filter((item) => item.value != null).map((item) => `${item.marker}${item.seriesName}: <b>${money(item.value)}</b>`).join("<br/>");
+            const winner = round?.winner_team ? `<br/>${t("ผู้ชนะ")}: <b>${round.winner_team}</b>` : "";
+            return `<b>${t("รอบ")} ${round?.round_num ?? "—"}</b><br/>${values || t("ไม่มีข้อมูลมูลค่าอุปกรณ์")}${winner}`;
+          },
+        },
+        series: data.teams.map((team, teamIndex) => ({
+          name: team,
+          type: "line",
+          connectNulls: false,
+          symbol: "circle",
+          symbolSize: 8,
+          showSymbol: true,
+          lineStyle: { width: 3, color: TEAM_COLOR[teamIndex] },
+          itemStyle: { color: TEAM_COLOR[teamIndex], borderColor: card, borderWidth: 2 },
+          emphasis: { focus: "series", scale: 1.35 },
+          data: data.rounds.map((round) => {
+            const teamRound = round.teams[team];
+            return teamRound?.buy_type && buyTypes.includes(teamRound.buy_type) ? teamRound.equip : null;
+          }),
+        })),
+      });
+      chart.on("click", (event: { dataIndex?: number }) => {
+        const round = event.dataIndex == null ? null : data.rounds[event.dataIndex];
+        if (round) navigate(`/matches/${encodeURIComponent(demo)}/rounds/${round.round_num}`);
+      });
+      observer = new ResizeObserver(() => chart?.resize());
+      observer.observe(root);
+    });
+    return () => { disposed = true; observer?.disconnect(); chart?.dispose(); };
+  }, [buyTypes, data, demo, navigate, t]);
+  return <div ref={rootRef} className="econ-echart" role="img" aria-label={t("กราฟมูลค่าอุปกรณ์ทั้งทีมรายรอบ คลิกจุดเพื่อเปิด Demo Viewer")} />;
+}
+
+export function EquipLines({ data }: { data: MatchEconomy }) {
   const { t } = useT();
   const [ref, w] = useWidth<HTMLDivElement>();
   const H = 280;

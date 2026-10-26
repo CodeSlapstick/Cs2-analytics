@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import {
   api,
   ApiError,
+  playerApi,
   type ReviewDeath,
   type ReviewGrenade,
   type ReviewTeam,
@@ -11,9 +12,9 @@ import {
 } from "./api";
 import {
   clampZoom,
-  endReasonLabel,
   fmtT,
   MAX_ZOOM,
+  MatchTabs,
   NADE_COLOR,
   nadeLabel,
   NADE_TYPES,
@@ -29,21 +30,6 @@ import { useT } from "./i18n";
 import { activeDamageTracers, defuseAt, defuseCountdown, defuseHasKit, playersAt, resolveDamageTracers, type LivePlayer } from "./playback";
 import { effectAt, nadeVisibleAt, projectileAt, projectileTrailAt } from "./grenadePlayback";
 import { EquipmentIcon, UtilityIcon, WeaponIcon } from "./gameIcons";
-import { ReviewNotes } from "./ReviewNotes";
-import { RoundExportButton } from "./RoundExport";
-
-/** แถวที่กดได้ (li ในไทม์ไลน์ / บริบท) — คลิก หรือ Enter / Space จากคีย์บอร์ด */
-const pressable = (fn: () => void) => ({
-  role: "button" as const,
-  tabIndex: 0,
-  onClick: fn,
-  onKeyDown: (e: KeyboardEvent) => {
-    if (e.key === "Enter" || e.key === " ") {
-      e.preventDefault();
-      fn();
-    }
-  },
-});
 
 // ================================================================================================
 // เนื้อหาของหนึ่งรอบ
@@ -54,10 +40,11 @@ interface RoundViewProps {
   view: ViewState;
   setView: (patch: Partial<ViewState>) => void;
   roundSelector?: ReactNode;
+  scores?: { ct: number; t: number };
 }
 
 /** เนื้อหาของหนึ่งรอบ: รายชื่อทีม / แผนที่ / ไทม์ไลน์ — state ทั้งหมดมาจาก URL · ไม่มีผลโมเดลในหน้านี้ (อยู่ที่ /analysis) */
-export function RoundView({ demo, roundNum, view, setView, roundSelector }: RoundViewProps) {
+export function RoundView({ demo, roundNum, view, setView, roundSelector, scores }: RoundViewProps) {
   // โหมดเล่นย้อน: เวลาที่กำลังเล่นอยู่เก็บใน state (เปลี่ยนทุกเฟรม) แล้วเขียนลง URL ตอนหยุดเท่านั้น
   const [playing, setPlaying] = useState(false);
   const [speed, setSpeed] = useState<(typeof SPEEDS)[number]>(1);
@@ -65,6 +52,7 @@ export function RoundView({ demo, roundNum, view, setView, roundSelector }: Roun
   // ชี้เมาส์ที่แถวในตาราง (หรือที่ตัวผู้เล่นบนแผนที่) = ไฮไลต์ชั่วคราว ไม่เขียนลง URL
   // ต่างจาก view.player ที่เป็นการ "กดค้างไว้" และติดไปกับลิงก์ที่แชร์ได้
   const [hover, setHover] = useState<string | null>(null);
+  const modalPlayback = useRef({ open: false, resume: false });
   const { t } = useT();
   const reducedMotion = useReducedMotion();
   const q = useQuery({
@@ -78,7 +66,7 @@ export function RoundView({ demo, roundNum, view, setView, roundSelector }: Roun
   const positions = useQuery({
     queryKey: ["review-positions", demo, roundNum],
     queryFn: () => api.reviewPositions(demo, roundNum),
-    enabled: view.playback,
+    enabled: true,
     staleTime: Infinity, // ตำแหน่งของรอบที่แกะแล้วไม่เปลี่ยน
   });
   // เวลารอบต้องครอบคลุมคิลหลังปลดบอมบ์/จบรอบด้วย ไม่เช่นนั้น replay หยุดก่อนเห็นคนตายครบ
@@ -128,21 +116,31 @@ export function RoundView({ demo, roundNum, view, setView, roundSelector }: Roun
 
   // เว้นวรรค = เล่น/หยุด · , กับ . = ถอย/เดินหน้าทีละวินาที (ลูกศรซ้ายขวายังเป็นเปลี่ยนรอบเหมือนเดิม)
   useEffect(() => {
-    if (!view.playback) return;
     const onKey = (e: globalThis.KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
       if (e.code === "Space") {
         e.preventDefault();
         setPlaying((p) => !p);
-      } else if (e.key === "," || e.key === ".") {
+      } else if (e.key === "ArrowLeft" || e.key === "ArrowRight" || e.key === "," || e.key === ".") {
         e.preventDefault();
         setPlaying(false);
-        setTime((t) => Math.max(0, Math.min(endT, t + (e.key === "." ? 1 : -1))));
+        setTime((t) => Math.max(0, Math.min(endT, t + (e.key === "ArrowRight" || e.key === "." ? 1 : -1))));
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [view.playback, endT]);
+  }, [endT]);
+
+  useEffect(() => {
+    if (view.player && !modalPlayback.current.open) {
+      modalPlayback.current = { open: true, resume: playing };
+      setPlaying(false);
+    } else if (!view.player && modalPlayback.current.open) {
+      const resume = modalPlayback.current.resume;
+      modalPlayback.current = { open: false, resume: false };
+      if (resume) setPlaying(true);
+    }
+  }, [view.player]); // เปิด modal ต้องหยุด replay โดยไม่เปลี่ยนเวลา
 
   if (q.isLoading) return <p className="muted">{t("กำลังโหลดรอบ {n}…", { n: roundNum })}</p>;
   if (q.error instanceof ApiError && q.error.status === 404) return <NotFound title={t("ไม่พบรอบนี้")} detail={q.error.message} />;
@@ -159,9 +157,8 @@ export function RoundView({ demo, roundNum, view, setView, roundSelector }: Roun
   );
   const deadIds = new Set(d.deaths.filter((death) => death.t_round != null && death.t_round >= 0 && death.t_round <= time)
     .map((death) => death.victim.steamid));
-  const live = view.playback && pos ? playersAt(pos, time, roster).filter((player) => !deadIds.has(player.steamid)) : null;
-  const defuseState = view.playback
-    ? defuseAt(d.round.defuses, time, d.round.bomb_resolved_t, d.round.end_reason, d.match.tickrate) : null;
+  const live = pos ? playersAt(pos, time, roster).filter((player) => !deadIds.has(player.steamid)) : null;
+  const defuseState = defuseAt(d.round.defuses, time, d.round.bomb_resolved_t, d.round.end_reason, d.match.tickrate);
   const activeDefuse = defuseState?.event ?? null;
   const defusingPlayer = activeDefuse ? live?.find((player) => player.steamid === activeDefuse.steamid && player.side === "ct") : null;
   const hasKit = activeDefuse
@@ -173,27 +170,23 @@ export function RoundView({ demo, roundNum, view, setView, roundSelector }: Roun
   // บางรอบในเดโมมีการตายที่บันทึกไว้ก่อนรอบเริ่ม (t_round ติดลบ — ส่วนใหญ่คือตกที่สูงตอนสลับรอบ)
   // โหมดเล่นย้อนนับเฉพาะการตายที่อยู่ในช่วงเวลาของรอบจริง ไม่งั้นคนคนเดียวจะโผล่ทั้งแบบยังไม่ตายและตายแล้วพร้อมกัน
   // (การตายเหล่านั้นยังอยู่ครบในแผนที่ปกติและในไทม์ไลน์ ไม่ได้ถูกซ่อนจากผู้ใช้)
-  const shownDeaths = view.playback ? d.deaths.filter((x) => time > 0 && x.t_round != null && x.t_round >= 0 && x.t_round <= time) : d.deaths;
+  const shownDeaths = d.deaths.filter((x) => time > 0 && x.t_round != null && x.t_round >= 0 && x.t_round <= time);
   const plantT = d.round.bomb_planted_t;
   const bombActive = (plantT == null ? time > 0 : time >= plantT && time < plantT + 40)
     && (d.round.bomb_resolved_t == null || time < d.round.bomb_resolved_t);
-  const shownBomb = !view.playback || bombActive ? d.round.bomb : null;
-  const bombRemaining = view.playback && bombActive && plantT != null && d.radar
+  const shownBomb = bombActive ? d.round.bomb : null;
+  const bombRemaining = bombActive && plantT != null && d.radar
     ? Math.max(0, 40 - (time - plantT)) : null;
   // ชี้เมาส์อยู่ให้ชนะการกดค้าง — ปล่อยเมาส์แล้วกลับไปที่ตัวที่กดค้างไว้เหมือนเดิม
   const focusPlayer = hover ?? view.player;
 
   return (
-    <div className="review" data-testid="round-view">
+    <div className="review viewer2d" data-testid="round-view">
       <div className="review-head">
         <h2>
-          {t("รอบ {n}", { n: d.round.num })}
+          2D VIEWER <span className="viewer-round-label">{t("รอบ {n}", { n: d.round.num })}</span>
           {d.round.winner_side && <span className={`badge b-${d.round.winner_side} big`}>{t("{side} ชนะ", { side: sideLabel(d.round.winner_side) })}</span>}
         </h2>
-        <span className="muted">
-          {endReasonLabel(d.round.end_reason)}
-          {d.round.bomb_planted_t != null && ` · ${t("วางบอมบ์ {time}", { time: fmtT(d.round.bomb_planted_t) })}`} · {t("ตาย {n} คน", { n: d.deaths.length })}
-        </span>
         <div className="toggles">
           <span className="toggle-group">
             <span className="muted">{t("ระเบิด")}</span>
@@ -223,7 +216,6 @@ export function RoundView({ demo, roundNum, view, setView, roundSelector }: Roun
             </button>
             {anyNadeOn && view.death != null && <span className="muted">· {t("เฉพาะที่มีผลตอนการตาย #{n}", { n: view.death })}</span>}
           </span>
-          <RoundExportButton data={d} />
         </div>
       </div>
 
@@ -232,11 +224,13 @@ export function RoundView({ demo, roundNum, view, setView, roundSelector }: Roun
         <aside className="roster-col" aria-label={t("ตารางระบุตัวผู้เล่น")}>
           <TeamRoster
             teams={d.teams}
+            scores={scores}
             highlight={focusPlayer}
             onHighlight={(p) => setView({ player: p })}
             onHover={setHover}
-            playback={view.playback}
+            playback
             live={live}
+            bombPlanted={plantT != null && time >= plantT}
           />
           {view.player && (
             <button type="button" className="link-btn" onClick={() => setView({ player: null })}>
@@ -246,18 +240,13 @@ export function RoundView({ demo, roundNum, view, setView, roundSelector }: Roun
         </aside>
 
         <section className="map-col" aria-label={t("แผนที่ของรอบ")}>
+          <div className="viewer-map-toolbar"><MatchTabs demo={demo} /></div>
+          <div className="viewer-time-overlay" aria-live="off">
+            <span><small>Replay</small><b>{fmtT(time)} / {fmtT(endT)}</b></span>
+            {bombRemaining != null && <span className={bombRemaining <= 10 ? "critical" : ""}><small>C4</small><b>{fmtT(bombRemaining)}</b></span>}
+          </div>
           {/* C4 HUD กับปุ่มซูมอยู่ในหัวการ์ดเหนือภาพเรดาร์ เพื่อไม่บังพื้นที่เล่นบนแผนที่ */}
           <div className="map-card-header">
-            {bombRemaining != null && (
-              <div className={`c4-hud${bombRemaining <= 10 ? " critical" : ""}`} data-testid="c4-countdown"
-                aria-label={`C4 ${bombRemaining.toFixed(1)}s`}>
-                <EquipmentIcon kind="bomb" className="c4-hud-icon" />
-                <span className="c4-hud-time">{bombRemaining.toFixed(1)}s</span>
-                <span className="c4-hud-track" aria-hidden="true">
-                  <span style={{ width: `${(bombRemaining / 40) * 100}%` }} />
-                </span>
-              </div>
-            )}
             {defuseRemaining != null && defuseProgressPercent != null &&
               <DefuseHud remaining={defuseRemaining} progressPercent={defuseProgressPercent} />}
             <div className="map-zoom" role="group" aria-label={t("ซูมแผนที่")}>
@@ -296,7 +285,7 @@ export function RoundView({ demo, roundNum, view, setView, roundSelector }: Roun
                 live={live}
                 defusingPlayer={defusingPlayer}
                 defuseProgressPercent={defuseProgressPercent}
-                playbackTime={view.playback ? time : null}
+                playbackTime={time}
                 reducedMotion={reducedMotion}
                 zoom={view.zoom}
                 center={view.center}
@@ -310,22 +299,8 @@ export function RoundView({ demo, roundNum, view, setView, roundSelector }: Roun
               <p className="muted">{t("ยังไม่มีภาพเรดาร์ของแมพ {map}", { map: d.match.map_name ?? "" })}</p>
             )}
           </div>
-          {/* เล่นย้อน: กดครั้งเดียวทั้งเปิดโหมดและเริ่มเล่น (เดิมต้องกดเปิดโหมดก่อน แล้วกดเล่นอีกที) */}
-          <div className="map-play">
-            {!view.playback ? (
-              <button
-                type="button"
-                className="pb-start"
-                onClick={() => {
-                  setTime(0);
-                  setView({ playback: true, time: 0 });
-                  setPlaying(true);
-                }}
-                data-testid="playback-start"
-              >
-                <IconPlay /> {t("เล่นย้อนรอบนี้")}
-              </button>
-            ) : positions.isLoading ? (
+          <div className="map-play viewer-controls">
+            {positions.isLoading ? (
               <span className="muted small">{t("กำลังโหลดตำแหน่งผู้เล่น…")}</span>
             ) : positions.error ? (
               <span className="err small">{t("โหลดตำแหน่งไม่ได้: {msg}", { msg: (positions.error as Error).message })}</span>
@@ -351,9 +326,11 @@ export function RoundView({ demo, roundNum, view, setView, roundSelector }: Roun
                   aria-label={t("เลื่อนเวลาในรอบ")}
                   title={t(", กับ . = ถอย/เดินหน้าทีละวินาที")}
                 />
-                <span className="pb-clock">
-                  {fmtT(time)} / {fmtT(endT)}
-                </span>
+                <div className="event-markers" aria-hidden="true">
+                  {d.deaths.filter((event) => event.t_round != null).map((event) => <i key={`k${event.order}`} className="kill" style={{ left: `${(event.t_round! / endT) * 100}%` }} />)}
+                  {plantT != null && <i className="plant" style={{ left: `${(plantT / endT) * 100}%` }} />}
+                  {d.round.bomb_resolved_t != null && <i className="resolved" style={{ left: `${(d.round.bomb_resolved_t / endT) * 100}%` }} />}
+                </div>
                 <span className="pb-speeds" role="group" aria-label={t("ความเร็ว")}>
                   {SPEEDS.map((sp) => (
                     <button key={sp} type="button" className={`pb-speed${speed === sp ? " on" : ""}`}
@@ -364,24 +341,11 @@ export function RoundView({ demo, roundNum, view, setView, roundSelector }: Roun
                 </span>
               </>
             )}
-            {view.playback && (
-              <button
-                type="button"
-                className="pb-close"
-                onClick={() => {
-                  setPlaying(false);
-                  setTime(0);
-                  setView({ playback: false, time: null });
-                }}
-                title={t("กลับไปภาพสรุปทั้งรอบ")}
-              >
-                {t("ภาพสรุปรอบ")}
-              </button>
-            )}
+            <span className="viewer-control-hint">Space · ← →</span>
           </div>
           {/* เลือกรอบจากใต้ตัวควบคุมแผนที่ เพื่อเปลี่ยนรอบได้ทันทีหลังดูเล่นย้อน */}
           {roundSelector}
-          {view.playback && pos && pos.frames.length > 0 && <p className="muted small pb-note">{t(pos.note)}</p>}
+          {pos && pos.frames.length > 0 && <p className="muted small pb-note">{t(pos.note)}</p>}
           {anyNadeOn && (
             <div className="legend">
               {NADE_TYPES.map((t) => (
@@ -394,35 +358,21 @@ export function RoundView({ demo, roundNum, view, setView, roundSelector }: Roun
           )}
         </section>
 
-        <aside className="breakdown" aria-label={t("ไทม์ไลน์ของรอบ")}>
-          <h3 className="panel-h">{t("ไทม์ไลน์")}</h3>
-          <DeathTimeline
-            deaths={d.deaths}
-            highlight={view.player}
-            selected={view.death}
-            onSelect={(o) => setView({ death: o })}
-            bombPlantedT={d.round.bomb_planted_t}
-            grenades={shownNades}
-          />
-          <ReviewNotes
-            demo={demo}
-            round={roundNum}
-            playbackTime={view.playback ? time : null}
-            onSeek={(noteTime) => {
-              setPlaying(false);
-              setTime(noteTime);
-              setView({ playback: true, time: noteTime });
-            }}
-          />
-          <RoundSummary summary={d.summary} winner={d.round.winner_side} />
-        </aside>
       </div>
+      {view.player && <ViewerPlayerDetails
+        steamid={view.player}
+        matchId={d.match.id}
+        demo={demo}
+        team={d.teams.find((team) => team.players.some((player) => player.steamid === view.player))?.clan ?? "—"}
+        current={live?.find((player) => player.steamid === view.player) ?? null}
+        onClose={() => setView({ player: null })}
+      />}
     </div>
   );
 }
 
 /** ความเร็วที่เลือกได้ในโหมดเล่นย้อน */
-const SPEEDS = [1, 2, 4] as const;
+const SPEEDS = [.5, 1, 2, 4] as const;
 
 function useReducedMotion(): boolean {
   const [reduced, setReduced] = useState(false);
@@ -1003,12 +953,71 @@ export function MapView({ radar, deaths, bomb, defuseBombPx, bombPlantedT, grena
 // ================================================================================================
 interface RosterProps {
   teams: ReviewTeam[];
+  scores?: { ct: number; t: number };
   highlight: string | null;
   onHighlight: (steamid: string | null) => void;
   /** ไฮไลต์ชั่วคราวตอนเอาเมาส์ชี้ — แยกจาก highlight ที่กดค้างไว้ */
   onHover: (steamid: string | null) => void;
   playback: boolean;
   live?: LivePlayer[] | null;
+  bombPlanted?: boolean;
+}
+
+function ViewerPlayerDetails({ steamid, matchId, demo, team, current, onClose }: {
+  steamid: string; matchId: number; demo: string; team: string; current: LivePlayer | null; onClose: () => void;
+}) {
+  const { t } = useT();
+  const dialogRef = useRef<HTMLElement>(null);
+  const closeRef = useRef<HTMLButtonElement>(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  const summary = useQuery({ queryKey: ["player", steamid], queryFn: () => playerApi.summary(steamid), retry: false });
+  const match = useQuery({ queryKey: ["match", matchId], queryFn: () => api.match(matchId) });
+  const behavior = useQuery({ queryKey: ["player-behavior", demo, steamid], queryFn: () => api.playerBehavior(demo, [steamid]) });
+  const matchPlayer = match.data?.scoreboard.find((player) => player.steam_id === steamid);
+  const profile = behavior.data?.players?.find((player) => player.steamid === steamid);
+  const total = summary.data?.totals;
+  useEffect(() => {
+    const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    closeRef.current?.focus();
+    const onKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        onCloseRef.current();
+      } else if (event.key === "Tab" && dialogRef.current) {
+        const focusable = [...dialogRef.current.querySelectorAll<HTMLElement>("button, [href], input, select, textarea, [tabindex]:not([tabindex='-1'])")];
+        if (!focusable.length) return;
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+        else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+      }
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => { document.removeEventListener("keydown", onKeyDown); previous?.focus(); };
+  }, []);
+  return (
+    <div className="viewer-player-backdrop" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
+    <section ref={dialogRef} className="viewer-player-details" role="dialog" aria-modal="true" aria-labelledby="viewer-player-title">
+      <header><div><small>{team}</small><strong id="viewer-player-title">{summary.data?.player.name ?? current?.name ?? steamid}</strong></div><button ref={closeRef} type="button" onClick={onClose} aria-label={t("ปิดรายละเอียดผู้เล่น")}>×</button></header>
+      <div className="viewer-player-scroll">
+        <section><h3>{t("สถานะ ณ เวลา replay ปัจจุบัน")}</h3><dl className="viewer-live-stats">
+          <div><dt>HP</dt><dd>{current?.hp ?? 0}</dd></div><div><dt>{t("เกราะ")}</dt><dd>{current?.armor ?? 0}</dd></div>
+          <div><dt>{t("เงิน")}</dt><dd>{current?.money == null ? "ไม่มีข้อมูล" : `$${current.money.toLocaleString()}`}</dd></div><div><dt>C4</dt><dd>{current?.hasBomb ? t("ถือ C4") : "—"}</dd></div>
+          <div><dt>{t("อาวุธ")}</dt><dd>{current?.activeWeapon ? weaponLabel(current.activeWeapon) : "—"}</dd></div><div><dt>{t("ตำแหน่ง")}</dt><dd>{current?.place ?? t("เสียชีวิต")}</dd></div>
+        </dl></section>
+        <section><h3>{t("สถิติทั้งแมตช์นี้")}</h3>{match.isLoading ? <p className="muted small">{t("กำลังโหลด…")}</p> : matchPlayer ? <dl className="viewer-match-stats">
+          <div><dt>K / D / A</dt><dd>{matchPlayer.kills} / {matchPlayer.deaths} / {matchPlayer.assists}</dd></div><div><dt>Rating</dt><dd>{matchPlayer.rating.toFixed(2)}</dd></div>
+          <div><dt>ADR</dt><dd>{matchPlayer.adr.toFixed(1)}</dd></div><div><dt>KAST</dt><dd>{matchPlayer.kast.toFixed(0)}%</dd></div><div><dt>HS</dt><dd>{matchPlayer.hs_rate.toFixed(0)}%</dd></div>
+        </dl> : <p className="muted small">{t("ไม่มีสถิติของผู้เล่นในแมตช์นี้")}</p>}</section>
+        <section><h3>{t("บทบาทและพฤติกรรมในแมตช์นี้")}</h3>{behavior.isLoading ? <p className="muted small">{t("กำลังคำนวณรูปแบบการเล่น…")}</p> : profile?.available ? <><strong className="viewer-role">{profile.role ?? "Hybrid / Unresolved"}</strong><ul className="viewer-signals">{(profile.signals ?? []).slice(0, 4).map((signal) => <li key={signal.feature}><span>{signal.feature.replaceAll("_", " ")}</span><b>{signal.direction === "higher" ? "↑" : "↓"} {Math.abs(signal.z).toFixed(1)}σ</b></li>)}</ul></> : <p className="muted small">{t("ข้อมูลรอบยังไม่พอสำหรับระบุบทบาท")}</p>}</section>
+        <section><h3>{t("สถิติรวมจากเดโมในระบบ")}</h3>{summary.isLoading ? <p className="muted small">{t("กำลังโหลดสถิติ…")}</p> : total ? <dl className="viewer-match-stats">
+          <div><dt>K/D</dt><dd>{total.kd.toFixed(2)}</dd></div><div><dt>Rating</dt><dd>{total.rating.toFixed(2)}</dd></div><div><dt>ADR</dt><dd>{total.adr.toFixed(1)}</dd></div><div><dt>KAST</dt><dd>{total.kast.toFixed(0)}%</dd></div><div><dt>{t("แมตช์")}</dt><dd>{total.matches}</dd></div>
+        </dl> : <p className="muted small">{t("ยังไม่มีสถิติรวม")}</p>}</section>
+      </div>
+    </section>
+    </div>
+  );
 }
 
 /**
@@ -1020,7 +1029,7 @@ interface RosterProps {
  *
  * วงกลมเลขหน้าแถวใช้สีและรูปทรงเดียวกับบนแผนที่ เพื่อให้กวาดตาเทียบกันได้ทันที
  */
-export function TeamRoster({ teams, highlight, onHighlight, onHover, playback, live }: RosterProps) {
+export function TeamRoster({ teams, scores, highlight, onHighlight, onHover, playback, live, bombPlanted = false }: RosterProps) {
   const { t: tx } = useT();
   const liveById = new Map((live ?? []).map((p) => [p.steamid, p]));
   return (
@@ -1030,23 +1039,24 @@ export function TeamRoster({ teams, highlight, onHighlight, onHover, playback, l
           <div className="team-head">
             <b>{t.clan}</b>
             <span className={`badge b-${t.side_this_round}`}>{sideLabel(t.side_this_round)}</span>
-            <span className="muted small">{tx("รอบนี้")}</span>
+            <strong className="team-score">{scores?.[t.side_this_round] ?? "—"}</strong>
           </div>
           <ul>
             {[...t.players].sort((a, b) => (a.slot ?? 99) - (b.slot ?? 99)).map((p) => {
               const now = liveById.get(p.steamid);
+              const deadNow = playback && live ? !now : !p.survived;
               return (
               <li
                 key={p.steamid}
                 className={[
                   highlight === p.steamid ? "on" : highlight ? "dim" : "",
-                  p.survived ? "" : "dead",
+                  deadNow ? "dead" : "",
                 ].filter(Boolean).join(" ")}
                 onMouseEnter={() => onHover(p.steamid)}
                 onMouseLeave={() => onHover(null)}
                 data-testid="roster-row"
                 data-slot={p.slot ?? ""}
-                data-dead={p.survived ? "0" : "1"}
+                data-dead={deadNow ? "1" : "0"}
               >
                 <button
                   type="button"
@@ -1055,14 +1065,16 @@ export function TeamRoster({ teams, highlight, onHighlight, onHover, playback, l
                   title={tx("กดเพื่อไฮไลต์เฉพาะเหตุการณ์ของคนนี้ค้างไว้")}
                 >
                   <span
-                    className="pslot"
+                    className="pslot php"
                     style={{ background: playerFill(t.side_this_round), color: playerInk(t.side_this_round) }}
                     aria-hidden="true"
                   >
-                    {p.slot ?? "?"}
+                    {now?.hp ?? (deadNow ? 0 : 100)}
                   </span>
                   <span className="pn">{p.name}</span>
-                  {p.kills > 0 && <span className="kills">{tx("{n} คิล", { n: p.kills })}</span>}
+                  <span className="player-money" title={now?.money == null ? tx("ไม่มีข้อมูลเงินใน replay นี้") : undefined}>{now?.money == null ? "—" : `$${now.money.toLocaleString()}`}</span>
+                  {!bombPlanted && now?.hasBomb && <span className="roster-c4" title={tx("ถือ C4")} aria-label={tx("ถือ C4")}><EquipmentIcon kind="bomb" /></span>}
+                  <span className="roster-weapon-slot">{now?.activeWeapon ? <WeaponIcon name={now.activeWeapon} className="roster-weapon" /> : <span aria-hidden="true">—</span>}</span>
                 </button>
                 {playback && now && (now.activeWeapon || now.armor || now.hasHelmet || now.hasDefuser) && (
                   <div className="pgear" aria-label={tx("อุปกรณ์ปัจจุบัน")}>
@@ -1096,128 +1108,6 @@ export function TeamRoster({ teams, highlight, onHighlight, onHover, playback, l
     </div>
   );
 }
-
-// ================================================================================================
-// ไทม์ไลน์การตาย
-// ================================================================================================
-interface TimelineProps {
-  deaths: ReviewDeath[];
-  highlight: string | null;
-  selected: number | null;
-  onSelect: (order: number | null) => void;
-  bombPlantedT: number | null;
-  grenades: ReviewGrenade[];
-}
-
-const involved = (d: ReviewDeath, h: string | null) => !h || d.victim.steamid === h || d.attacker?.steamid === h;
-
-function Who({ p }: { p: ReviewDeath["victim"] }) {
-  return (
-    <span className="who">
-      <span className="pdot" style={{ background: p.color }} />
-      {p.name} <span className="muted">({sideLabel(p.side)})</span>
-    </span>
-  );
-}
-
-/** ไล่ตามเวลา: 0:23  Alice (T) ฆ่า Bob (CT) · AK-47 · HS · ระยะ 640u · A Site */
-export function DeathTimeline({ deaths, highlight, selected, onSelect, bombPlantedT, grenades }: TimelineProps) {
-  type Item =
-    | { t: number; kind: "death"; d: ReviewDeath }
-    | { t: number; kind: "bomb" }
-    | { t: number; kind: "nade"; n: ReviewGrenade; i: number };
-  const items: Item[] = deaths.map((d) => ({ t: d.t_round ?? 0, kind: "death" as const, d }));
-  if (bombPlantedT != null) items.push({ t: bombPlantedT, kind: "bomb" });
-  grenades.forEach((n, i) => items.push({ t: n.t_land ?? n.t_throw ?? 0, kind: "nade", n, i }));
-  items.sort((a, b) => a.t - b.t);
-  const { t, tn } = useT();
-
-  return (
-    <ol className="timeline-list" data-testid="death-timeline">
-      {items.map((it) =>
-        it.kind === "bomb" ? (
-          <li key="bomb" className="tl-bomb">
-            <EquipmentIcon kind="bomb" className="tl-event-icon" /> <span className="tl-t">{fmtT(it.t)}</span> {t("วางบอมบ์")}
-          </li>
-        ) : it.kind === "nade" ? (
-          <li key={`n${it.i}`} className={`tl-nade ${!highlight || it.n.thrower?.steamid === highlight ? "" : "dim"}`}>
-            <span className="nade-dot"><NadeMiniIcon type={it.n.type} /></span>
-            <span className="tl-t">{fmtT(it.t)}</span>
-            <span className="tl-text">
-              {tn("{who} ขว้าง{nade}", { who: it.n.thrower ? <Who p={it.n.thrower} /> : "?", nade: nadeLabel(it.n.type) })}
-            </span>
-          </li>
-        ) : (
-          <li
-            key={it.d.order}
-            className={`${selected === it.d.order ? "sel" : ""} ${involved(it.d, highlight) ? "" : "dim"}`}
-            {...pressable(() => onSelect(selected === it.d.order ? null : it.d.order))}
-          >
-            <span className="tl-num" style={{ background: it.d.victim.color }}>
-              {it.d.order}
-            </span>
-            <span className="tl-t">{fmtT(it.d.t_round)}</span>
-            <span className="tl-text">
-              {it.d.attacker && it.d.is_duel ? (
-                tn("{attacker} ฆ่า {victim}", { attacker: <Who p={it.d.attacker} />, victim: <Who p={it.d.victim} /> })
-              ) : it.d.team_kill && it.d.attacker ? (
-                tn("{attacker} ยิงเพื่อนร่วมทีม {victim}", { attacker: <Who p={it.d.attacker} />, victim: <Who p={it.d.victim} /> })
-              ) : (
-                tn("{victim} ตาย", { victim: <Who p={it.d.victim} /> })
-              )}
-              <span className="tl-meta">
-                {" · "}
-                <WeaponIcon name={it.d.weapon} className="tl-weapon-icon" />
-                {weaponLabel(it.d.weapon)}
-                {it.d.headshot && " · HS"}
-                {it.d.distance != null && ` · ${t("ระยะ {d}u", { d: it.d.distance })}`}
-                {it.d.place && ` · ${it.d.place}`}
-                {it.d.attacker_blind && ` · ${t("คนยิงโดนแฟลช")}`}
-                {it.d.thru_smoke && ` · ${t("ยิงผ่านควัน")}`}
-                {it.d.penetrated > 0 && ` · ${t("ทะลุกำแพง")}`}
-                {it.d.noscope && " · noscope"}
-                {it.d.assister && ` · ${t("ช่วย: {name}", { name: it.d.assister })}`}
-              </span>
-            </span>
-          </li>
-        ),
-      )}
-      {deaths.length === 0 && <li className="muted">{t("ไม่มีใครตายในรอบนี้")}</li>}
-    </ol>
-  );
-}
-
-// ================================================================================================
-// สรุปรอบ — ข้อเท็จจริงจากเดโมล้วน ๆ ไม่มีตัวเลขจากโมเดล (ส่วนนั้นอยู่ที่ /analysis)
-// ================================================================================================
-/** สรุปรอบ: ใครตายคนแรก / ฝั่งที่เสียคนแรกแพ้ไหม */
-export function RoundSummary({ summary, winner }: { summary: RoundDetail["summary"]; winner: RoundDetail["round"]["winner_side"] }) {
-  const f = summary.first_death;
-  const { t, tn } = useT();
-  return (
-    <section className="summary" data-testid="round-summary">
-      <h3 className="panel-h">{t("สรุปรอบ")}</h3>
-      {f ? (
-        <p>
-          {tn("ตายคนแรก: {name} ({side}) ที่ {place} วินาทีที่ {time}", {
-            name: <b>{f.name}</b>, side: sideLabel(f.side), place: f.place ?? "—", time: fmtT(f.t_round),
-          })}
-          {f.by ? ` ${t("โดย {name}", { name: f.by })}` : ""}
-        </p>
-      ) : (
-        <p className="muted">{t("รอบนี้ไม่มีใครตาย")}</p>
-      )}
-      {summary.first_death_side_lost !== null && f && (
-        <p>
-          {t(summary.first_death_side_lost
-            ? "ฝั่ง {side} เสียคนแรก และแพ้รอบนี้ (ผู้ชนะ {winner})"
-            : "ฝั่ง {side} เสียคนแรก และชนะรอบนี้ (ผู้ชนะ {winner})", { side: sideLabel(f.side), winner: sideLabel(winner) })}
-        </p>
-      )}
-    </section>
-  );
-}
-
 
 /** ไอคอนเล่น / หยุด — วาดเองให้เข้าชุดกับไอคอนอื่นในแอป */
 function IconPlay() {

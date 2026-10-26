@@ -268,6 +268,8 @@ class PlayerPosition(Base):
     armor: Mapped[int | None] = mapped_column(SmallInteger)
     has_helmet: Mapped[bool | None] = mapped_column(Boolean)
     has_defuser: Mapped[bool | None] = mapped_column(Boolean)
+    money: Mapped[int | None] = mapped_column(Integer)
+    has_bomb: Mapped[bool | None] = mapped_column(Boolean)
 
     __table_args__ = (
         CheckConstraint("side IN ('ct', 't')", name="player_positions_side_check"),

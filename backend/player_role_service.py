@@ -76,6 +76,7 @@ def assign_profile(profile: dict[str, Any], side: str, model: dict[str, Any]) ->
         "cluster": cluster["id"],
         "distance": round(distance, 4),
         "margin": round(margin, 4),
+        "metrics": {feature: round(value, 4) for feature, value in values.items()},
         "signals": [{"feature": f, "direction": "higher" if z[f] >= 0 else "lower",
                      "z": round(z[f], 3), "value": round(values[f], 4)} for f in signals],
     }

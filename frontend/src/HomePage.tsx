@@ -3,6 +3,7 @@ import "@fontsource/chakra-petch/700.css";
 import "@fontsource/anuphan/400.css";
 import "@fontsource/anuphan/500.css";
 import "@fontsource/anuphan/600.css";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { LangToggle, useT } from "./i18n";
 import { ThemeToggle } from "./theme";
@@ -18,11 +19,15 @@ const COPY = {
     note: "อ้างอิงจากเดโมของทีมคุณ · ดูข้อเท็จจริงโดยไม่ตัดสินผู้เล่น",
     stageRound: "รอบ 18 · Mirage",
     stageTime: "00:31 / 00:48",
+    stageSample: "รีเพลย์ตัวอย่าง",
+    stagePlay: "เล่นรีเพลย์ตัวอย่าง",
+    stagePause: "หยุดรีเพลย์ตัวอย่างชั่วคราว",
+    stageTimeline: "ไทม์ไลน์รีเพลย์ตัวอย่าง",
     stageEvent: "วางระเบิด",
     stageKill: "Opening duel",
     stageUtility: "Smoke กำลังทำงาน",
     whyTitle: "สกอร์บอกผล\nแผนที่บอกว่าเกิดอะไรขึ้น",
-    whyBody: "สกอร์บอร์ดบอกว่าใครชนะ แต่ไม่บอกว่าทีมเสียพื้นที่ตรงไหนก่อน หรือเพื่อนอยู่ใกล้พอจะ trade หรือไม่ CS2 SCOUTING จึงรวมทุกเหตุการณ์ไว้บนแผนที่เดียว ให้โค้ชและผู้เล่นเห็นภาพเดียวกันและทบทวนแต่ละรอบได้เร็วขึ้น",
+    whyBody: "สกอร์บอร์ดบอกว่าใครชนะ แต่ไม่บอกว่าทีมเสียพื้นที่ตรงไหนก่อน หรือเพื่อนอยู่ใกล้พอจะ trade หรือไม่ CS2 UNTITLED จึงรวมทุกเหตุการณ์ไว้บนแผนที่เดียว ให้โค้ชและผู้เล่นเห็นภาพเดียวกันและทบทวนแต่ละรอบได้เร็วขึ้น",
     f1: "ย้อนดูทุกจังหวะบนแผนที่",
     f1d: "เลื่อน timeline เพื่อดูตำแหน่งผู้เล่น จุดตาย เส้นยิง และ utility ที่กำลังทำงานในขณะนั้น",
     f2: "เห็นพื้นที่ที่ปะทะบ่อย",
@@ -38,7 +43,7 @@ const COPY = {
     step3d: "เลื่อนเวลา เลือกผู้เล่น แล้วแชร์ลิงก์มุมมองเดียวกันให้ทุกคนในทีม",
     finalTitle: "เข้าใจรอบที่ผ่านมา เพื่อเล่นรอบต่อไปให้ดีขึ้น",
     finalBody: "ลองดูระบบได้ทันทีในโหมดผู้เยี่ยมชม หรือล็อกอินด้วย Steam เพื่อเชื่อมสถิติเข้ากับบัญชีของคุณ",
-    finalCta: "ลองใช้งาน CS2 SCOUTING",
+    finalCta: "ลองใช้งาน CS2 UNTITLED",
     project: "โครงงาน SP-404 · UTCC STECH",
   },
   en: {
@@ -51,11 +56,15 @@ const COPY = {
     note: "Your team's demo data · facts without grading players",
     stageRound: "Round 18 · Mirage",
     stageTime: "00:31 / 00:48",
+    stageSample: "SAMPLE REPLAY",
+    stagePlay: "Play sample replay",
+    stagePause: "Pause sample replay",
+    stageTimeline: "Sample replay timeline",
     stageEvent: "Bomb planted",
     stageKill: "Opening duel",
     stageUtility: "Smoke active",
     whyTitle: "From a scoreboard\nto a shared picture",
-    whyBody: "A scoreboard records the result, not which space was lost first or whether a teammate could trade. CS2 SCOUTING puts the events back on one map so coaches and players can review a round together, faster.",
+    whyBody: "A scoreboard records the result, not which space was lost first or whether a teammate could trade. CS2 UNTITLED puts the events back on one map so coaches and players can review a round together, faster.",
     f1: "Replay player positions",
     f1d: "Scrub second by second with deaths, shot lines, and utility active at that moment.",
     f2: "Read fight patterns",
@@ -71,7 +80,7 @@ const COPY = {
     step3d: "Scrub time, select a player, and share the exact view by URL.",
     finalTitle: "The next round starts by understanding the last one",
     finalBody: "Explore immediately as a guest, or sign in with Steam to connect stats to your account.",
-    finalCta: "Explore CS2 SCOUTING",
+    finalCta: "Explore CS2 UNTITLED",
     project: "SP-404 Senior Project · UTCC STECH",
   },
 } as const;
@@ -90,18 +99,103 @@ function Arrow() {
   return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h13M13 6l6 6-6 6" /></svg>;
 }
 
-const players = [
-  { side: "ct", x: 31, y: 72, slot: "1", name: "TeSeS", labelX: -14, labelY: -19 },
-  { side: "ct", x: 28, y: 78, slot: "2", name: "kyousuke", labelX: -46, labelY: 1 },
-  { side: "ct", x: 34, y: 79, slot: "3", name: "NiKo", labelX: -39, labelY: 21 },
-  { side: "ct", x: 32, y: 83, slot: "4", name: "m0NESY", labelX: 26, labelY: 8 },
-  { side: "ct", x: 30, y: 86, slot: "5", name: "karrigan", labelX: -25, labelY: 28 },
-  { side: "t", x: 78, y: 30, slot: "1", name: "FalleN", labelX: -42, labelY: 4 },
-  { side: "t", x: 82, y: 25, slot: "2", name: "YEKINDAR", labelX: -15, labelY: -25 },
-  { side: "t", x: 80, y: 33, slot: "3", name: "molodoy", labelX: -47, labelY: 21 },
-  { side: "t", x: 84, y: 26, slot: "4", name: "yuurih", labelX: -49, labelY: -4 },
-  { side: "t", x: 83, y: 36, slot: "5", name: "KSCERATO", labelX: -7, labelY: 34 },
+const PREVIEW_DURATION = 48;
+const previewPlayers = [
+  { side: "ct", slot: "1", name: "CT-1", from: [31, 72], to: [48, 57], angle: -38, labelX: -12, labelY: -22 },
+  { side: "ct", slot: "2", name: "CT-2", from: [28, 78], to: [42, 70], angle: -22, labelX: -45, labelY: 2 },
+  { side: "ct", slot: "3", name: "CT-3", from: [34, 79], to: [55, 69], angle: -18, labelX: -38, labelY: 22 },
+  { side: "ct", slot: "4", name: "CT-4", from: [32, 83], to: [38, 52], angle: -65, labelX: 25, labelY: 8 },
+  { side: "ct", slot: "5", name: "CT-5", from: [30, 86], to: [51, 79], angle: -18, labelX: -24, labelY: 29 },
+  { side: "t", slot: "1", name: "T-1", from: [78, 30], to: [62, 47], angle: 142, labelX: -40, labelY: 4 },
+  { side: "t", slot: "2", name: "T-2", from: [82, 25], to: [69, 51], angle: 116, labelX: -14, labelY: -26 },
+  { side: "t", slot: "3", name: "T-3", from: [80, 33], to: [57, 54], angle: 138, labelX: -46, labelY: 22 },
+  { side: "t", slot: "4", name: "T-4", from: [84, 26], to: [73, 62], angle: 107, labelX: -48, labelY: -5 },
+  { side: "t", slot: "5", name: "T-5", from: [83, 36], to: [64, 68], angle: 121, labelX: -6, labelY: 35 },
 ] as const;
+
+const previewEvents: ReadonlyArray<{
+  time: number;
+  side: "ct" | "t" | "bomb";
+  key?: "stageUtility" | "stageKill" | "stageEvent";
+  label?: string;
+}> = [
+  { time: 12, side: "ct", key: "stageUtility" },
+  { time: 19, side: "t", key: "stageKill" },
+  { time: 31, side: "bomb", key: "stageEvent" },
+  { time: 36, side: "ct", label: "Trade kill" },
+] as const;
+
+function formatPreviewTime(value: number) {
+  return `00:${Math.floor(value).toString().padStart(2, "0")}`;
+}
+
+function ReplayPreview({ c }: { c: (typeof COPY)[keyof typeof COPY] }) {
+  const rootRef = useRef<HTMLDivElement>(null);
+  const [time, setTime] = useState(8);
+  const [playing, setPlaying] = useState(true);
+  const [visible, setVisible] = useState(true);
+  const progress = time / PREVIEW_DURATION;
+  const activeEvent = previewEvents.reduce((active, event, index) => time >= event.time ? index : active, 0);
+  const events = useMemo(() => previewEvents.map((event) => ({
+    ...event,
+    label: event.label ?? (event.key ? c[event.key] : ""),
+  })), [c]);
+
+  useEffect(() => {
+    const node = rootRef.current;
+    if (!node) return;
+    const observer = new IntersectionObserver(([entry]) => setVisible(entry.isIntersecting), { threshold: 0.15 });
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    if (!playing || !visible) return;
+    let frame = 0;
+    let previous = performance.now();
+    const advance = (now: number) => {
+      const elapsed = Math.min((now - previous) / 1000, 0.1);
+      previous = now;
+      setTime((current) => (current + elapsed) % PREVIEW_DURATION);
+      frame = requestAnimationFrame(advance);
+    };
+    frame = requestAnimationFrame(advance);
+    return () => cancelAnimationFrame(frame);
+  }, [playing, visible]);
+
+  return (
+    <div className="home-stage" ref={rootRef} aria-label={c.stageRound}>
+      <div className="stage-head"><b>{c.stageRound}</b><span className="stage-live"><i /> {c.stageSample}</span></div>
+      <div className="stage-body">
+        <div className="stage-map">
+          <img src="/assets/maps/de_mirage.png" alt="Mirage radar" draggable={false} />
+          {previewPlayers.map(({ side, slot, name, from, to, angle, labelX, labelY }) => {
+            const x = from[0] + (to[0] - from[0]) * progress;
+            const y = from[1] + (to[1] - from[1]) * progress;
+            return (
+              <span key={`${side}-${slot}`} className="stage-player-wrap" style={{ left: `${x}%`, top: `${y}%` }}>
+                <span className={`stage-player ${side}`} style={{ rotate: `${angle}deg` }}><i />{slot}</span>
+                <span className="stage-player-name" style={{ translate: `${labelX}px ${labelY}px` }}>{name}</span>
+              </span>
+            );
+          })}
+        </div>
+        <ol className="stage-timeline">
+          {events.map((event, index) => (
+            <li key={event.time} className={index === activeEvent ? "active" : undefined}>
+              <time>{formatPreviewTime(event.time)}</time><i className={event.side} />{event.label}
+            </li>
+          ))}
+        </ol>
+      </div>
+      <div className="stage-controls">
+        <button className={`stage-play${playing ? " playing" : ""}`} type="button" onClick={() => setPlaying((value) => !value)} aria-label={playing ? c.stagePause : c.stagePlay}><span /></button>
+        <input aria-label={c.stageTimeline} type="range" min="0" max={PREVIEW_DURATION} step="0.1" value={time} onChange={(event) => setTime(Number(event.currentTarget.value))} />
+        <b>{formatPreviewTime(time)} / 00:48</b>
+      </div>
+    </div>
+  );
+}
 
 export function HomePage() {
   const { lang } = useT();
@@ -109,7 +203,7 @@ export function HomePage() {
   return (
     <div className="home-page">
       <header className="home-nav">
-        <Link className="home-brand" to="/" aria-label="CS2 SCOUTING home"><Mark /><span>CS2 SCOUTING</span></Link>
+        <Link className="home-brand" to="/" aria-label="CS2 UNTITLED home"><Mark /><span>CS2 UNTITLED</span></Link>
         <nav aria-label="Home navigation">
           <a href="#about">{c.navAbout}</a>
           <a href="#workflow">{c.navFlow}</a>
@@ -132,27 +226,7 @@ export function HomePage() {
             </div>
           </div>
 
-          <div className="home-stage" aria-label={c.stageRound}>
-            <div className="stage-head"><b>{c.stageRound}</b><span className="stage-live"><i /> LIVE REVIEW</span></div>
-            <div className="stage-body">
-              <div className="stage-map">
-                <img src="/assets/maps/de_mirage.png" alt="Mirage radar" draggable={false} />
-                {players.map(({ side, x, y, slot, name, labelX, labelY }) => (
-                  <span key={`${side}-${slot}`} className="stage-player-wrap" style={{ left: `${x}%`, top: `${y}%` }}>
-                    <span className={`stage-player ${side}`}>{slot}</span>
-                    <span className="stage-player-name" style={{ translate: `${labelX}px ${labelY}px` }}>{name}</span>
-                  </span>
-                ))}
-              </div>
-              <ol className="stage-timeline">
-                <li><time>00:12</time><i className="ct" />{c.stageUtility}</li>
-                <li><time>00:19</time><i className="t" />{c.stageKill}</li>
-                <li className="active"><time>00:31</time><i className="bomb" />{c.stageEvent}</li>
-                <li><time>00:36</time><i className="ct" />Trade kill</li>
-              </ol>
-            </div>
-            <div className="stage-controls"><span className="stage-play" aria-hidden="true"><span /></span><div><i /></div><b>{c.stageTime}</b></div>
-          </div>
+          <ReplayPreview c={c} />
         </section>
 
         <section className="home-proof" id="about">
@@ -178,7 +252,7 @@ export function HomePage() {
           <Link className="home-primary" to="/login?next=%2Fmatches">{c.finalCta}<Arrow /></Link>
         </section>
       </div>
-      <footer className="home-footer"><Link className="home-brand" to="/"><Mark /><span>CS2 SCOUTING</span></Link><span>{c.project}</span></footer>
+      <footer className="home-footer"><Link className="home-brand" to="/"><Mark /><span>CS2 UNTITLED</span></Link><span>{c.project}</span></footer>
     </div>
   );
 }

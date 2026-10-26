@@ -417,6 +417,30 @@ def _csv_participants(kills: pd.DataFrame) -> pd.DataFrame:
     return out[out["side"].isin(["t", "ct"])]
 
 
+def _resolve_team_round_sides(participants: pd.DataFrame) -> pd.DataFrame:
+    """Resolve isolated parser side glitches from the team roster majority.
+
+    A valid team has five players on one side in a round.  Some demos contain a
+    single event whose side tag is flipped; accepting only a 4-to-1 (or 5-to-0)
+    unique-player majority repairs that narrow case while still rejecting truly
+    ambiguous team/side data.
+    """
+    keys = ["demo_file", "round_num", "team"]
+    votes = (participants.drop_duplicates(keys + ["steam_id", "side"])
+             .groupby(keys + ["side"])["steam_id"].nunique()
+             .unstack(fill_value=0).reindex(columns=["t", "ct"], fill_value=0))
+    votes["resolved_side"] = np.where(votes["t"] > votes["ct"], "t", "ct")
+    votes["winner"] = votes[["t", "ct"]].max(axis=1)
+    votes["runner_up"] = votes[["t", "ct"]].min(axis=1)
+    ambiguous = votes[(votes["runner_up"] > 0) & ~((votes["winner"] >= 4) & (votes["runner_up"] <= 1))]
+    if not ambiguous.empty:
+        raise ValueError("พบ team_clan เดียวอยู่ทั้ง T และ CT ในรอบเดียวกันโดยไม่มี roster ข้างมากชัดเจน")
+
+    resolved = participants.merge(votes[["resolved_side"]].reset_index(), on=keys, how="left")
+    resolved["side"] = resolved.pop("resolved_side")
+    return resolved
+
+
 def build_profiles_from_kills(kills: pd.DataFrame, min_rounds: int = MIN_ROUNDS) -> pd.DataFrame:
     """สร้าง player-match-side profiles จาก all_kills.csv โดยไม่ใช้ฐานข้อมูล
 
@@ -426,11 +450,7 @@ def build_profiles_from_kills(kills: pd.DataFrame, min_rounds: int = MIN_ROUNDS)
     participants = _csv_participants(kills)
     if participants.empty:
         return pd.DataFrame()
-
-    conflict = (participants.groupby(["demo_file", "round_num", "team"])["side"]
-                .nunique().max())
-    if conflict > 1:
-        raise ValueError("พบ team_clan เดียวอยู่ทั้ง T และ CT ในรอบเดียวกัน")
+    participants = _resolve_team_round_sides(participants)
 
     roster = (participants.groupby(["demo_file", "map_name", "steam_id"], as_index=False)
               .agg(name=("name", _mode), team=("team", _mode)))

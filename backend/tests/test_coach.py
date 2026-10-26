@@ -1,7 +1,7 @@
 import numpy as np
 from sklearn.ensemble import RandomForestClassifier
 
-from backend.coach import build_coach_samples, recommend_round, round_context, tree_distribution
+from backend.coach import build_coach_samples, load_coach_model, recommend_round, round_context, tree_distribution
 from backend.coach_data import load_coach_facts
 
 
@@ -66,3 +66,16 @@ def test_training_sql_has_explicit_reference_boundary():
     asyncio.run(load_coach_facts(conn, "de_mirage", reference_only=True))
     assert len(conn.sql) == 3
     assert all("m.source = 'reference'" in sql for sql in conn.sql)
+
+
+def test_map_specific_model_is_preferred_over_legacy(tmp_path, monkeypatch):
+    import json
+    import backend.coach as coach
+
+    model_dir = tmp_path / "de_ancient"
+    model_dir.mkdir()
+    artifact = {"version": coach.VERSION, "map": "de_ancient", "sides": {}}
+    (model_dir / "coach_model.json").write_text(json.dumps(artifact), encoding="utf-8")
+    monkeypatch.setattr(coach, "MODEL_ROOT", tmp_path)
+    coach._read_coach_model.cache_clear()
+    assert load_coach_model(map_name="de_ancient")["map"] == "de_ancient"

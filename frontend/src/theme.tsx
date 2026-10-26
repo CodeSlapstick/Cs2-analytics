@@ -3,17 +3,18 @@ import { useT } from "./i18n";
 
 type Theme = "light" | "dark";
 
-const STORE_KEY = "cs2-scouting-theme";
+const STORE_KEY = "cs2-untitled-theme";
+const LEGACY_STORE_KEY = "cs2-scouting-theme";
 const ThemeContext = createContext<{ theme: Theme; toggle: () => void } | null>(null);
 
 function initialTheme(): Theme {
   try {
-    const saved = localStorage.getItem(STORE_KEY);
+    const saved = localStorage.getItem(STORE_KEY) ?? localStorage.getItem(LEGACY_STORE_KEY);
     if (saved === "light" || saved === "dark") return saved;
   } catch {
     // Storage can be unavailable in private or restricted browser contexts.
   }
-  return window.matchMedia?.("(prefers-color-scheme: light)").matches ? "light" : "dark";
+  return "light";
 }
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
@@ -24,6 +25,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     document.documentElement.style.colorScheme = theme;
     try {
       localStorage.setItem(STORE_KEY, theme);
+      localStorage.removeItem(LEGACY_STORE_KEY);
     } catch {
       // The visual theme still works when persistence is unavailable.
     }

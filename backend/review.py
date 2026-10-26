@@ -659,6 +659,10 @@ def build_round_positions(positions: list[dict], *, start_tick, tickrate: int, f
             player["has_helmet"] = bool(r["has_helmet"])
         if r.get("has_defuser") is not None:
             player["has_defuser"] = bool(r["has_defuser"])
+        if r.get("money") is not None:
+            player["money"] = int(r["money"])
+        if r.get("has_bomb") is not None:
+            player["has_bomb"] = bool(r["has_bomb"])
         by_tick.setdefault(tick, {}).setdefault(player["steamid"], player)
     ticks = sorted(by_tick)
     frames = [

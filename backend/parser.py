@@ -126,7 +126,7 @@ DAMAGE_COLUMNS = {
 #   คือมูลค่าจริง ซึ่งตรงกับนิยาม "equipment value at freeze-time end" ของ HLTV พอดี
 TICK_PROPS = ["team_name", "is_alive", "current_equip_value", "balance",
               "X", "Y", "Z", "last_place_name", "health",
-              "team_clan_name", "active_weapon_name", "armor_value", "has_helmet", "has_defuser", "yaw"]
+              "team_clan_name", "active_weapon_name", "armor_value", "has_helmet", "has_defuser", "yaw", "inventory"]
 
 for _s in (sys.stdout, sys.stderr):     # ให้คอนโซล Windows พิมพ์ไทยได้
     try:
@@ -147,12 +147,16 @@ def _clean(df: pl.DataFrame) -> pl.DataFrame:
 
 def _round_table(dem) -> pl.DataFrame:
     """ตารางรอบ + จุดที่วางบอมบ์ — เอาจากตารางรอบโดยตรง จะได้ครบแม้รอบที่ไม่มีคิลเลย"""
+    # awpy's generated round schema varies by parser/demo. Short or
+    # abandoned matches can legitimately omit bomb_plant entirely.
+    bomb_plant = (pl.col("bomb_plant").cast(pl.Int32)
+                  if "bomb_plant" in dem.rounds.columns else pl.lit(None, pl.Int32))
     rounds = _clean(dem.rounds.select(
         pl.col("round_num").cast(pl.Int32),
         # start_tick = จังหวะ freeze time จบ ถ้าไม่มี event นั้นถอยไปใช้ round_start
         pl.coalesce("freeze_end", "start").cast(pl.Int32).alias("start_tick"),
         pl.coalesce("official_end", "end").cast(pl.Int32).alias("end_tick"),
-        pl.col("bomb_plant").cast(pl.Int32).alias("bomb_plant_tick"),
+        bomb_plant.alias("bomb_plant_tick"),
         pl.col("winner").alias("winner_side"),
         pl.col("reason").alias("end_reason"),
     )).sort("round_num")
@@ -359,6 +363,14 @@ def _position_table(all_ticks: pl.DataFrame, pos_want: dict[int, int]) -> pl.Dat
             pl.col("armor_value").cast(pl.Int16).alias("armor"),
             pl.col("has_helmet").cast(pl.Boolean),
             pl.col("has_defuser").cast(pl.Boolean),
+            pl.col("balance").cast(pl.Int32).alias("money"),
+            (pl.col("inventory").map_elements(
+                lambda items: False if items is None else any(
+                    str(item).lower().removeprefix("weapon_") == "c4" for item in items
+                ),
+                return_dtype=pl.Boolean,
+            ).alias("has_bomb") if "inventory" in all_ticks.columns
+             else pl.lit(None, pl.Boolean).alias("has_bomb")),
         )
         .unique(["round_num", "tick", "steam_id"], keep="first", maintain_order=True)
         .sort(["round_num", "tick", "steam_id"])
