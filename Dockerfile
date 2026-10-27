@@ -24,7 +24,7 @@ COPY . .
 
 # Bundle the trained ML artifacts used by analysis and Coach in deployments.
 # The archive contains paths rooted at output/.
-RUN python -m zipfile -e cs2-models-2026-10-24.zip /app \
+RUN python deployment/extract_models.py cs2-models-2026-10-24.zip /app \
  && mkdir -p /app/output/models/de_mirage \
  && cp /app/output/coach_model.json /app/output/models/de_mirage/coach_model.json \
  && rm cs2-models-2026-10-24.zip
