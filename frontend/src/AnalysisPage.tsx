@@ -404,18 +404,29 @@ function TeamBehaviorComparison({ groups }: { groups: { team: string; profiles: 
 
 function BehaviorTeam({ team, ours, profiles }: { team: string; ours: boolean; profiles: PlayerBehaviorProfile[] }) {
   const { t } = useT();
+  const players = [...profiles.reduce((grouped, profile) => {
+    const player = grouped.get(profile.steamid) ?? { steamid: profile.steamid, name: profile.name, profiles: [] as PlayerBehaviorProfile[] };
+    player.profiles.push(profile);
+    grouped.set(profile.steamid, player);
+    return grouped;
+  }, new Map<string, { steamid: string; name: string; profiles: PlayerBehaviorProfile[] }>()).values()]
+    .sort((a, b) => a.name.localeCompare(b.name));
   return <div className={`behavior-side${ours ? " is-ours" : " is-opponent"}`}>
     <h3>{team} <span className="team-kind">{ours ? "ทีมเรา" : "คู่แข่ง"}</span></h3>
-    {profiles.length === 0 ? <p className="muted">{t("ไม่มีผู้เล่นจากฝั่งนี้ในตัวกรอง")}</p> : profiles.map((p) =>
-      <article className={`behavior-card side-${p.side}`} key={`${p.steamid}-${p.side}`} data-available={p.available}>
-        <div className="behavior-player"><b title={p.name}>{p.name}</b><span><span className={`badge b-${p.side}`}>{sideLabel(p.side)}</span> <span className="muted">{t("{n} รอบ", { n: p.rounds })}</span></span></div>
-        {!p.available ? <p className="muted">{t("ข้อมูลยังไม่พอ ต้องมีอย่างน้อย {n} รอบในฝั่งนี้", { n: p.minimum_rounds ?? 5 })}</p> : <>
-          <strong className="behavior-role">{roleLabel(p.role ?? "Hybrid / Unresolved")}</strong>
-          <ul className="behavior-signals">{(p.signals ?? []).map((signal) => <li key={signal.feature}>
-            <span>{t(FEATURE_LABELS[signal.feature] ?? signal.feature)}</span>
-            <small><span>{signal.value.toFixed(2)} · </span><span>{signal.direction === "higher" ? t("พบมากกว่าค่ากลางอ้างอิง") : t("พบน้อยกว่าค่ากลางอ้างอิง")}</span></small>
-          </li>)}</ul>
-        </>}
+    {players.length === 0 ? <p className="muted">{t("ไม่มีผู้เล่นจากฝั่งนี้ในตัวกรอง")}</p> : players.map((player) =>
+      <article className="behavior-card behavior-player-card" key={player.steamid}>
+        <div className="behavior-player"><b title={player.name}>{player.name}</b></div>
+        <div className="behavior-side-profiles">{player.profiles.sort((a, b) => a.side.localeCompare(b.side)).map((p) =>
+          <section className={`behavior-side-profile side-${p.side}`} key={p.side} data-available={p.available}>
+            <div className="behavior-profile-head"><span className={`badge b-${p.side}`}>{sideLabel(p.side)}</span><span className="muted">{t("{n} รอบ", { n: p.rounds })}</span></div>
+            {!p.available ? <p className="muted">{t("ข้อมูลยังไม่พอ ต้องมีอย่างน้อย {n} รอบในฝั่งนี้", { n: p.minimum_rounds ?? 5 })}</p> : <>
+              <strong className="behavior-role">{roleLabel(p.role ?? "Hybrid / Unresolved")}</strong>
+              <ul className="behavior-signals">{(p.signals ?? []).map((signal) => <li key={signal.feature}>
+                <span>{t(FEATURE_LABELS[signal.feature] ?? signal.feature)}</span>
+                <small><span>{signal.value.toFixed(2)} · </span><span>{signal.direction === "higher" ? t("พบมากกว่าค่ากลางอ้างอิง") : t("พบน้อยกว่าค่ากลางอ้างอิง")}</span></small>
+              </li>)}</ul>
+            </>}
+          </section>)}</div>
       </article>)}
   </div>;
 }

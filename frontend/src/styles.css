@@ -1474,8 +1474,15 @@ a.an-tab:hover { text-decoration: none; }
 .behavior-side h3 { margin: 0 0 10px; font-size: var(--fs-md); }
 .behavior-card { padding: 12px 14px; margin-top: 8px; border: 1px solid var(--line); border-left: 3px solid var(--t); border-radius: 8px; background: var(--bg); }
 .behavior-side.side-ct .behavior-card { border-left-color: var(--ct); }
+.behavior-player-card { border-left-color: var(--accent); }
 .behavior-player { display: flex; gap: 10px; align-items: baseline; justify-content: space-between; min-width: 0; }
 .behavior-player b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.behavior-side-profiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-top: 9px; }
+.behavior-side-profile { min-width: 0; padding-top: 9px; border-top: 2px solid var(--t); }
+.behavior-side-profile.side-ct { border-top-color: var(--ct); }
+.behavior-profile-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.behavior-side-profile .behavior-signals li { display: block; }
+.behavior-side-profile .behavior-signals small { display: block; text-align: left; }
 .behavior-role { display: block; margin-top: 8px; font-size: var(--fs-lg); }
 .behavior-signals { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 5px; }
 .behavior-signals li { display: flex; justify-content: space-between; gap: 12px; color: var(--text); }
@@ -1486,6 +1493,7 @@ a.an-tab:hover { text-decoration: none; }
 .behavior-empty { gap: 12px; }
 .behavior-empty svg { width: 32px; height: 32px; flex: none; }
 .behavior-empty p { margin: 4px 0 0; }
+@media (max-width: 700px) { .behavior-side-profiles { grid-template-columns: 1fr; } }
 
 /* Full match report export — the page's single high-salience action. */
 .analysis-export {
