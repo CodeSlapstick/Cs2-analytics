@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { Link, Navigate, useLocation, useParams } from "react-router-dom";
+import { Link, useLocation, useParams } from "react-router-dom";
 import { ApiError, auth, isGuest, playerApi, type PlayerMap, type PlayerWeapon } from "./api";
 import { MapThumb, NotFound, weaponLabel } from "./utils";
 import unknownAvatar from "./assets/avatar-unknown.jpg";
@@ -36,10 +36,6 @@ export function PlayerPage() {
       }
     : null;
   const entryRate = (e: { kills: number; deaths: number }) => (e.kills + e.deaths > 0 ? e.kills / (e.kills + e.deaths) : null);
-
-  if (matches.data?.[0]) {
-    return <Navigate to={`/matches/${encodeURIComponent(matches.data[0].demo_file)}/rounds/1?p=${encodeURIComponent(d.player.steam_id)}`} replace />;
-  }
 
   return (
     <div className="player" data-testid="player-page">

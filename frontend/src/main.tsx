@@ -174,6 +174,7 @@ const queryClient = new QueryClient({
  * (เคยมีหน้า "ภาพรวม" ที่ / — ตัดออกแล้ว เพราะซ้ำกับตัวเลขที่หน้าแมตช์มีอยู่แล้ว)
  */
 const NAV = [
+  { to: "/player", label: "สถิติของฉัน", end: true, steamOnly: true },
   { to: "/matches", label: "แมตช์", end: false, steamOnly: false },
   { to: "/analysis", label: "เครื่องมือวิเคราะห์", end: false, steamOnly: false },
   { to: "/coach", label: "Coach", end: false, steamOnly: false },
