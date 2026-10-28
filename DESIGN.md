@@ -130,6 +130,18 @@ components:
     backgroundColor: "{colors.action-orange}"
     rounded: "{rounded.check}"
     size: "20px"
+  player-search:
+    backgroundColor: "{colors.field-well}"
+    textColor: "{colors.signal-white}"
+    typography: "{typography.body}"
+    rounded: "{rounded.plate}"
+    height: "38px"
+    padding: "0 9px 0 11px"
+  metric-card:
+    backgroundColor: "{colors.field-well}"
+    textColor: "{colors.signal-white}"
+    rounded: "{rounded.plate}"
+    padding: "14px"
 ---
 
 # Design System: CS2 SCOUTING
@@ -262,6 +274,19 @@ Solid, weighty, one per view.
 - **Error:** border turns Alert Red; the message sits in a red-tinted alert block with a drawn warning icon, announced with `role="alert"` and wired by `aria-describedby`.
 - **Checkbox:** custom 20px well, 1.5px steel-hi stroke, 3px corners; checked fills orange with a charcoal tick that scales in.
 
+### Player Search
+- **Desktop field:** a compact 38px Field Well integrated into the sticky top bar, with a drawn search icon, `/` key hint, 6px corners, and the shared cyan focus ring.
+- **Results:** Slate Plate dropdown with 1px Steel Rule border, compact 38px avatars, two-column identity/context metadata, active-row cyan wash, and a viewport-bound internal scroller. Show at most eight people before the separate all-results action.
+- **Identity:** player rows are keyed by Steam ID, never nickname. Duplicate display names remain separate and expose account or shortened Steam identity.
+- **Narrow view:** below 640px the field becomes a circular search trigger; activation opens a fixed full-width field and results surface that stays inside the viewport.
+
+### Player Profile Analytics
+- **Header:** one Operate panel combines avatar, nickname, verified account/Steam identity, latest team, data range, and the count of matches in calculation.
+- **Filters:** five compact controls share one bordered panel. They reflow from five columns to three, then one without changing their order or hiding the selected dataset size.
+- **Metric cards:** 6px Field Well cards use Chakra Petch uppercase labels and circular CT-blue gauges. CT and T orange remain side semantics; cyan remains interaction, not chart fill.
+- **Evidence panels:** recent matches, map bars, weapons, role evidence, and formula disclosures use the same selected dataset and favor tabular values, short captions, and explicit unavailable states over decorative explanation.
+- **Responsive grid:** core metrics step from four columns to two and then one; wide clutch, entry, recent-match, and role panels collapse to a single column below 680px.
+
 ### Navigation
 - **Links:** Anuphan 600 15px in Reticle Cyan, underline on hover (3px offset). The quiet variant is 14px 500 muted steel and brightens to white on hover or when expanded.
 - **Inline note:** disclosed help appears as a 6% cyan-tinted block with a 28% cyan border, 4px corners, fading down 4px in.
@@ -281,6 +306,8 @@ The real de_mirage radar as a cyan wireframe raster at 80% opacity, masked to a 
 - **Do** use only real imagery and real numbers; hide a figure when its source is unavailable.
 - **Do** keep field and action heights at 54px and 56px (50px and 52px on short laptops).
 - **Do** apply the shared briefing-board tokens across public and authenticated surfaces, using compact Operate-mode density after login.
+- **Do** keep player identity and every profile aggregate anchored to Steam ID; repeated nicknames never imply shared identity.
+- **Do** state denominator, estimate status, and unavailable parser fields next to the affected metric.
 
 ### Don't:
 - **Don't** fall back to the category default of a centred card floating on a gradient with a stock hero.

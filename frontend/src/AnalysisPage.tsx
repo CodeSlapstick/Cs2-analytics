@@ -371,34 +371,11 @@ export function PlayerBehaviorSection({ data, loading, error, ourTeam = "", onOu
       <div className="behavior-grid">
         {teamGroups.map((group) => <BehaviorTeam key={group.team} team={group.team} ours={group.team === selectedTeam} profiles={group.profiles} />)}
       </div>
-      {teamGroups.length === 2 && <TeamBehaviorComparison groups={teamGroups} />}
       <footer className="behavior-note muted">
         {t("ชื่อบทบาทเป็นคำอธิบาย centroid ของโมเดล unsupervised ไม่ใช่ระดับฝีมือหรือบทบาทถาวร คะแนนระยะและ margin ไม่ใช่ความน่าจะเป็น")}
         {data.source && <> · {t("ชุดอ้างอิง {n} แมตช์ · โมเดล v{v}", { n: data.source.matches, v: data.source.version })}</>}
       </footer>
     </>}
-  </section>;
-}
-
-function TeamBehaviorComparison({ groups }: { groups: { team: string; profiles: PlayerBehaviorProfile[] }[] }) {
-  const metrics = [
-    ["opening_attempt_rate", "เปิดไฟต์"], ["trade_kills_per_round", "เทรดคิล"],
-    ["flash_assists_per_round", "Flash assist"], ["place_diversity", "การกระจายพื้นที่"],
-  ] as const;
-  const average = (profiles: PlayerBehaviorProfile[], key: string) => {
-    const values = profiles.flatMap((profile) => profile.available && profile.metrics?.[key] != null ? [profile.metrics[key]] : []);
-    return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : null;
-  };
-  return <section className="team-comparison" aria-labelledby="team-comparison-title">
-    <h3 id="team-comparison-title">ภาพรวมเปรียบเทียบจากข้อมูลจริง</h3>
-    <div className="team-comparison-grid">
-      <span />{groups.map((group) => <b key={group.team}>{group.team}</b>)}
-      {metrics.flatMap(([key, label]) => [
-        <span key={`${key}-label`}>{label}</span>,
-        ...groups.map((group) => <strong key={`${key}-${group.team}`}>{average(group.profiles, key)?.toFixed(2) ?? "ข้อมูลไม่เพียงพอ"}</strong>),
-      ])}
-    </div>
-    <p className="muted">ค่าเฉลี่ยต่อผู้เล่น–แมตช์–ฝั่งจาก event ใน demo; เป็นสถิติเชิงพรรณนา ไม่ใช่ความน่าจะเป็นจากโมเดล</p>
   </section>;
 }
 

@@ -13,5 +13,4 @@
 .coach-profile dd { margin: 0; font-variant-numeric: tabular-nums; }
 .coach-evidence { display: grid; gap: 10px; }
 .coach-evidence a { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: var(--fs-xs); }
-.coach-model h2 { font-size: var(--fs-md); }
 @media (max-width: 850px) { .coach-options { grid-template-columns: 1fr; } }

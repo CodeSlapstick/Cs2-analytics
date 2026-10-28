@@ -20,24 +20,6 @@
     "sites = ศูนย์กลางไซต์ A/B ไว้ตัดสินว่าบอมบ์ลงไซต์ไหนจากพิกัดจุดวาง (awpy ส่ง bomb_site มาผิด ลง bombsite_b ทุกแถว)",
     "เพิ่ม/อัปเดตหลายแมพพร้อมกันจากไฟล์เกม: python research/import_overviews.py --write"
   ],
-  "cs_italy": {
-    "image": "/maps/cs_italy.png",
-    "size": 1024,
-    "pos_x": -2647,
-    "pos_y": 2592,
-    "scale": 4.6,
-    "grid": 300,
-    "source_note": "ค่าทางการจาก resource/overviews/cs_italy.txt ของ CS2 (research/import_overviews.py) — ยังไม่มีเดโมของแมพนี้ในระบบ ตรวจด้วย check_radar.py ได้เมื่อมีคนอัปโหลด"
-  },
-  "cs_office": {
-    "image": "/maps/cs_office.png",
-    "size": 1024,
-    "pos_x": -1838,
-    "pos_y": 1858,
-    "scale": 4.1,
-    "grid": 300,
-    "source_note": "ค่าทางการจาก resource/overviews/cs_office.txt ของ CS2 (research/import_overviews.py) — ยังไม่มีเดโมของแมพนี้ในระบบ ตรวจด้วย check_radar.py ได้เมื่อมีคนอัปโหลด"
-  },
   "de_ancient": {
     "image": "/maps/de_ancient.png",
     "size": 1024,
@@ -85,26 +67,6 @@
         -1199
       ],
       "source_note": "ตำแหน่งไอคอนไซต์ bombA/bombB ใน resource/overviews/de_cache.txt ของเกม"
-    }
-  },
-  "de_dust": {
-    "image": "/maps/de_dust.png",
-    "size": 1024,
-    "pos_x": -2850,
-    "pos_y": 4073,
-    "scale": 6.0,
-    "grid": 300,
-    "source_note": "ค่าทางการจาก resource/overviews/de_dust.txt ของ CS2 (research/import_overviews.py) — ยังไม่มีเดโมของแมพนี้ในระบบ ตรวจด้วย check_radar.py ได้เมื่อมีคนอัปโหลด",
-    "sites": {
-      "A": [
-        2065,
-        694
-      ],
-      "B": [
-        406,
-        -474
-      ],
-      "source_note": "ตำแหน่งไอคอนไซต์ bombA/bombB ใน resource/overviews/de_dust.txt ของเกม"
     }
   },
   "de_dust2": {
@@ -185,66 +147,6 @@
         -1270
       ],
       "source_note": "ตำแหน่งไอคอนไซต์ bombA/bombB ใน resource/overviews/de_nuke.txt ของเกม"
-    }
-  },
-  "de_overpass": {
-    "image": "/maps/de_overpass.png",
-    "size": 1024,
-    "pos_x": -4831,
-    "pos_y": 1781,
-    "scale": 5.2,
-    "grid": 300,
-    "source_note": "ค่าทางการจาก resource/overviews/de_overpass.txt ของ CS2 (research/import_overviews.py) — ยังไม่มีเดโมของแมพนี้ในระบบ ตรวจด้วย check_radar.py ได้เมื่อมีคนอัปโหลด",
-    "sites": {
-      "A": [
-        -1902,
-        556
-      ],
-      "B": [
-        -1104,
-        130
-      ],
-      "source_note": "ตำแหน่งไอคอนไซต์ bombA/bombB ใน resource/overviews/de_overpass.txt ของเกม"
-    }
-  },
-  "de_train": {
-    "image": "/maps/de_train.png",
-    "size": 1024,
-    "pos_x": -2308,
-    "pos_y": 2078,
-    "scale": 4.082077,
-    "grid": 300,
-    "source_note": "ค่าทางการจาก resource/overviews/de_train.txt ของ CS2 (research/import_overviews.py) — ยังไม่มีเดโมของแมพนี้ในระบบ ตรวจด้วย check_radar.py ได้เมื่อมีคนอัปโหลด",
-    "sites": {
-      "A": [
-        325,
-        30
-      ],
-      "B": [
-        -134,
-        -1099
-      ],
-      "source_note": "ตำแหน่งไอคอนไซต์ bombA/bombB ใน resource/overviews/de_train.txt ของเกม"
-    }
-  },
-  "de_vertigo": {
-    "image": "/maps/de_vertigo.png",
-    "size": 1024,
-    "pos_x": -3168,
-    "pos_y": 1762,
-    "scale": 4.0,
-    "grid": 300,
-    "source_note": "ค่าทางการจาก resource/overviews/de_vertigo.txt ของ CS2 (research/import_overviews.py) — ยังไม่มีเดโมของแมพนี้ในระบบ ตรวจด้วย check_radar.py ได้เมื่อมีคนอัปโหลด",
-    "sites": {
-      "A": [
-        -280,
-        -634
-      ],
-      "B": [
-        -2259,
-        849
-      ],
-      "source_note": "ตำแหน่งไอคอนไซต์ bombA/bombB ใน resource/overviews/de_vertigo.txt ของเกม"
     }
   }
 }

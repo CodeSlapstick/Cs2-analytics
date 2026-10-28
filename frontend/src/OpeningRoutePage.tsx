@@ -97,8 +97,6 @@ export function OpeningRouteStage({ data, playerName, map, side }: { data: Openi
   const size = data.radar?.size ?? 1024;
   return <>
     <div className="opening-summary"><strong>{playerName}</strong><span>{map} · {side.toUpperCase()}</span><span>{t("{n} แมตช์", { n: data.matches })}</span><span>{t("แสดง {visible} / {total} รอบ", { visible: visible.length, total: data.rounds.length })}</span></div>
-    {data.undated_matches > 0 && <p className="opening-note">{t("{n} แมตช์ไม่มีวันที่แข่งขัน: รวมใน ‘ทั้งหมด’ และไม่รวมใน ‘ล่าสุด’", { n: data.undated_matches })}</p>}
-    <p className="opening-note">{t("ล่าสุดเรียงจากวันที่ YYYY-MM-DD ในชื่อไฟล์ ไม่ใช้วันอัปโหลด")}</p>
     {!data.rounds.length ? <div className="card"><h2>{t("ไม่มีรอบที่ตรงกับตัวกรอง")}</h2><p>{t("ลองเลือกทั้งหมด เปลี่ยนฝั่ง ผู้เล่น หรือแผนที่")}</p></div> :
     <div className="opening-layout">
       <div className="opening-main card">
@@ -136,9 +134,6 @@ export function OpeningRouteStage({ data, playerName, map, side }: { data: Openi
         </div>)}</div>
       </aside>
     </div>}
-    <p className="opening-note">{t("t=0 ใช้ start_tick ที่บันทึกไว้: parser ใช้ freeze end และ fallback เป็น round start เมื่อ event หาย ข้อมูลเดิมไม่ระบุที่มา จึงยืนยัน live start ทุกแมตช์ไม่ได้")}</p>
-    <p className="opening-note">{t("Marker หยุดเมื่อผู้เล่นตายหรือข้อมูลสิ้นสุด ไม่เชื่อมช่วงหาย Interpolate เฉพาะ segment ต่อเนื่อง ไม่เกิน 1.5 เท่าของช่วง snapshot ปกติ และสูงสุด 1.5 วินาที")}</p>
-    <p className="opening-note">{t("จำนวน Utility นับเหตุการณ์ที่บันทึกไว้ในช่วง 0–30 วินาทีเท่านั้น ข้อมูลเดิมรวม Molotov และ Incendiary เป็นชนิดเดียวกัน และไม่ได้รับรองความครบถ้วนของ event")}</p>
   </>;
 }
 

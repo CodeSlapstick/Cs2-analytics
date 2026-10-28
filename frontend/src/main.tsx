@@ -8,6 +8,7 @@ import { MatchesPage } from "./MatchesPage";
 import { MatchPage } from "./MatchPage";
 import { RoundPage } from "./RoundPage";
 import { PlayerPage } from "./PlayerPage";
+import { PlayerSearchPage } from "./PlayerSearch";
 import { AnalysisPage } from "./AnalysisPage";
 import { CoachPage } from "./CoachPage";
 import { HeatmapPage } from "./HeatmapPage";
@@ -174,6 +175,7 @@ const queryClient = new QueryClient({
  * (เคยมีหน้า "ภาพรวม" ที่ / — ตัดออกแล้ว เพราะซ้ำกับตัวเลขที่หน้าแมตช์มีอยู่แล้ว)
  */
 const NAV = [
+  { to: "/player", label: "สถิติของฉัน", end: false, steamOnly: true },
   { to: "/matches", label: "แมตช์", end: false, steamOnly: false },
   { to: "/analysis", label: "เครื่องมือวิเคราะห์", end: false, steamOnly: false },
   { to: "/coach", label: "Coach", end: false, steamOnly: false },
@@ -250,6 +252,7 @@ function App() {
             <Route path="/coach" element={<CoachPage />} />
             <Route path="/player" element={<PlayerPage />} />
             <Route path="/player/:steamId" element={<PlayerPage />} />
+            <Route path="/players" element={<PlayerSearchPage />} />
             <Route path="*" element={<NotFound />} />
           </Route>
         </Routes>

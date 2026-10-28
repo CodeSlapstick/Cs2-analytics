@@ -30,6 +30,7 @@ import time
 import traceback
 import urllib.parse
 from contextlib import asynccontextmanager
+from datetime import date
 from pathlib import Path
 
 import asyncpg
@@ -51,6 +52,7 @@ from backend.db import (  # noqa: F401  (load_dotenv ทำงานตอน im
 from backend.features import assign_teams, rating2_approx  # ผูกคนกับทีม (Round Review) · Rating 2.0 ประมาณการ
 from backend.jobs import JSON_DIR, QueueUnavailable, enqueue_parse, job_state, queue_health  # คิวงาน parse (Sprint 2)
 from backend.opening_routes import build_opening_rounds, match_date, select_matches
+from backend.player_profile import build_profile, search_players
 from backend.player_role_service import build_match_profiles, compatibility_reason, infer_match, load_role_model
 from backend.report_routes import create_report_router
 from backend.review import (
@@ -528,6 +530,17 @@ async def api_match_status(match_id: int, _: dict = Depends(require_viewer), con
 #   /api/players/me/... = คนที่ล็อกอินอยู่ (ต้องล็อกอินด้วย Steam ถึงจะรู้ว่าเป็น SteamID ไหน)
 #   ตัวเลขทุกตัวมาจากเดโมที่โหลดเข้าระบบเท่านั้น — ไม่มีข้อมูล = บอกว่าไม่มี ไม่เดาค่าให้
 # ---------------------------------------------------------------------------
+@app.get("/api/players/search")
+async def api_player_search(
+    q: str = Query(..., min_length=2, max_length=80),
+    limit: int = Query(8, ge=1, le=50),
+    _: dict = Depends(require_viewer),
+    conn: asyncpg.Connection = Depends(db),
+):
+    """ค้นเฉพาะผู้เล่นที่มีรอบอยู่ใน demo ที่ระบบประมวลผลแล้ว."""
+    return await search_players(conn, q.strip(), limit)
+
+
 async def _player_id(conn: asyncpg.Connection, who: str, viewer: dict) -> int:
     """'me' = SteamID ของบัญชีที่ล็อกอินอยู่ · หรือใส่ SteamID64 ตรง ๆ
 
@@ -537,13 +550,73 @@ async def _player_id(conn: asyncpg.Connection, who: str, viewer: dict) -> int:
     if who == "me":
         if viewer["type"] == auth.GUEST:
             raise HTTPException(409, "โหมดเยี่ยมชมไม่มีสถิติของตัวเอง — ล็อกอินด้วย Steam เพื่อดูสถิติของตัวเอง")
-        row = await conn.fetchrow("SELECT steam_id FROM accounts WHERE id = $1", viewer["id"])
+        row = await conn.fetchrow("""
+            SELECT a.steam_id, l.steam_id AS linked_steam_id
+            FROM accounts a LEFT JOIN account_player_links l ON l.account_id = a.id
+            WHERE a.id = $1
+        """, viewer["id"])
         if not row or row["steam_id"] is None:
             raise HTTPException(409, "บัญชีนี้ยังไม่ได้ผูกกับ Steam — ล็อกอินด้วย Steam เพื่อดูสถิติของตัวเอง")
+        if row["linked_steam_id"] is not None:
+            return int(row["linked_steam_id"])
+        has_own_data = await conn.fetchval(
+            "SELECT EXISTS(SELECT 1 FROM player_round_facts WHERE steam_id = $1)", row["steam_id"])
+        if not has_own_data:
+            raise HTTPException(409, "บัญชียังไม่ได้ยืนยันผู้เล่นใน demo — ค้นหา เลือก และยืนยันผู้เล่นของคุณ")
         return int(row["steam_id"])
     if not who.isdigit() or len(who) != 17:
         raise HTTPException(400, "ต้องเป็น SteamID64 (ตัวเลข 17 หลัก) หรือ me")
     return int(who)
+
+
+@app.post("/api/players/me/link")
+async def api_link_my_player(
+    request: Request,
+    viewer: dict = Depends(require_viewer),
+    conn: asyncpg.Connection = Depends(db),
+):
+    """บันทึกเฉพาะ Steam ID ที่ผู้ใช้เลือกและยืนยันเอง; ไม่เดาจาก nickname."""
+    if viewer["type"] == auth.GUEST:
+        raise HTTPException(403, "ต้องล็อกอินด้วย Steam ก่อนยืนยันผู้เล่น")
+    payload = await request.json()
+    steam_id = str(payload.get("steam_id", ""))
+    if not steam_id.isdigit() or len(steam_id) != 17:
+        raise HTTPException(400, "ต้องเป็น SteamID64 17 หลัก")
+    exists = await conn.fetchval(
+        "SELECT EXISTS(SELECT 1 FROM player_round_facts WHERE steam_id = $1)", int(steam_id))
+    if not exists:
+        raise HTTPException(404, "ไม่พบผู้เล่นนี้ใน demo ที่ประมวลผลแล้ว")
+    await conn.execute("""
+        INSERT INTO account_player_links (account_id, steam_id, confirmed_at)
+        VALUES ($1, $2, now())
+        ON CONFLICT (account_id) DO UPDATE
+        SET steam_id = EXCLUDED.steam_id, confirmed_at = now()
+    """, viewer["id"], int(steam_id))
+    return {"ok": True, "steam_id": steam_id}
+
+
+@app.get("/api/players/{who}/profile")
+async def api_player_profile(
+    who: str,
+    recent: int = Query(0, ge=0, le=20),
+    date_from: date | None = Query(None),
+    date_to: date | None = Query(None),
+    map: str | None = Query(None, min_length=1, max_length=80),
+    side: str = Query("all", pattern="^(all|ct|t)$"),
+    viewer: dict = Depends(require_viewer),
+    conn: asyncpg.Connection = Depends(db),
+):
+    """โปรไฟล์หนึ่งคน โดยทุกการ์ดใช้ match/round filter ชุดเดียวกัน."""
+    if recent not in (0, 5, 10, 20):
+        raise HTTPException(400, "ช่วงแมตช์ต้องเป็น 0, 5, 10 หรือ 20")
+    if date_from and date_to and date_from > date_to:
+        raise HTTPException(400, "วันเริ่มต้นต้องไม่อยู่หลังวันสิ้นสุด")
+    steam_id = await _player_id(conn, who, viewer)
+    profile = await build_profile(conn, steam_id, recent=int(recent), date_from=date_from,
+                                  date_to=date_to, map_name=map, side=side)
+    if profile is None:
+        raise HTTPException(404, "ยังไม่มีข้อมูลของผู้เล่นคนนี้ในเดโมที่โหลดไว้")
+    return profile
 
 
 @app.get("/api/players/{who}/summary")

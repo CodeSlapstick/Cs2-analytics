@@ -528,6 +528,48 @@ export interface PlayerWeapon {
   kills: number;
   headshots: number;
   hs_rate: number;
+  accuracy?: number | null;
+}
+
+export interface PlayerSearchItem {
+  steam_id: string;
+  name: string;
+  avatar: string | null;
+  username: string | null;
+  matches: number;
+  latest_team: string | null;
+  latest_match: string | null;
+  latest_at: string | null;
+}
+
+export interface PlayerProfileFilters {
+  recent: 0 | 5 | 10 | 20;
+  date_from?: string;
+  date_to?: string;
+  map?: string;
+  side: "all" | "ct" | "t";
+}
+
+export interface PlayerProfile {
+  player: { steam_id: string; name: string; avatar: string | null; account_name: string | null; latest_team: string | null };
+  totals: (PlayerSummary["totals"] & { rating2_approx: number }) | null;
+  entry: { both: EntrySide; t: EntrySide; ct: EntrySide };
+  clutches: { vs: number; attempts: number; wins: number }[] | null;
+  recent_matches: PlayerMatch[];
+  maps: (PlayerMap & { kd: number | null })[];
+  weapons: PlayerWeapon[];
+  data_range: { from: string | null; to: string | null; basis: "imported_at" };
+  behavior: {
+    available: boolean;
+    reason: string;
+    unit?: string;
+    sides: { side: "ct" | "t"; available: boolean; reason?: string; role?: string; profiles?: number; rounds?: number;
+      signals?: { feature: string; direction: "higher" | "lower"; z: number; value: number }[] }[];
+  };
+  filters: PlayerProfileFilters & { available_maps: string[] };
+  source: { all_matches: number; selected_matches: number; selected_rounds: number; date_basis: "imported_at" };
+  formulas: Record<string, string>;
+  unsupported: string[];
 }
 
 // เข้าระบบทางเดียวคือ Steam — ปุ่มบนหน้า /login ลิงก์ตรงไป /auth/steam/login
@@ -545,6 +587,17 @@ export const playerApi = {
   matches: (who: string) => request<PlayerMatch[]>(`/api/players/${who}/matches`),
   maps: (who: string) => request<PlayerMap[]>(`/api/players/${who}/maps`),
   weapons: (who: string) => request<PlayerWeapon[]>(`/api/players/${who}/weapons`),
+  search: (query: string, limit = 8) => request<{ items: PlayerSearchItem[]; total: number; has_players: boolean }>(`/api/players/search?q=${enc(query)}&limit=${limit}`),
+  linkMe: (steam_id: string) => request<{ ok: boolean; steam_id: string }>("/api/players/me/link", { method: "POST", body: JSON.stringify({ steam_id }) }),
+  profile: (who: string, filters: PlayerProfileFilters) => {
+    const params = new URLSearchParams();
+    params.set("recent", String(filters.recent));
+    params.set("side", filters.side);
+    if (filters.date_from) params.set("date_from", filters.date_from);
+    if (filters.date_to) params.set("date_to", filters.date_to);
+    if (filters.map) params.set("map", filters.map);
+    return request<PlayerProfile>(`/api/players/${who}/profile?${params}`);
+  },
 };
 
 export const isBusy = (s: MatchStatus) => s === "queued" || s === "parsing";

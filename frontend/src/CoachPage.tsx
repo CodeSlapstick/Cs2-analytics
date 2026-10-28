@@ -28,7 +28,6 @@ export function CoachPage() {
     if (key === "demo") next.delete("round");
     setParams(next);
   }
-  const validation = coach.data?.model?.validation;
   return <section className="coach-page">
     <h1>Coach <span className="small muted">{t("ทดลอง ML")}</span></h1>
     <p className="muted">{t("เลือก tactic ที่น่าลองจาก pattern ของรอบอาชีพที่ชนะในบริบทอุปกรณ์คล้ายกัน พร้อมรอบอ้างอิง")}</p>
@@ -56,16 +55,8 @@ export function CoachPage() {
             <h3 className="small">{t("รอบอ้างอิงที่บริบทใกล้กัน")}</h3>
             <div className="coach-evidence">{option.evidence.map((e) => <Link key={`${e.demo_file}:${e.round_num}`} title={e.demo_file} to={`/matches/${encodeURIComponent(e.demo_file)}/rounds/${e.round_num}`}>R{e.round_num} · {e.demo_file}</Link>)}</div>
           </article>)}</div>
-          <p className="small muted">{t("ชื่อ tactic เป็นคำอธิบาย centroid ที่จัดกลุ่มจากตำแหน่ง 5/15/25 วินาทีและ Utility ไม่ใช่แผนที่โค้ชติด label ไว้")}</p>
         </>}
       </>}
-    {coach.data?.model && <div className="card coach-model"><h2>{t("หลักฐานการเทรน")}</h2>
-      <p>{t("เทรนจากแมตช์อาชีพ {n} แมตช์เท่านั้น ไม่ใช้แมตช์อัปโหลด", { n: coach.data.model.reference_matches })}</p>
-      {validation && <p>{t("ทาย pattern ของรอบที่ชนะในแมตช์ทดสอบ: {accuracy}% · baseline {baseline}% · {n} รอบ", { accuracy: (validation.accuracy * 100).toFixed(1), baseline: (validation.baseline * 100).toFixed(1), n: validation.test_winning_rounds })}</p>}
-      {validation && <p className="small muted">{t("ผลทดลองจากการแบ่งชุดทดสอบครั้งเดียว ยังไม่ใช่หลักฐานว่าโมเดลมีประสิทธิภาพที่เชื่อถือได้ในหลายสถานการณ์")}</p>}
-      <p className="small muted">{t("แยก train/test ตามแมตช์ และ fit scaler กับ cluster เฉพาะ train ในการวัดผล Input คำแนะนำใช้เฉพาะอุปกรณ์ก่อนเริ่มรอบและสถานะ pistol ไม่ใช้ผลรอบหรือตำแหน่งอนาคต")}</p>
-      <p className="small muted">{t("เวลาเปิดรอบเดิมอาจ fallback เป็น round start และข้อมูล Utility ไม่รับรองว่าครบ ใช้ผลนี้เป็นจุดเริ่มต้นสำหรับ review กับทีม")}</p>
-    </div>}
     {reportMatch ? <AnalysisReportExport
       match={reportMatch}
       initialSide={side}

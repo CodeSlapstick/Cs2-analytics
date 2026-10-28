@@ -118,6 +118,12 @@ h2 { font-size: var(--fs-lg); line-height: 1.3; margin: 0 0 10px; }
 .topbar nav a:hover { background: var(--line-2); color: var(--text); text-decoration: none; }
 .topbar nav a.active { color: #00e5ff; background: rgba(0, 229, 255, .07); border-bottom-color: #00e5ff; }
 
+.players-search-page { max-width: 900px; margin: 0 auto; }
+.players-search-field { display: flex; align-items: center; gap: 10px; margin: 20px 0; padding: 0 14px; height: 48px; border: 1px solid var(--line); border-radius: 6px; background: var(--card); color: var(--muted); }
+.players-search-field:focus-within { border-color: #00e5ff; color: #00e5ff; }
+.players-search-field input { flex: 1; border: 0; outline: 0; background: transparent; color: var(--text); font: inherit; }
+.players-search-list { border: 1px solid var(--line); border-radius: 6px; overflow: hidden; background: var(--card); }
+
 /* ---- มุมขวาบน: ปุ่มเดียวที่กางเป็นเมนู ไม่ใช่ป้าย+ลิงก์+ปุ่มเรียงกันตรง ๆ (เคยแน่นและล้นเวลาชื่อยาว) ---- */
 /* ปุ่มสลับภาษา TH | EN — อยู่ก่อนเมนูผู้ใช้ ดันทั้งคู่ไปชิดขวา */
 .lang-toggle { margin-left: auto; display: inline-flex; padding: 2px; border: 1px solid var(--line); border-radius: 999px; background: var(--card); }
@@ -873,13 +879,6 @@ svg.radar.zoomed:active { cursor: grabbing; }
 .team-kind { margin-left: 6px; color: var(--muted); font-size: var(--fs-xs); font-weight: 500; }
 .behavior-card.side-ct { border-left-color: var(--ct); }
 .behavior-card.side-t { border-left-color: var(--t); }
-.team-comparison { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--line); }
-.team-comparison h3 { margin: 0 0 10px; }
-.team-comparison-grid { display: grid; grid-template-columns: minmax(150px, 1fr) repeat(2, minmax(140px, 1fr)); border: 1px solid var(--line); border-radius: var(--r); overflow: hidden; }
-.team-comparison-grid > * { padding: 8px 10px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); }
-.team-comparison-grid > :nth-child(3n) { border-right: 0; }
-.team-comparison-grid strong { font-variant-numeric: tabular-nums; }
-.team-comparison > p { margin-bottom: 0; font-size: var(--fs-xs); }
 @media (max-width: 760px) { .team-identity small { width: 100%; margin-left: 0; } }
 .an-no-match { display:grid; grid-template-columns:auto 1fr auto; gap:16px; align-items:center; padding:24px; }
 .an-no-match svg { width:28px; height:28px; color:var(--accent); }
@@ -936,6 +935,59 @@ svg.radar.zoomed:active { cursor: grabbing; }
 .pl-empty { text-align: center; padding: 70px 20px; }
 .pl-empty p { max-width: 72ch; margin-left: auto; margin-right: auto; }
 .pl-empty .btn-primary { display: inline-block; margin-top: 14px; text-decoration: none; }
+
+/* Filter-consistent player profile. */
+.page:has(.player), .page:has(.players-search-page) { max-width: 1380px; }
+.pl-head { padding: 18px 20px; border: 1px solid var(--line); border-radius: 6px; background: var(--card); }
+.pl-avatar { width: 78px; height: 78px; border-radius: 6px; }
+.pl-identity { min-width: 0; }
+.pl-identity h1 { overflow-wrap: anywhere; }
+.pl-source { margin-left: auto; display: flex; flex-direction: column; align-items: flex-end; padding-left: 20px; border-left: 1px solid var(--line); }
+.pl-source strong { font: 700 30px/1 "Chakra Petch", sans-serif; color: var(--text); }
+.pl-source span { color: var(--muted); font-size: var(--fs-xs); }
+.pl-filters { display: grid; grid-template-columns: repeat(5, minmax(130px, 1fr)); gap: 10px; padding: 12px; }
+.pl-filters label { display: flex; flex-direction: column; gap: 5px; color: var(--muted); font-size: var(--fs-xs); font-weight: 600; }
+.pl-filters :is(select, input) { width: 100%; min-width: 0; height: 36px; border: 1px solid var(--line); border-radius: 4px; padding: 0 8px; background: var(--bg); color: var(--text); font: inherit; }
+.pl-filter-empty { padding: 48px 20px; text-align: center; }
+.pl-grid { grid-template-columns: repeat(4, minmax(200px, 1fr)); }
+.pl-wide { grid-column: span 2; }
+.pl-card { min-height: 220px; justify-content: flex-start; }
+.pl-card .pl-gauge { margin: auto 0; }
+.pl-gauge-v { font-family: "Chakra Petch", "Anuphan", sans-serif; }
+.pl-panels { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.pl-panel-wide { grid-column: 1 / -1; }
+.pl-panels > .card { min-width: 0; }
+.pl-matches a { grid-template-columns: 42px 56px minmax(0, 1fr) 64px; }
+.pl-mt { display: flex; flex-direction: column; }
+.pl-mt small { color: var(--muted); font-size: var(--fs-xs); }
+.pl-behavior { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.pl-behavior section { padding: 14px; border: 1px solid var(--line); border-radius: 4px; background: var(--bg); }
+.pl-behavior h3 { margin: 0 0 8px; font-size: var(--fs-sm); }
+.pl-behavior .side-ct h3 { color: var(--ct-ink); }
+.pl-behavior .side-t h3 { color: var(--t-ink); }
+.pl-behavior ul { list-style: none; margin: 10px 0 0; padding: 0; }
+.pl-behavior li { display: flex; justify-content: space-between; gap: 12px; padding: 5px 0; border-top: 1px solid var(--line); font-size: var(--fs-sm); }
+.pl-formulas summary { cursor: pointer; font: 700 var(--fs-sm)/1.3 "Chakra Petch", "Anuphan", sans-serif; }
+.pl-formulas dl { display: grid; gap: 8px; }
+.pl-formulas dl div { display: grid; grid-template-columns: 130px 1fr; gap: 10px; padding-top: 8px; border-top: 1px solid var(--line); }
+.pl-formulas dt { font-weight: 700; }
+.pl-formulas dd { margin: 0; color: var(--muted); }
+
+@media (max-width: 980px) {
+  .pl-grid { grid-template-columns: repeat(2, minmax(200px, 1fr)); }
+  .pl-filters { grid-template-columns: repeat(3, minmax(130px, 1fr)); }
+}
+@media (max-width: 640px) {
+  .pl-head { align-items: flex-start; padding: 14px; }
+  .pl-avatar { width: 58px; height: 58px; }
+  .pl-source { width: 100%; margin: 6px 0 0; padding: 10px 0 0; border-left: 0; border-top: 1px solid var(--line); align-items: flex-start; }
+  .pl-filters, .pl-grid, .pl-panels, .pl-behavior { grid-template-columns: 1fr; }
+  .pl-wide, .pl-panel-wide { grid-column: auto; }
+  .pl-card { min-height: 0; }
+  .pl-matches a { grid-template-columns: 38px 50px minmax(0, 1fr); }
+  .pl-rt { grid-column: 3; }
+  .pl-formulas dl div { grid-template-columns: 1fr; gap: 3px; }
+}
 
 
 /* ================================================================================================

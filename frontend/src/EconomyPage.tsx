@@ -44,7 +44,7 @@ export function EconomyPage() {
   const [side, setSide] = useState<Side>("all");
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState(false);
-  const [buyTypes, setBuyTypes] = useState<TeamBuy[]>(["pistol", "eco", "semi_eco", "semi_buy", "full"]);
+  const buyTypes: TeamBuy[] = ["pistol", "eco", "semi_eco", "semi_buy", "full"];
   const reportRef = useRef<HTMLDivElement>(null);
   const { demo } = useParams();
   const matches = useQuery(matchesQuery);
@@ -129,16 +129,6 @@ export function EconomyPage() {
             </div>
             <OutcomeByBuy data={d} side={side} onSideChange={setSide} />
             <section className="card">
-              <div className="card-head">
-                <h2>{t("มูลค่าอุปกรณ์ทั้งทีม")}</h2>
-                <span className="muted small">{t("มูลค่าอุปกรณ์ ณ tick สิ้นสุด freeze time หลังซื้อ · ช่องว่างหมายถึงไม่มีข้อมูล")}</span>
-              </div>
-              <div className="econ-buy-filters" role="group" aria-label={t("กรองประเภทการซื้อ")}>
-                {d.buy_types.map((type) => <button key={type} type="button" className={buyTypes.includes(type) ? "on" : ""}
-                  aria-pressed={buyTypes.includes(type)} onClick={() => setBuyTypes((selected) => selected.includes(type) ? selected.filter((item) => item !== type) : [...selected, type])}>
-                  <i style={{ background: BUY_FILL[type] }} />{t(BUY_LABEL[type])}
-                </button>)}
-              </div>
               <EquipmentValueChart data={d} buyTypes={buyTypes} demo={entry.demo_file} />
             </section>
             <section className="card">
