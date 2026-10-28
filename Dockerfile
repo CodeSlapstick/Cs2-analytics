@@ -22,6 +22,13 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
+# Bundle the trained ML artifacts used by analysis and Coach in deployments.
+# The archive contains paths rooted at output/.
+RUN python deployment/extract_models.py cs2-models-2026-10-24.zip /app \
+ && mkdir -p /app/output/models/de_mirage \
+ && cp /app/output/coach_model.json /app/output/models/de_mirage/coach_model.json \
+ && rm cs2-models-2026-10-24.zip
+
 # Agg = วาดภาพลงไฟล์โดยไม่ต้องมีจอ (ใน container ไม่มีอยู่แล้ว)
 # MPLCONFIGDIR ชี้ไป /tmp กัน matplotlib เตือนว่าเขียน cache ลง HOME ไม่ได้
 ENV MPLBACKEND=Agg \
