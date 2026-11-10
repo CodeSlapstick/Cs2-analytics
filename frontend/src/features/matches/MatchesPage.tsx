@@ -246,7 +246,8 @@ function useUploader() {
     },
     [qc],
   );
-
+  
+ //รับไฟล์ที่ผู้ใช้เลือก กรองชื่อที่ลงท้าย .dem แล้วส่งทีละไฟล์ผ่าน api.upload()
   const onFiles = (list: FileList | null) => {
     if (!list) return;
     const files = Array.from(list).filter((f) => f.name.toLowerCase().endsWith(".dem"));

@@ -72,7 +72,7 @@ from backend.utilities.logging import log
 # ---------------------------------------------------------------------------
 # ---------------------------------------------------------------------------
 MAX_DEMO_MB = int(os.environ.get("MAX_DEMO_MB", "600"))   # เพดานขนาดไฟล์ที่ยอมรับ กันคนอัปของใหญ่จนดิสก์เต็ม
-DEMO_NAME_RE = re.compile(r"^[A-Za-z0-9._()-]{1,120}\.dem$", re.IGNORECASE)
+DEMO_NAME_RE = re.compile(r"^[A-Za-z0-9._()-]{1,120}\.dem$", re.IGNORECASE) # การตั้งชื่อ
 
 DEMO_MAGIC = b"PBDEMS2\x00"
 
@@ -392,7 +392,7 @@ async def require_match_access(
         raise HTTPException(403, "โหมดเยี่ยมชมดูได้เฉพาะเดโมตัวอย่าง")
     return allowed
 
-
+#เช็คผู้ใช้Steam
 def require_steam_viewer(viewer: dict) -> None:
     if viewer["type"] != auth.STEAM:
         raise HTTPException(403, "ฟังก์ชันนี้ต้องล็อกอินด้วย Steam")
@@ -698,6 +698,7 @@ async def api_player_weapons(who: str, limit: int = Query(8, ge=1, le=30),
 # ---------------------------------------------------------------------------
 #
 # ---------------------------------------------------------------------------
+# ตรวจหัวไฟล์กับขนาดระหว่างเขียน
 def save_upload(file: UploadFile, dest: Path) -> int:
     """เขียนไฟล์ที่อัปโหลดลงดิสก์ทีละก้อน คืนขนาดเป็นไบต์
 
@@ -712,26 +713,26 @@ def save_upload(file: UploadFile, dest: Path) -> int:
     size = 0
     try:
         with open(part, "wb") as out:
-            while chunk := file.file.read(1024 * 1024):
-                if size == 0 and not chunk.startswith(DEMO_MAGIC):
+            while chunk := file.file.read(1024 * 1024): # อ่านไฟล์ทีละ 1 MB
+                if size == 0 and not chunk.startswith(DEMO_MAGIC): # เช็คหัวไฟล์
                     raise HTTPException(400, "ไฟล์นี้ไม่ใช่เดโมของ CS2 — หัวไฟล์ไม่ใช่ PBDEMS2 "
                                              "(เดโมของ CS:GO รุ่นเก่าใช้กับระบบนี้ไม่ได้)")
-                size += len(chunk)
+                size += len(chunk) # เช็คขนาดไฟล์
                 if size > limit:
                     raise HTTPException(413, f"ไฟล์ใหญ่เกิน {MAX_DEMO_MB} MB")
                 out.write(chunk)
         if size == 0:
             raise HTTPException(400, "ไฟล์ว่าง")
-        try:
+        try: # ถ้ามีข้อมูลและผ่านทุกเงื่อนไข เปลี่ยนจาก .part เป็นชื่อ dest
             part.replace(dest)      # .replace() = เปลี่ยนชื่อทับของเดิมได้ และเป็น atomic บนดิสก์เดียวกัน
         except PermissionError:     # Windows: ไฟล์ปลายทางถูกเปิดอยู่ (เช่น worker กำลังแกะไฟล์เดิม) — ไม่ใช่ 500
             raise HTTPException(409, "ไฟล์ชื่อนี้กำลังถูกใช้งานอยู่ (อาจกำลังถูกแกะ) — รอให้เสร็จแล้วลองใหม่")
-        return size
+        return size # ส่งขนาดไฟล์เป็นไบต์กลับไปให้ api_upload_demo()
     finally:
         part.unlink(missing_ok=True)   # เหลือ .part ค้างอยู่ = อัปไม่สำเร็จ เก็บกวาดทิ้ง
 
-
-async def check_upload_quota(conn: asyncpg.Connection, viewer: dict) -> None:
+# ตรวจจำนวนครั้งที่อัปโหลด ว่าผู้ใช้นี้ครบโควตาในหนึ่งชั่วโมงหรือยัง
+async def check_upload_quota(conn: asyncpg.Connection, viewer: dict) -> None: # ถ้ายังไม่เกินโควตา ไม่ต้องคืนค่าอะไรให้ api_upload_demo()
     """เกินโควตาต่อชั่วโมงแล้วตอบ 429 — นับจาก matches.imported_at ของคนนั้น
 
     นับจากฐานข้อมูลไม่ใช่หน่วยความจำ เพราะตัวนับในหน่วยความจำหายทุกครั้งที่รีสตาร์ต
@@ -742,12 +743,12 @@ async def check_upload_quota(conn: asyncpg.Connection, viewer: dict) -> None:
     used = await conn.fetchval("""
         SELECT count(*) FROM matches
         WHERE uploaded_by = $1 AND imported_at > now() - interval '1 hour'
-    """, viewer["id"])
-    if used >= UPLOAD_MAX_PER_HOUR:
+    """, viewer["id"]) # ข้อมูลผู้ใช้ที่อัพโหลด
+    if used >= UPLOAD_MAX_PER_HOUR: # ใช้งานถี่เกินโควตา
         raise HTTPException(429, f"อัปโหลดครบโควตาแล้ว ({UPLOAD_MAX_PER_HOUR} ไฟล์ต่อชั่วโมง) "
                                  "— รอสักครู่แล้วลองใหม่")
 
-
+# ผู้ใช้คนนี้ เป็นคนอัปโหลดแมตช์นี้หรือเปล่า?
 def is_match_owner(match: dict, viewer: dict) -> bool:
     """ผู้ดูคนนี้เป็นเจ้าของแมตช์นี้จริงไหม — ไม่เกี่ยวกับว่า "ทำได้หรือไม่" (นั่นคือ can_modify_match)
 
@@ -762,12 +763,12 @@ def is_match_owner(match: dict, viewer: dict) -> bool:
     owner = match.get("uploaded_by")
     return owner is not None and owner == viewer["id"]
 
-
+# ผู้ใช้คนนี้มีสิทธิ์แก้หรือลบแมตช์นี้ไหม?
 def can_modify_match(match: dict, viewer: dict) -> bool:
     """Only the Steam account that uploaded a match may replace or delete it."""
     return viewer["type"] == auth.STEAM and is_match_owner(match, viewer)
 
-
+# โหลดเดโมทับของเดิมได้ไหม?
 def require_replace_access(match: dict, viewer: dict) -> None:
     """Validate ownership and parser state before replacing an existing upload."""
     if match["source"] != "upload" or not can_modify_match(match, viewer):
@@ -779,7 +780,7 @@ def require_replace_access(match: dict, viewer: dict) -> None:
 @app.post("/api/demos")
 async def api_upload_demo(
     file: UploadFile = File(..., description="ไฟล์ .dem หนึ่งไฟล์"),
-    force: str = Form("0"),                     # "1" = แมตช์นี้เคยโหลดแล้วให้ลบของเดิมทิ้งแล้วโหลดใหม่
+    force: str = Form("0"),   #ค่าโหลดทับ                  # "1" = แมตช์นี้เคยโหลดแล้วให้ลบของเดิมทิ้งแล้วโหลดใหม่
     viewer: dict = Depends(require_viewer),
     conn: asyncpg.Connection = Depends(db),
 ):
@@ -788,77 +789,105 @@ async def api_upload_demo(
     ส่งทีละไฟล์ หน้าเว็บเป็นคนวนส่งเองถ้าผู้ใช้ลากมาหลายไฟล์
     ทำแบบนี้เพื่อให้แต่ละไฟล์มีสถานะของตัวเอง ไฟล์หนึ่งพังก็ไม่ลากไฟล์อื่นล้มไปด้วย
     """
-    require_steam_viewer(viewer)
-    replace = force == "1"
+    require_steam_viewer(viewer) #เช็คผู้ใช้steam
+    replace = force == "1" #เทียบค่า
 
-    name = Path(file.filename or "").name
-    if not DEMO_NAME_RE.match(name):
+    name = Path(file.filename or "").name #ตัด path ให้เหลือแต่ไฟล์ __.dem
+    if not DEMO_NAME_RE.match(name): #ตรวจว่าชื่อใช้รูปแบบที่ยอมรับ เช่นลงท้าย .dem
         raise HTTPException(400, "รับเฉพาะไฟล์ .dem และชื่อไฟล์ใช้ได้แค่ตัวอักษร ตัวเลข . _ - ( )")
 
+# SQL ค้นว่าใน matches มี demo_file ชื่อนี้แล้วหรือยัง ถ้ามีแล้วก็จะใส่ข้อมูลในแถวเดิม
     existing = await conn.fetchrow("""
         SELECT id, status, source, uploaded_by, uploader_guest
         FROM matches WHERE demo_file = $1
     """, name)
+    # มีชื่อเดิมอยู่ไหม? ผู้ใช้ไม่ได้ขอทับใช่ไหม? และงานเดิมไม่ได้อยู่สถานะ error ใช่ไหม?
     if existing and not replace and existing["status"] != "error":
         raise HTTPException(409, f"แมตช์ {name} มีอยู่ในระบบแล้ว (Match ID: {existing['id']}, สถานะ {existing['status']}) "
                                  "— กด \"โหลดทับของเดิม\" ในรายการอัปโหลดถ้าต้องการโหลดใหม่")
+    # ถ้ามีแถวเดิม โค้ดนำข้อมูลแถวนั้นไปตรวจว่าเป็นแมตช์ที่บัญชี Steam นี้อัปโหลดเอง                         
     if existing:
         existing_match = dict(existing)
         require_replace_access(existing_match, viewer)
 
-    await check_upload_quota(conn, viewer)
+    await check_upload_quota(conn, viewer) # ตรวจจำนวนครั้งในหนึ่งชั่วโมง ถ้าเกินตอบ 429
 
-    DEMOS_DIR.mkdir(parents=True, exist_ok=True)
-    dem_path = DEMOS_DIR / name
+
+
+    # 1. รับไฟล์ใหม่ไว้แยกจากไฟล์ .dem ที่ใช้อยู่
+    DEMOS_DIR.mkdir(parents=True, exist_ok=True) # สร้างโฟลเดอร์นี้ถ้ายังไม่มี
+    dem_path = DEMOS_DIR / name # ชื่อ .dem ที่ worker จะเปิดอ่าน
     staged_path = DEMOS_DIR / f".{name}.{secrets.token_hex(8)}.upload"
-    size = await run_in_threadpool(save_upload, file, staged_path)
+    size = await run_in_threadpool(save_upload, file, staged_path) # เขียนและตรวจไฟล์ใหม่ และได้ขนาดกลับมา
 
+# จำผู้ส่ง และเตรียมไว้เก็บไฟล์กับข้อมูลแมตช์เดิม หากการโหลดทับต้องย้อนกลับ
     up_type = viewer["type"]
     up_account = viewer["id"]
     up_guest = viewer["guest_id"]
     backup_path: Path | None = None
     previous_match: dict | None = None
+
+    # 2. เลือกแถวแมตช์ แล้วนำไฟล์ใหม่เข้าเช็คในDBว่าเคยมีไหม ถ้าคำสั่งฐานข้อมูลในช่วงนี้ผิดพลาด transaction จะยกเลิกการเปลี่ยนแปลงในฐานข้อมูลช่วงนี้
     try:
         async with conn.transaction():
+            # ล็อก แถวที่พบ ไว้ระหว่าง transaction เพื่อไม่ให้คำขออื่นมาแก้แถวนั้นพร้อมกัน
             locked = await conn.fetchrow("""
                 SELECT id, status, source, error_message, job_id, started_at, finished_at, imported_at,
                        uploaded_by, uploader_type, uploader_guest
                 FROM matches WHERE demo_file = $1 FOR UPDATE
             """, name)
-            if locked:
+
+            # มีแถวเดิม: ตรวจสิทธิ์ แล้วใช้ match_id เดิม
+            if locked: 
                 locked_match = dict(locked)
+                # ถ้าผู้ใช้ไม่ได้ขอโหลดทับ และงานเดิมไม่ได้เป็น error ให้หยุดและตอบ 409 ว่าชื่อซ้ำ
                 if not replace and locked_match["status"] != "error":
                     raise HTTPException(409, f"แมตช์ {name} มีอยู่ในระบบแล้ว")
-                require_replace_access(locked_match, viewer)
-                previous_match = locked_match
+
+                require_replace_access(locked_match, viewer) # ถ้าไม่หยุด โค้ดจะตรวจอีกว่า ผู้ใช้เป็นเจ้าของแมตช์นี้และสถานะเดิมอนุญาตให้ทับไหม
+                previous_match = locked_match # จำข้อมูลแถวเดิมไว้ เผื่อส่งงานเข้าคิวไม่สำเร็จแล้วต้องกู้สถานะ
                 match_id = locked_match["id"]
+
+                # อัปเดตแถวแมตช์เดิมตาม match_id ตั้งสถานะกลับเป็น queued ล้างข้อมูลของงานรอบก่อน แล้วบันทึกเวลาและผู้ส่งของรอบใหม่ เพื่อเตรียมส่งให้ worker 
                 await conn.execute("""
                     UPDATE matches SET status = 'queued', error_message = NULL, job_id = NULL,
                                        started_at = NULL, finished_at = NULL, imported_at = now(),
                                        uploaded_by = $2, uploader_type = $3, uploader_guest = $4
                     WHERE id = $1
                 """, match_id, up_account, up_type, up_guest)
+
+            # ไม่มีแถวเดิม: สร้างแมตช์ใหม่และรับ match_id
             else:
+                #สร้างแถว match ใหม่
                 match_id = await conn.fetchval("""
                     INSERT INTO matches (demo_file, status, uploaded_by, uploader_type, uploader_guest)
                     VALUES ($1, 'queued', $2, $3, $4) RETURNING id
                 """, name, up_account, up_type, up_guest)
+
+            # สำรอง .dem เดิมถ้ามี แล้วนำไฟล์ใหม่มาใช้ชื่อนี้  
             if dem_path.exists():
                 backup_path = DEMOS_DIR / f".{name}.{secrets.token_hex(8)}.backup"
                 dem_path.replace(backup_path)
             staged_path.replace(dem_path)
+
+    # สลับไฟล์หรือบันทึกแถวพัง: พยายามคืนไฟล์เก่า
     except Exception:
-        if backup_path and backup_path.exists():
+        if backup_path and backup_path.exists(): # มีชื่อไฟล์สำรองอยู่ในตัวแปรหรือไม่ และไฟล์สำรองนั้นยังอยู่จริงไหม
             dem_path.unlink(missing_ok=True)
-            backup_path.replace(dem_path)
+            backup_path.replace(dem_path) # เปลี่ยนชื่อกลับมาเป็น .dem
         raise
+    # เก็บกวาดไฟล์ .upload ที่ยังเหลือ
     finally:
         staged_path.unlink(missing_ok=True)
 
+### เมื่อได้ match_id แล้ว API ส่งเลขนี้ไปให้ระบบคิว ###
+# 3. ส่ง match_id ให้คิวเพื่อให้ worker ทำงานต่อ
     try:
-        job_id = await run_in_threadpool(enqueue_parse, match_id)
+        job_id = await run_in_threadpool(enqueue_parse, match_id) # เรียก enqueue_parse(match_id) ใน demo_processing.py
+
+    # คิวรับไม่ได้: กู้ของเดิม หรือทำเครื่องหมาย error    
     except QueueUnavailable as e:
-        if previous_match:
+        if previous_match: # มีแถวเดิม: พยายามคืนไฟล์และค่าในแถวเดิม
             dem_path.unlink(missing_ok=True)
             if backup_path and backup_path.exists():
                 backup_path.replace(dem_path)
@@ -871,12 +900,17 @@ async def api_upload_demo(
                  previous_match["job_id"], previous_match["started_at"], previous_match["finished_at"],
                  previous_match["imported_at"], previous_match["uploaded_by"],
                  previous_match["uploader_type"], previous_match["uploader_guest"])
+
+        # แมตช์ใหม่: เก็บแถว error และลบไฟล์ใหม่
         else:
             await conn.execute("UPDATE matches SET status = 'error', error_message = $2 WHERE id = $1", match_id, str(e))
             dem_path.unlink(missing_ok=True)
         log(f"[UPLOAD] {name}: {e}")
         raise HTTPException(503, f"รับไฟล์แล้วแต่ส่งงานเข้าคิวไม่ได้ — เปิด Redis ด้วย docker compose up -d redis ({e})")
+
+    # คิวรับงานได้ บันทึก job_id
     await conn.execute("UPDATE matches SET job_id = $2 WHERE id = $1;", match_id, job_id)
+    # ส่งคิวสำเร็จแล้ว จึงเก็บกวาดไฟล์สำรองที่มี
     if backup_path:
         try:
             backup_path.unlink(missing_ok=True)
@@ -884,6 +918,7 @@ async def api_upload_demo(
             log(f"[UPLOAD] cleanup backup {backup_path.name} failed: {e}")
     log(f"[UPLOAD] {name} ({size / 1024 / 1024:.1f} MB) -> match {match_id} เข้าคิว job {job_id}")
 
+# API ตอบ HTTP 202 ว่ารับไฟล์และส่งงานเข้าคิวแล้ว
     return JSONResponse(status_code=202, content={
         "match_id": match_id,
         "demo_file": name,
